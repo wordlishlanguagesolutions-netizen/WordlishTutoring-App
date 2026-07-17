@@ -36,7 +36,7 @@ import { useBookings } from '@/hooks/useBookings';
 import { usePermissions } from '@/hooks/usePermissions';
 
 // ============================================================================
-// Home del profesor · Fase 3: dos columnas en desktop.
+// Home del profesor · Fase 3.1: dos columnas en desktop.
 // Izquierda (7): Clase en curso.
 // Derecha (5): Coach, disponibilidad, Growth, Acciones, Próximas clases.
 // Móvil y tablet intactos.

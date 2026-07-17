@@ -1,5 +1,5 @@
 // ============================================================================
-// Cultura Wordlish para profesores · v3.0
+// Cultura Wordlish para profesores · v3.0.1
 // ============================================================================
 // La app enseña los procesos únicamente mediante:
 //   1. Recordatorios contextuales del siguiente paso.
