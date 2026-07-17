@@ -11,6 +11,7 @@ import {
   StatusBadge,
   ZoomButton,
 } from '@/components/ui';
+import { TeacherHint } from '@/components/teacher/TeacherHint';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { useBookings } from '@/hooks/useBookings';
@@ -112,6 +113,8 @@ export default function AgendaScreen() {
             : `${classesList.length} clases`
         }
       />
+
+      <TeacherHint hint="agenda" icon="calendar-outline" />
 
       {/* Toggle superior · Mi horario / Mis clases */}
       <View style={styles.toggle}>

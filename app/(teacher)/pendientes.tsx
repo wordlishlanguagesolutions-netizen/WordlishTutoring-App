@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header } from '@/components/ui';
+import { TeacherHint } from '@/components/teacher/TeacherHint';
+import type { TeacherHintKey } from '@/constants/teacherCulture';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { useBookings } from '@/hooks/useBookings';
@@ -147,6 +149,13 @@ export default function PendientesScreen() {
     [all, filter],
   );
 
+  const hintKey: TeacherHintKey | null = useMemo(() => {
+    if (counts.all === 0) return 'pendientes_none';
+    if (filter === 'report' || (filter === 'all' && counts.report > 0)) return 'report';
+    if (filter === 'booking') return 'pendientes_calm';
+    return 'pendientes_calm';
+  }, [filter, counts]);
+
   const handleComplete = (item: PendingItem) => {
     if (item.type === 'screenshot') {
       const stamp = new Date().toLocaleTimeString('es-PA', {
@@ -205,6 +214,20 @@ export default function PendientesScreen() {
           onPress={() => setFilter('booking')}
         />
       </View>
+
+      {hintKey ? (
+        <TeacherHint
+          hint={hintKey}
+          icon={
+            hintKey === 'pendientes_none'
+              ? 'checkmark-circle-outline'
+              : hintKey === 'report'
+              ? 'document-text-outline'
+              : 'leaf-outline'
+          }
+          tone={hintKey === 'pendientes_none' ? 'success' : 'default'}
+        />
+      ) : null}
 
       {visible.length === 0 ? (
         <View style={styles.empty}>

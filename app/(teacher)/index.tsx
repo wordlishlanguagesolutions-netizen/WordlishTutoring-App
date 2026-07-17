@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
 import { CoachBanner } from '@/components/teacher/CoachBanner';
 import { GrowthCard } from '@/components/teacher/GrowthCard';
+import { TeacherHint } from '@/components/teacher/TeacherHint';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
@@ -233,6 +234,10 @@ export default function TeacherHome() {
           monthOnTime: growthAverage(GROWTH_INDICATORS) >= SPECIAL_THRESHOLD,
         }}
       />
+
+      {!live && !reportSent ? (
+        <TeacherHint hint="home_start" icon="sunny-outline" />
+      ) : null}
     </>
   );
 
@@ -477,6 +482,9 @@ export default function TeacherHome() {
   const ActionsBlock = pendingReports.length > 0 || pendingBookings.length > 0 ? (
     <View>
       <Text style={styles.section}>Acciones de hoy</Text>
+      {pendingReports.length > 0 ? (
+        <TeacherHint hint="report" icon="document-text-outline" />
+      ) : null}
       <View style={{ gap: spacing.sm }}>
         {pendingReports.map((r) => (
           <View key={`r-${r.id}`} style={styles.actionCard}>

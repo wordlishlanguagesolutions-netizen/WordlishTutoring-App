@@ -7,6 +7,7 @@ import { colors, spacing, typography, radius } from '@/constants/theme';
 import { currentTeacher } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
 import { GrowthCard } from '@/components/teacher/GrowthCard';
+import { TeacherHint } from '@/components/teacher/TeacherHint';
 import { GROWTH_PROGRAM } from '@/constants/teacherCulture';
 
 export default function TeacherProfile() {
@@ -24,6 +25,8 @@ export default function TeacherProfile() {
         </Pressable>
       </View>
 
+      <TeacherHint hint="profile" icon="heart-outline" />
+
       <Card style={{ alignItems: 'center', paddingVertical: spacing.xl, marginBottom: spacing.lg }}>
         <Avatar name={currentTeacher.name} uri={currentTeacher.avatar} size={96} />
         <Text style={[typography.h2, { marginTop: spacing.md }]}>{currentTeacher.name}</Text>
@@ -40,18 +43,18 @@ export default function TeacherProfile() {
         <GrowthCard currentLevel="essential" />
       </View>
 
-      <Text style={styles.section}>Programa Wordlish</Text>
+      <Text style={styles.section}>Guía del profesor</Text>
       <Pressable
         onPress={() => router.push('/teacher/standards' as any)}
         style={({ pressed }) => [styles.programRow, pressed && { opacity: 0.85 }]}
       >
         <View style={styles.programIcon}>
-          <Ionicons name="ribbon" size={16} color={colors.primaryDark} />
+          <Ionicons name="book" size={16} color={colors.primaryDark} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.programTitle}>Nuestro estándar</Text>
+          <Text style={styles.programTitle}>Guía del profesor</Text>
           <Text style={styles.programSubtitle}>
-            La manera Wordlish de dar clase
+            Cultura y estándares Wordlish
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
