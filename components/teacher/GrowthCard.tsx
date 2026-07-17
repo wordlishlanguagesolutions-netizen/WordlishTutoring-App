@@ -39,7 +39,7 @@ export function GrowthCard({ currentLevel }: Props) {
     <View style={styles.card}>
       <View style={styles.headRow}>
         <View style={styles.badge}>
-          <Ionicons name="star" size={12} color={colors.primaryDark} />
+          <Ionicons name="star" size={9} color={colors.primaryDark} />
           <Text style={styles.badgeText}>
             {GROWTH_PROGRAM[currentLevel].name}
           </Text>
@@ -68,31 +68,22 @@ export function GrowthCard({ currentLevel }: Props) {
               ]}
             />
           </View>
-          <View style={styles.progressMeta}>
-            <Text style={styles.progressLabel}>{avg}%</Text>
-            <Text style={styles.progressTarget}>Meta {SPECIAL_THRESHOLD}%</Text>
-          </View>
+          <Text style={styles.progressLabel}>{avg}%</Text>
         </View>
       ) : null}
 
       <View style={styles.indicators}>
         {GROWTH_INDICATORS.map((ind) => (
           <View key={ind.id} style={styles.indicator}>
-            <View style={styles.indicatorIcon}>
-              <Ionicons
-                name={ind.icon as any}
-                size={13}
-                color={colors.primaryDark}
-              />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.indicatorLabel} numberOfLines={1}>
-                {ind.label}
-              </Text>
-              <Text style={styles.indicatorHint} numberOfLines={1}>
-                {ind.hint}
-              </Text>
-            </View>
+            <Ionicons
+              name={ind.icon as any}
+              size={11}
+              color={colors.primaryDark}
+            />
+            <Text style={styles.indicatorLabel} numberOfLines={1}>
+              {ind.label}
+            </Text>
+            <View style={styles.indicatorDots} />
             <Text style={styles.indicatorValue}>{ind.value}%</Text>
           </View>
         ))}
@@ -104,8 +95,8 @@ export function GrowthCard({ currentLevel }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    borderRadius: radius.md,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.primaryLight,
     ...shadow.sm,
@@ -114,103 +105,93 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: 4,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: radius.pill,
     backgroundColor: colors.primarySoft,
   },
   badgeText: {
     color: colors.primaryDark,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
+    letterSpacing: 0.2,
   },
   link: {
     color: colors.primaryDark,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   title: {
-    fontSize: 17,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.text,
-    letterSpacing: -0.2,
+    letterSpacing: -0.15,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSubtle,
-    marginTop: 2,
+    marginTop: 1,
     fontWeight: '600',
   },
   progressWrap: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   progressTrack: {
-    height: 6,
-    borderRadius: 3,
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: colors.surfaceAlt,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 2,
     backgroundColor: colors.primary,
   },
-  progressMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
   progressLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.primaryDark,
-  },
-  progressTarget: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '600',
+    minWidth: 28,
+    textAlign: 'right',
   },
   indicators: {
-    marginTop: spacing.md,
-    gap: 6,
+    marginTop: spacing.sm,
+    gap: 2,
   },
   indicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-  },
-  indicatorIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 3,
   },
   indicatorLabel: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.text,
   },
-  indicatorHint: {
-    fontSize: 10,
-    color: colors.textSubtle,
-    marginTop: 1,
-    fontWeight: '500',
+  indicatorDots: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    borderStyle: 'dotted',
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    marginHorizontal: 4,
   },
   indicatorValue: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primaryDark,
+    minWidth: 30,
+    textAlign: 'right',
   },
 });
