@@ -1,19 +1,21 @@
 // ============================================================================
-// Cultura Wordlish para profesores · v2.0
+// Cultura Wordlish para profesores · v3.0
 // ============================================================================
-// Este archivo NO es un reglamento. Es la cultura del equipo docente.
-// La app enseña la cultura Wordlish poco a poco, mediante pequeños mensajes
-// contextuales que aparecen únicamente cuando corresponde.
+// La app enseña los procesos únicamente mediante:
+//   1. Recordatorios contextuales del siguiente paso.
+//   2. Felicitaciones breves cuando un proceso se completa.
 //
 // Reglas de redacción para TODO texto expuesto al profesor:
-//   · Una sola línea.
-//   · Máximo 8 palabras cuando sea posible.
-//   · Tono cercano, profesional, positivo, tranquilo, sin presión.
+//   · Cortos, naturales, útiles, amables.
+//   · Una sola línea, siempre relacionados al momento exacto.
+//   · Nunca frases motivacionales ni inspiracionales.
 //   · Nunca usar: advertencia, penalización, incumplimiento, castigo.
-//   · Usar pequeños recordatorios y reconocimientos.
+//   · Prohibido: "cada clase es una oportunidad", "tu constancia hace la
+//     diferencia", "sigue creciendo", "vas muy bien".
+//   · Nunca mostrar varios mensajes al mismo tiempo.
 //
-// Las reglas completas viven solo dentro de "Guía del profesor". La app las
-// enseña de forma natural durante el uso diario, sin interrumpir.
+// Las reglas completas viven solo dentro de "Guía del profesor". El resto
+// del producto solo recuerda el siguiente paso o reconoce lo bien hecho.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -219,20 +221,19 @@ export function growthAverage(indicators: GrowthIndicator[]): number {
 // ----------------------------------------------------------------------------
 
 export const GROWTH_ENCOURAGEMENT: string[] = [
-  '¡Excelente trabajo!',
-  'Vas por muy buen camino.',
-  'Estás cada vez más cerca de Special.',
-  'Tu constancia se nota.',
+  '¡Excelente puntualidad este mes!',
+  '¡Todos tus reportes están al día!',
+  '¡Muy buen trabajo con tus procesos!',
+  '¡Estás cada vez más cerca de Special!',
 ];
 
-// Selecciona un mensaje de crecimiento en función del promedio actual.
-// Es determinista para que el mismo valor muestre siempre el mismo mensaje
-// durante una sesión y no oscile de manera nerviosa.
+// Reconocimiento breve según el promedio actual. Nunca inspiracional.
+// Retorna cadena vacía cuando no hay un logro concreto que reconocer.
 export function encouragementFor(avg: number): string {
-  if (avg >= SPECIAL_THRESHOLD) return 'Estás cada vez más cerca de Special.';
-  if (avg >= 85) return 'Vas por muy buen camino.';
-  if (avg >= 75) return 'Tu constancia se nota.';
-  return 'Cada clase suma a tu crecimiento.';
+  if (avg >= SPECIAL_THRESHOLD) return '¡Estás cada vez más cerca de Special!';
+  if (avg >= 85) return '¡Muy buen trabajo con tus procesos!';
+  if (avg >= 75) return '¡Todos tus reportes están al día!';
+  return '';
 }
 
 // ----------------------------------------------------------------------------
@@ -242,30 +243,43 @@ export function encouragementFor(avg: number): string {
 // ----------------------------------------------------------------------------
 
 export type TeacherHintKey =
-  | 'home_start'
-  | 'home_ready'
+  // Recordatorios del siguiente paso
   | 'before_class'
-  | 'agenda'
-  | 'report'
-  | 'material'
-  | 'profile'
-  | 'after_class'
-  | 'after_report'
-  | 'pendientes_calm'
-  | 'pendientes_none';
+  | 'ready_to_start'
+  | 'during_screenshot'
+  | 'complete_report'
+  | 'finalize_after_report'
+  | 'review_material'
+  // Felicitaciones breves al completar un proceso
+  | 'punctual_thanks'
+  | 'report_sent'
+  | 'screenshot_ok'
+  | 'class_finished'
+  | 'material_ready'
+  // Reconocimientos por buenos indicadores
+  | 'great_punctuality'
+  | 'reports_on_track'
+  | 'great_processes'
+  | 'near_special'
+  | 'all_done';
 
 export const TEACHER_HINTS: Record<TeacherHintKey, string> = {
-  home_start: 'Hoy será un gran día.',
-  home_ready: 'Todo listo para comenzar.',
-  before_class: 'Llega con unos minutos de anticipación.',
-  agenda: 'Una buena organización hace la diferencia.',
-  report: 'Un buen reporte también enseña.',
-  material: 'Preparar antes siempre ayuda.',
-  profile: 'Tu espacio también comunica confianza.',
-  after_class: 'Excelente trabajo.',
-  after_report: 'Gracias por acompañar este proceso.',
-  pendientes_calm: 'Un paso a la vez, sin prisa.',
-  pendientes_none: 'Todo al día. Gracias.',
+  before_class: 'Recuerda iniciar tu clase a la hora programada.',
+  ready_to_start: 'Verifica que todo esté listo para comenzar.',
+  during_screenshot: 'Verifica que el screenshot haya sido registrado.',
+  complete_report: 'Completa el reporte para cerrar la sesión.',
+  finalize_after_report: 'Finaliza la clase cuando hayas terminado el reporte.',
+  review_material: 'Revisa el material antes de comenzar.',
+  punctual_thanks: '¡Gracias por tu puntualidad!',
+  report_sent: '¡Reporte enviado!',
+  screenshot_ok: '¡Screenshot registrado!',
+  class_finished: '¡Clase finalizada!',
+  material_ready: '¡Material listo!',
+  great_punctuality: '¡Excelente puntualidad este mes!',
+  reports_on_track: '¡Todos tus reportes están al día!',
+  great_processes: '¡Muy buen trabajo con tus procesos!',
+  near_special: '¡Estás cada vez más cerca de Special!',
+  all_done: '¡Todo al día!',
 };
 
 // ----------------------------------------------------------------------------
@@ -291,23 +305,24 @@ export interface CoachMessage {
 export function coachMessage(m: CoachMoment): CoachMessage | null {
   switch (m) {
     case 'login':
-      return { title: '¡Qué bueno verte!' };
+      // Sin mensaje de bienvenida motivacional. Silencio = respeto.
+      return null;
     case 'before_class':
-      return { title: 'Todo listo para comenzar.' };
+      return { title: 'Recuerda iniciar tu clase a la hora programada.' };
     case 'after_screenshot':
-      return { title: 'Asistencia registrada. Excelente inicio.' };
+      return { title: '¡Screenshot registrado!' };
     case 'after_report':
-      return { title: 'Un buen reporte también enseña.' };
+      return { title: '¡Reporte enviado!' };
     case 'end_of_day':
-      return { title: 'Excelente trabajo. Gracias por hoy.' };
+      return { title: '¡Clase finalizada!' };
     case 'perfect_week':
-      return { title: 'Semana impecable. Gracias por tu constancia.' };
+      return { title: '¡Muy buen trabajo con tus procesos!' };
     case 'high_indicators':
-      return { title: 'Estás cada vez más cerca de Special.' };
+      return { title: '¡Estás cada vez más cerca de Special!' };
     case 'great_ratings':
-      return { title: 'Tu constancia se nota.' };
+      return { title: '¡Todos tus reportes están al día!' };
     case 'month_on_time':
-      return { title: 'Un mes de puntualidad. Gran hábito.' };
+      return { title: '¡Excelente puntualidad este mes!' };
   }
 }
 

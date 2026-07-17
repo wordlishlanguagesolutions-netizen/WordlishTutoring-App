@@ -236,7 +236,7 @@ export default function TeacherHome() {
       />
 
       {!live && !reportSent ? (
-        <TeacherHint hint="home_start" icon="sunny-outline" />
+        <TeacherHint hint="before_class" icon="time-outline" />
       ) : null}
     </>
   );
@@ -483,7 +483,7 @@ export default function TeacherHome() {
     <View>
       <Text style={styles.section}>Acciones de hoy</Text>
       {pendingReports.length > 0 ? (
-        <TeacherHint hint="report" icon="document-text-outline" />
+        <TeacherHint hint="complete_report" icon="document-text-outline" />
       ) : null}
       <View style={{ gap: spacing.sm }}>
         {pendingReports.map((r) => (

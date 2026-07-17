@@ -7,7 +7,6 @@ import { colors, spacing, typography, radius } from '@/constants/theme';
 import { currentTeacher } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
 import { GrowthCard } from '@/components/teacher/GrowthCard';
-import { TeacherHint } from '@/components/teacher/TeacherHint';
 import { GROWTH_PROGRAM } from '@/constants/teacherCulture';
 
 export default function TeacherProfile() {
@@ -24,8 +23,6 @@ export default function TeacherProfile() {
           <Ionicons name="log-out-outline" size={22} color={colors.primaryDark} />
         </Pressable>
       </View>
-
-      <TeacherHint hint="profile" icon="heart-outline" />
 
       <Card style={{ alignItems: 'center', paddingVertical: spacing.xl, marginBottom: spacing.lg }}>
         <Avatar name={currentTeacher.name} uri={currentTeacher.avatar} size={96} />

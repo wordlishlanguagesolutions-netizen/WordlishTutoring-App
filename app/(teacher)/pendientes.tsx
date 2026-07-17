@@ -150,10 +150,12 @@ export default function PendientesScreen() {
   );
 
   const hintKey: TeacherHintKey | null = useMemo(() => {
-    if (counts.all === 0) return 'pendientes_none';
-    if (filter === 'report' || (filter === 'all' && counts.report > 0)) return 'report';
-    if (filter === 'booking') return 'pendientes_calm';
-    return 'pendientes_calm';
+    if (counts.all === 0) return 'all_done';
+    if (filter === 'report' || (filter === 'all' && counts.report > 0))
+      return 'complete_report';
+    if (filter === 'screenshot' || counts.screenshot > 0)
+      return 'during_screenshot';
+    return null;
   }, [filter, counts]);
 
   const handleComplete = (item: PendingItem) => {
@@ -219,13 +221,15 @@ export default function PendientesScreen() {
         <TeacherHint
           hint={hintKey}
           icon={
-            hintKey === 'pendientes_none'
+            hintKey === 'all_done'
               ? 'checkmark-circle-outline'
-              : hintKey === 'report'
+              : hintKey === 'complete_report'
               ? 'document-text-outline'
-              : 'leaf-outline'
+              : hintKey === 'during_screenshot'
+              ? 'camera-outline'
+              : 'ellipse-outline'
           }
-          tone={hintKey === 'pendientes_none' ? 'success' : 'default'}
+          tone={hintKey === 'all_done' ? 'success' : 'default'}
         />
       ) : null}
 

@@ -54,9 +54,11 @@ export function GrowthCard({ currentLevel }: Props) {
       </View>
 
       <Text style={styles.title}>{heroTitle}</Text>
-      <Text style={styles.subtitle} numberOfLines={1}>
-        {heroSubtitle}
-      </Text>
+      {heroSubtitle ? (
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {heroSubtitle}
+        </Text>
+      ) : null}
 
       {!isSpecial ? (
         <View style={styles.progressWrap}>
