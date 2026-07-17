@@ -1,0 +1,13 @@
+// Wordlish · Barrel de repositorios
+export { usersRepo } from './users';
+export { bookingsRepo } from './bookings';
+export { classRecordsRepo } from './classes';
+export { classEventsRepo } from './classEvents';
+export { reportsRepo } from './reports';
+export { materialsRepo } from './materials';
+export { screenshotsRepo } from './screenshots';
+export { notificationsRepo } from './notifications';
+export { packagesRepo } from './packages';
+export { paymentsRepo } from './payments';
+export { availabilityRepo } from './availability';
+export { payrollsRepo } from './payrolls';

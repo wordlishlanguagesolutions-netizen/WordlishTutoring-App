@@ -1,0 +1,755 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Alert,
+  Linking,
+} from 'react-native';
+import { Ionicons } from '@/components/ui/Icon';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
+import { CoachBanner } from '@/components/teacher/CoachBanner';
+import { GrowthCard } from '@/components/teacher/GrowthCard';
+import { useResponsive } from '@/hooks/useResponsive';
+import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
+import {
+  GROWTH_INDICATORS,
+  growthAverage,
+  SPECIAL_THRESHOLD,
+} from '@/constants/teacherCulture';
+import {
+  currentTeacher,
+  teacherTodayClasses,
+  teacherActiveClass,
+  teacherPendingReports,
+} from '@/services/mockData';
+import { POLICIES } from '@/constants/policies';
+import { useAuth } from '@/hooks/useAuth';
+import { useBookings } from '@/hooks/useBookings';
+import { usePermissions } from '@/hooks/usePermissions';
+
+// ============================================================================
+// Home del profesor · Fase 3: dos columnas en desktop.
+// Izquierda (7): Clase en curso.
+// Derecha (5): Coach, disponibilidad, Growth, Acciones, Próximas clases.
+// Móvil y tablet intactos.
+// ============================================================================
+
+type Incident = 'no_camera' | 'late' | 'no_show' | 'technical';
+type FlowStep =
+  | 'screenshot_pending'
+  | 'in_progress'
+  | 'ended'
+  | 'report_pending'
+  | 'report_sent';
+
+const GUARDIAN_PHONE = '+50765551234';
+const WAIT_SNOOZE_MS = 5 * 60_000;
+
+function fmtHm(ts: number): string {
+  return new Date(ts).toLocaleTimeString('es-PA', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export default function TeacherHome() {
+  const router = useRouter();
+  const { logout } = useAuth();
+  const { ctx } = usePermissions();
+  const { isDesktop } = useResponsive();
+  const teacherNotifs = useTeacherNotifications();
+  const { weekPublished, deadline, markReportSent } = teacherNotifs;
+  const { bookings } = useBookings();
+  const teacherId = ctx?.teacherId ?? 't1';
+
+  const live = teacherActiveClass;
+
+  const startMs = useMemo(
+    () => Date.now() - live.minutesElapsed * 60_000,
+    [live.minutesElapsed],
+  );
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsedMin = Math.max(0, Math.floor((nowMs - startMs) / 60_000));
+
+  const [screenshotAt, setScreenshotAt] = useState<number | null>(null);
+  const [classEnded, setClassEnded] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const [incidents, setIncidents] = useState<Set<Incident>>(new Set());
+  const [eventLog, setEventLog] = useState<Array<{ label: string; ts: number }>>([]);
+  const [attendanceSnoozeUntil, setAttendanceSnoozeUntil] = useState<number>(0);
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
+
+  const logEvent = (label: string) =>
+    setEventLog((prev) => [{ label, ts: Date.now() }, ...prev]);
+
+  const step: FlowStep = useMemo(() => {
+    if (reportSent) return 'report_sent';
+    if (classEnded) return 'report_pending';
+    if (incidents.has('no_show')) return 'ended';
+    if (screenshotAt !== null) return 'in_progress';
+    return 'screenshot_pending';
+  }, [reportSent, classEnded, incidents, screenshotAt]);
+
+  const showAttendanceAlert =
+    step === 'in_progress' &&
+    !incidents.has('late') &&
+    !incidents.has('no_show') &&
+    elapsedMin >= POLICIES.studentToleranceMin &&
+    Date.now() >= attendanceSnoozeUntil;
+
+  const handleScreenshot = () => {
+    const ts = Date.now();
+    setScreenshotAt(ts);
+    logEvent(`Screenshot enviado a las ${fmtHm(ts)}`);
+    logEvent(`Asistencia confirmada · ${live.student}`);
+    logEvent(`Notificación enviada al estudiante y acudiente`);
+  };
+
+  const toggleIncident = (key: Incident, label: string) => {
+    setIncidents((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        logEvent(`${label} desmarcado · ${fmtHm(Date.now())}`);
+      } else {
+        next.add(key);
+        logEvent(`${label} · ${fmtHm(Date.now())}`);
+      }
+      return next;
+    });
+  };
+
+  const handleNoShow = () => {
+    const ts = Date.now();
+    setIncidents((prev) => new Set(prev).add('no_show'));
+    logEvent(`Inasistencia registrada · ${fmtHm(ts)}`);
+    setClassEnded(true);
+  };
+
+  const handleWaitFiveMore = () => {
+    setAttendanceSnoozeUntil(Date.now() + WAIT_SNOOZE_MS);
+    logEvent(`Espera de 5 minutos · ${fmtHm(Date.now())}`);
+  };
+
+  const handleWhatsApp = () => {
+    const msg = encodeURIComponent(
+      `Hola, te contactamos desde Wordlish. La clase ya inició y aún no vemos al estudiante conectado.`,
+    );
+    const url = `https://wa.me/${GUARDIAN_PHONE.replace(/[^0-9]/g, '')}?text=${msg}`;
+    logEvent(`WhatsApp al acudiente · ${fmtHm(Date.now())}`);
+    Linking.openURL(url).catch(() =>
+      Alert.alert('WhatsApp', 'No se pudo abrir WhatsApp en este dispositivo.'),
+    );
+  };
+
+  const handleEndClass = () => {
+    setClassEnded(true);
+    logEvent(`Clase finalizada · ${fmtHm(Date.now())}`);
+  };
+
+  const handleGoToReport = () => {
+    router.push(`/class/${live.classRecordId}` as any);
+  };
+
+  const handleReportSent = () => {
+    setReportSent(true);
+    markReportSent();
+    logEvent(`Reporte enviado · ${fmtHm(Date.now())}`);
+  };
+
+  const ssLabel = useMemo(() => {
+    if (elapsedMin < 8) return 'Screenshot pendiente';
+    if (elapsedMin <= POLICIES.screenshotGraceMin) return 'Envíalo ahora';
+    return 'Screenshot vencido';
+  }, [elapsedMin]);
+
+  const ssTone: 'primary' | 'warning' | 'danger' =
+    elapsedMin > POLICIES.screenshotGraceMin
+      ? 'danger'
+      : elapsedMin >= 8
+      ? 'warning'
+      : 'primary';
+
+  const stepLabel: string = useMemo(() => {
+    switch (step) {
+      case 'screenshot_pending':
+        return 'Paso 1 · Sube el screenshot';
+      case 'in_progress':
+        return 'Paso 2 · Clase en progreso';
+      case 'ended':
+        return 'Paso 3 · Clase finalizada';
+      case 'report_pending':
+        return 'Paso 4 · Reporte pendiente';
+      case 'report_sent':
+        return 'Paso 5 · Reporte enviado';
+    }
+  }, [step]);
+
+  const pendingReports = teacherPendingReports.filter(
+    (r) => !completed.has(`report-${r.id}`),
+  );
+  const pendingBookings = bookings
+    .filter((b) => b.teacherId === teacherId && b.status === 'pending_payment')
+    .filter((b) => !completed.has(`booking-${b.id}`));
+
+  const upcoming = teacherTodayClasses.filter((c) =>
+    live ? c.subject !== live.subject : true,
+  );
+
+  const anyIncident = incidents.size > 0;
+
+  // ==================== Bloques ====================
+  const HeaderBlock = (
+    <>
+      <View style={styles.top}>
+        <Avatar name={currentTeacher.name} uri={currentTeacher.avatar} size={40} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.hello}>Hola, {currentTeacher.firstName}</Text>
+        </View>
+        <Pressable onPress={logout} hitSlop={10} style={styles.iconBtn} accessibilityLabel="Salir">
+          <Ionicons name="log-out-outline" size={18} color={colors.primaryDark} />
+        </Pressable>
+      </View>
+
+      <CoachBanner
+        ctx={{
+          justLoggedIn: true,
+          hasClassSoon: !!live && screenshotAt === null,
+          justSentScreenshot: screenshotAt !== null && !classEnded,
+          justSentReport: reportSent,
+          dayFinished: reportSent && teacherPendingReports.length === 0,
+          averageIndicator: growthAverage(GROWTH_INDICATORS),
+          monthOnTime: growthAverage(GROWTH_INDICATORS) >= SPECIAL_THRESHOLD,
+        }}
+      />
+    </>
+  );
+
+  const AvailabilityStrip = (
+    <Pressable
+      onPress={() => router.push('/(teacher)/agenda' as any)}
+      style={({ pressed }) => [
+        styles.availabilityStrip,
+        {
+          backgroundColor: weekPublished ? colors.successSoft : colors.warningSoft,
+          borderColor: weekPublished ? colors.success : colors.warning,
+        },
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      <Ionicons
+        name={weekPublished ? 'checkmark-circle' : 'calendar'}
+        size={14}
+        color={weekPublished ? colors.success : colors.warning}
+      />
+      <Text
+        style={[
+          styles.availabilityText,
+          { color: weekPublished ? colors.success : colors.warning },
+        ]}
+        numberOfLines={1}
+      >
+        {weekPublished
+          ? 'Horas publicadas'
+          : `Publica tus horas antes del ${deadline.label}`}
+      </Text>
+      <Ionicons
+        name="chevron-forward"
+        size={12}
+        color={weekPublished ? colors.success : colors.warning}
+      />
+    </Pressable>
+  );
+
+  const LiveClassCard = live ? (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <Avatar name={live.student} uri={live.studentAvatar} size={44} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.student} numberOfLines={1}>{live.student}</Text>
+          <Text style={styles.subject} numberOfLines={1}>{live.subject}</Text>
+          <Text style={styles.timeMeta}>Inició {live.startTime} · {elapsedMin} min</Text>
+        </View>
+        <View style={styles.livePill}>
+          <View style={styles.liveDot} />
+          <Text style={styles.livePillText}>En curso</Text>
+        </View>
+      </View>
+
+      <Text style={styles.stepText}>{stepLabel}</Text>
+
+      {step === 'screenshot_pending' ? (
+        <>
+          <Pressable
+            onPress={handleScreenshot}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              ssTone === 'danger' && { backgroundColor: colors.danger },
+              ssTone === 'warning' && { backgroundColor: colors.warning },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <Ionicons name="camera" size={18} color={colors.textOnPrimary} />
+            <Text style={styles.primaryBtnText}>Subir screenshot</Text>
+          </Pressable>
+          <Text
+            style={[
+              styles.ssStatus,
+              ssTone === 'danger' && { color: colors.danger },
+              ssTone === 'warning' && { color: colors.warning },
+            ]}
+          >
+            {ssLabel}
+          </Text>
+        </>
+      ) : null}
+
+      {step === 'in_progress' && screenshotAt ? (
+        <Text style={styles.ssDone}>Screenshot enviado, {fmtHm(screenshotAt)}</Text>
+      ) : null}
+
+      {step === 'in_progress' ? (
+        <Pressable
+          onPress={handleEndClass}
+          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="stop-circle" size={18} color={colors.textOnPrimary} />
+          <Text style={styles.primaryBtnText}>Finalizar clase</Text>
+        </Pressable>
+      ) : null}
+
+      {step === 'ended' ? (
+        <Pressable
+          onPress={() => setClassEnded(true)}
+          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
+          <Text style={styles.primaryBtnText}>Continuar</Text>
+        </Pressable>
+      ) : null}
+
+      {step === 'report_pending' ? (
+        <>
+          <Pressable
+            onPress={handleGoToReport}
+            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
+          >
+            <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
+            <Text style={styles.primaryBtnText}>Completar reporte</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleReportSent}
+            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="paper-plane" size={14} color={colors.primaryDark} />
+            <Text style={styles.softBtnText}>Marcar como enviado</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      {step === 'report_sent' ? (
+        <View style={styles.doneRow}>
+          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+          <Text style={styles.doneText}>Reporte enviado al estudiante y acudiente.</Text>
+        </View>
+      ) : null}
+
+      {showAttendanceAlert ? (
+        <View style={styles.alertBox}>
+          <Text style={styles.alertText}>Han pasado 15 minutos y el estudiante aún no ingresa.</Text>
+          <View style={styles.alertRow}>
+            <Pressable
+              onPress={handleNoShow}
+              style={({ pressed }) => [
+                styles.alertBtn,
+                { backgroundColor: colors.danger },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <Text style={styles.alertBtnText}>No asistió</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleWhatsApp}
+              style={({ pressed }) => [
+                styles.alertBtn,
+                { backgroundColor: colors.success },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <Text style={styles.alertBtnText}>WhatsApp</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleWaitFiveMore}
+              style={({ pressed }) => [
+                styles.alertBtn,
+                { backgroundColor: colors.info },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <Text style={styles.alertBtnText}>Esperar 5 min</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {step === 'in_progress' || step === 'screenshot_pending' ? (
+        <View style={styles.statusRow}>
+          {anyIncident ? (
+            <View style={styles.incidentChipsWrap}>
+              {Array.from(incidents).map((inc) => (
+                <View key={inc} style={styles.activeIncidentChip}>
+                  <Ionicons name="warning" size={11} color={colors.warning} />
+                  <Text style={styles.activeIncidentText}>{incidentLabel(inc)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.normalRow}>
+              <View style={styles.normalDot} />
+              <Text style={styles.normalText}>Todo normal</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      {step === 'in_progress' || step === 'screenshot_pending' ? (
+        <View style={styles.exceptionsGrid}>
+          <ExceptionBtn
+            icon="videocam-off"
+            label="Estudiante sin cámara"
+            active={incidents.has('no_camera')}
+            onPress={() => toggleIncident('no_camera', 'Estudiante sin cámara')}
+          />
+          <ExceptionBtn
+            icon="time"
+            label="Llegó tarde"
+            active={incidents.has('late')}
+            onPress={() => toggleIncident('late', 'Estudiante llegó tarde')}
+          />
+          <ExceptionBtn
+            icon="person-remove"
+            label="No asistió"
+            active={incidents.has('no_show')}
+            onPress={handleNoShow}
+          />
+          <ExceptionBtn
+            icon="warning"
+            label="Problema técnico"
+            active={incidents.has('technical')}
+            onPress={() => toggleIncident('technical', 'Problema técnico')}
+          />
+        </View>
+      ) : null}
+
+      {step !== 'report_sent' ? (
+        <Pressable
+          onPress={handleWhatsApp}
+          style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="chatbubble" size={14} color={colors.success} />
+          <Text style={styles.waBtnText}>WhatsApp</Text>
+        </Pressable>
+      ) : null}
+
+      {eventLog.length > 0 ? (
+        <View style={styles.historyBox}>
+          {eventLog.slice(0, 3).map((e, i) => (
+            <Text key={i} style={styles.historyLine} numberOfLines={1}>
+              · {e.label}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+
+  const ActionsBlock = pendingReports.length > 0 || pendingBookings.length > 0 ? (
+    <View>
+      <Text style={styles.section}>Acciones de hoy</Text>
+      <View style={{ gap: spacing.sm }}>
+        {pendingReports.map((r) => (
+          <View key={`r-${r.id}`} style={styles.actionCard}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="document-text" size={16} color={colors.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionStudent} numberOfLines={1}>{r.student}</Text>
+              <Text style={styles.actionText} numberOfLines={1}>Completar reporte · {r.subject}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setCompleted((prev) => new Set(prev).add(`report-${r.id}`));
+                markReportSent();
+                router.push(`/class/${r.classRecordId}` as any);
+              }}
+              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.actionCtaText}>Completar</Text>
+            </Pressable>
+          </View>
+        ))}
+        {pendingBookings.map((b) => (
+          <View key={`b-${b.id}`} style={styles.actionCard}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="calendar" size={16} color={colors.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionStudent} numberOfLines={1}>{b.studentName}</Text>
+              <Text style={styles.actionText} numberOfLines={1}>Confirmar reserva · {b.subject}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setCompleted((prev) => new Set(prev).add(`booking-${b.id}`));
+                if (b.classRecordId) router.push(`/class/${b.classRecordId}` as any);
+              }}
+              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.actionCtaText}>Confirmar</Text>
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    </View>
+  ) : null;
+
+  const UpcomingBlock = upcoming.length > 0 ? (
+    <View>
+      <Text style={styles.section}>Próximas clases</Text>
+      <View style={styles.upcomingWrap}>
+        {upcoming.map((c) => (
+          <Pressable
+            key={c.id}
+            onPress={() => router.push(`/class/${c.id}` as any)}
+            style={({ pressed }) => [styles.compactRow, pressed && { opacity: 0.85 }]}
+          >
+            <Avatar name={c.student} uri={c.studentAvatar} size={28} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.compactName} numberOfLines={1}>{c.student}</Text>
+              <Text style={styles.compactSubject} numberOfLines={1}>{c.subject}</Text>
+            </View>
+            <Text style={styles.compactTime}>{c.time}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  ) : null;
+
+  const GrowthBlock = (
+    <View style={{ marginTop: spacing.lg }}>
+      <GrowthCard currentLevel="essential" />
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <PageContainer maxWidth="home">
+          {HeaderBlock}
+
+          {isDesktop ? (
+            <WebTwoColumn
+              leftFlex={7}
+              rightFlex={5}
+              left={
+                <View style={{ gap: spacing.md }}>
+                  {AvailabilityStrip}
+                  {LiveClassCard}
+                </View>
+              }
+              right={
+                <View style={{ gap: spacing.md }}>
+                  {ActionsBlock}
+                  {GrowthBlock}
+                  {UpcomingBlock}
+                </View>
+              }
+            />
+          ) : (
+            <>
+              {AvailabilityStrip}
+              {LiveClassCard}
+              {ActionsBlock}
+              {GrowthBlock}
+              {UpcomingBlock}
+            </>
+          )}
+        </PageContainer>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function incidentLabel(k: Incident): string {
+  if (k === 'no_camera') return 'Estudiante sin cámara';
+  if (k === 'late') return 'Llegó tarde';
+  if (k === 'no_show') return 'No asistió';
+  return 'Problema técnico';
+}
+
+function ExceptionBtn({
+  icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.exceptionBtn,
+        active && styles.exceptionBtnActive,
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      <Ionicons
+        name={icon as any}
+        size={13}
+        color={active ? colors.textOnPrimary : colors.textSubtle}
+      />
+      <Text
+        style={[styles.exceptionText, active && { color: colors.textOnPrimary }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  top: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
+  hello: { fontSize: 17, fontWeight: '600', color: colors.text, letterSpacing: -0.2 },
+  iconBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  availabilityStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: spacing.md, paddingVertical: 8,
+    borderRadius: radius.pill, borderWidth: 1,
+  },
+  availabilityText: { flex: 1, fontSize: 12, fontWeight: '700' },
+  card: {
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
+    ...shadow.sm,
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  student: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
+  subject: { fontSize: 13, color: colors.textSubtle, marginTop: 1, fontWeight: '500' },
+  timeMeta: { fontSize: 11, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
+  livePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: radius.pill, backgroundColor: colors.successSoft,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
+  livePillText: { fontSize: 10, fontWeight: '700', color: colors.success },
+  stepText: {
+    fontSize: 11, fontWeight: '700', color: colors.textMuted,
+    marginTop: spacing.md, textTransform: 'uppercase', letterSpacing: 0.4,
+  },
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.primary, paddingVertical: 14, borderRadius: radius.md, marginTop: spacing.sm,
+  },
+  primaryBtnText: { color: colors.textOnPrimary, fontSize: 15, fontWeight: '700' },
+  softBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primarySoft, paddingVertical: 10, borderRadius: radius.md, marginTop: 8,
+  },
+  softBtnText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
+  ssStatus: { fontSize: 12, color: colors.primaryDark, fontWeight: '600', textAlign: 'center', marginTop: 6 },
+  ssDone: { fontSize: 12, color: colors.success, fontWeight: '600', marginTop: spacing.sm, textAlign: 'center' },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
+  doneText: { fontSize: 12, color: colors.success, fontWeight: '600', flex: 1 },
+  statusRow: { marginTop: spacing.md },
+  normalRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  normalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
+  normalText: { fontSize: 12, color: colors.textSubtle, fontWeight: '600' },
+  incidentChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  activeIncidentChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radius.pill, backgroundColor: colors.warningSoft,
+  },
+  activeIncidentText: { fontSize: 11, fontWeight: '700', color: colors.warning },
+  exceptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  exceptionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.md, paddingVertical: 8,
+    borderRadius: radius.pill, backgroundColor: colors.surfaceAlt,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  exceptionBtnActive: { backgroundColor: colors.warning, borderColor: colors.warning },
+  exceptionText: { fontSize: 11, fontWeight: '700', color: colors.textSubtle },
+  waBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: radius.md,
+    marginTop: spacing.sm, backgroundColor: colors.successSoft,
+  },
+  waBtnText: { color: colors.success, fontSize: 13, fontWeight: '700' },
+  alertBox: {
+    marginTop: spacing.md, padding: spacing.md,
+    borderRadius: radius.md, backgroundColor: colors.warningSoft,
+    borderWidth: 1, borderColor: colors.warning, gap: spacing.sm,
+  },
+  alertText: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  alertRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  alertBtn: { flex: 1, minWidth: 90, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
+  alertBtnText: { color: colors.textOnPrimary, fontSize: 12, fontWeight: '700' },
+  historyBox: {
+    marginTop: spacing.md, paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: 2,
+  },
+  historyLine: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
+  section: { ...typography.h3, fontSize: 15, marginTop: spacing.lg, marginBottom: spacing.sm },
+  actionCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    padding: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  actionIcon: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  actionStudent: { fontSize: 13, fontWeight: '700', color: colors.text },
+  actionText: { fontSize: 11, color: colors.textSubtle, marginTop: 2 },
+  actionCta: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill,
+  },
+  actionCtaText: { color: colors.textOnPrimary, fontSize: 12, fontWeight: '700' },
+  upcomingWrap: {
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+  },
+  compactRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+  },
+  compactName: { fontSize: 13, fontWeight: '700', color: colors.text },
+  compactSubject: { fontSize: 11, color: colors.textSubtle, marginTop: 1 },
+  compactTime: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
+});
