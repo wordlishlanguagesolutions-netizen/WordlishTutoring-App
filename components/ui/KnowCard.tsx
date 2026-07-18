@@ -3,10 +3,9 @@ import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import { colors, spacing, radius, shadow, typography } from '@/constants/theme';
 
 // ============================================================================
-// KnowCard · tarjeta inline "💡 Lo que debes saber".
+// KnowCard · tarjeta inline "Lo que debes saber".
 // Reemplaza los modales largos con reglas cortas en el momento en que el
-// usuario las necesita. El copy proviene siempre de POLICY_COPY
-// (constants/policies.ts) para que sea configurable desde el admin.
+// usuario las necesita. El copy proviene siempre de POLICY_COPY.
 // ============================================================================
 
 interface KnowCardProps {
@@ -40,12 +39,12 @@ export function KnowCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    backgroundColor: colors.surfaceTinted,
+    borderRadius: radius.card,
+    padding: spacing.card,
     borderWidth: 1,
-    borderColor: colors.primaryLight,
-    ...shadow.sm,
+    borderColor: colors.accent,
+    ...shadow.xs,
   },
   header: {
     flexDirection: 'row',
@@ -57,13 +56,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   title: {
+    fontFamily: typography.label.fontFamily,
     fontSize: 12,
     fontWeight: '700',
-    color: colors.primaryDark,
+    color: colors.primary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  rules: { gap: spacing.sm },
+  rules: {
+    gap: spacing.sm,
+  },
   ruleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -73,14 +75,13 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.primaryDark,
+    backgroundColor: colors.primary,
     marginTop: 8,
   },
   ruleText: {
     flex: 1,
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 20,
     ...typography.body,
+    fontSize: 14,
+    lineHeight: 21,
   },
 });

@@ -1,7 +1,14 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
-import { colors, spacing, radius, shadow } from '@/constants/theme';
+import {
+  colors,
+  spacing,
+  radius,
+  shadow,
+  typography,
+  controlHeight,
+} from '@/constants/theme';
 
 interface ZoomButtonProps {
   onPress?: () => void;
@@ -35,7 +42,7 @@ export function ZoomButton({
           disabled && { opacity: 0.5 },
         ]}
       >
-        <Ionicons name="videocam" size={16} color={colors.primaryDark} />
+        <Ionicons name="videocam" size={16} color={colors.primary} />
         <Text style={secondaryStyles.text}>{label}</Text>
       </Pressable>
     );
@@ -47,11 +54,11 @@ export function ZoomButton({
       disabled={disabled}
       style={({ pressed }) => [
         primaryStyles.btn,
-        pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+        pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] },
         disabled && { opacity: 0.5 },
       ]}
     >
-      <Ionicons name="videocam" size={22} color={colors.textOnPrimary} />
+      <Ionicons name="videocam" size={20} color={colors.textOnPrimary} />
       <Text style={primaryStyles.text}>{label}</Text>
     </Pressable>
   );
@@ -59,16 +66,21 @@ export function ZoomButton({
 
 const primaryStyles = StyleSheet.create({
   btn: {
+    height: controlHeight.button,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
-    borderRadius: radius.lg,
-    ...shadow.md,
+    gap: spacing.iconText,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.button,
+    ...shadow.sm,
   },
-  text: { color: colors.primaryDark, fontWeight: '700', fontSize: 16 },
+  text: {
+    ...typography.button,
+    color: colors.textOnPrimary,
+    fontSize: 15,
+  },
 });
 
 const secondaryStyles = StyleSheet.create({
@@ -77,10 +89,14 @@ const secondaryStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.surfaceTinted,
     paddingVertical: 10,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
   },
-  text: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
+  text: {
+    ...typography.button,
+    color: colors.primary,
+    fontSize: 13,
+  },
 });

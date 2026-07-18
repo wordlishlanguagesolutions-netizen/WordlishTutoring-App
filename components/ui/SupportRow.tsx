@@ -1,7 +1,6 @@
 // Componente único de acceso a soporte dentro de la app.
 // Renderiza una fila discreta "Contactar a un asesor" que, al presionar, abre
 // WhatsApp con un mensaje prellenado adaptado al rol y a la pantalla actual.
-// No muestra menús, modales ni opciones adicionales — un solo clic.
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -12,10 +11,7 @@ import type { UserRole } from '@/constants/roles';
 
 interface Props {
   role: UserRole | null | undefined;
-  // Nombre corto de la pantalla actual (ej: "Perfil", "Monitor").
-  // Se agrega al mensaje para dar contexto al asesor cuando esté disponible.
   screen?: string;
-  // Estilo compacto para incrustar dentro de listas o cards existentes.
   compact?: boolean;
 }
 
@@ -37,9 +33,7 @@ export function SupportRow({ role, screen, compact }: Props) {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={typography.bodyStrong}>Contactar a un asesor</Text>
-        <Text style={typography.caption}>
-          Wordlish responde por WhatsApp
-        </Text>
+        <Text style={typography.caption}>Wordlish responde por WhatsApp</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </Pressable>
@@ -50,21 +44,22 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.iconText,
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.card,
     paddingVertical: spacing.md,
   },
   rowCompact: {
     paddingVertical: 10,
+    borderRadius: radius.lg,
   },
   iconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: radius.md,
     backgroundColor: '#DFF5EC',
     alignItems: 'center',
     justifyContent: 'center',
