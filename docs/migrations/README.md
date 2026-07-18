@@ -14,6 +14,8 @@ Todas las migraciones son idempotentes (usan `create if not exists`, `drop trigg
 8. `008_audit_logs.sql` — Tabla `audit_logs`, función `write_audit_log()` y triggers en tablas críticas.
 9. `009_storage.sql` — Buckets `avatars`, `class-screenshots`, `class-materials`, `payroll-receipts`, `payment-receipts` y sus políticas.
 10. `010_seeders_dev.sql` — Catálogo mínimo de materias.
+11. `011_fix_handle_new_user.sql` — Fix del trigger `handle_new_user` para cumplir con las columnas NOT NULL de `user_profiles` añadidas en 001. Necesaria para que cualquier signup real complete.
+12. `012_dev_test_users_bootstrap.sql` — **Opcional, solo desarrollo.** Ajusta rol + `account_type` y crea filas de actor (staff/guardian/student/teacher) para 5 correos de prueba creados manualmente en el Dashboard. Nunca almacena contraseñas.
 
 ## Estado actual
 
