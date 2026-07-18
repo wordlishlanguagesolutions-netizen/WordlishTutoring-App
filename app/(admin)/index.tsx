@@ -1,43 +1,48 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, StatusBar, Alert } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Alert,
+  Animated,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
-import { Screen, Header, Card, PageContainer } from '@/components/ui';
 import {
-  DashboardTopBar,
-  DashboardPanel,
-  DashboardTable,
-  type Column,
-  type QuickAction,
-} from '@/components/admin';
+  Screen,
+  Header,
+  Card,
+  GlassCard,
+  StatCard,
+  Button,
+  StatusBadge,
+  PageContainer,
+} from '@/components/ui';
+import { DashboardTable } from '@/components/admin';
 import { useResponsive } from '@/hooks/useResponsive';
-import { colors, spacing, typography, radius } from '@/constants/theme';
+import {
+  colors,
+  spacing,
+  typography,
+  radius,
+  shadow,
+  motion,
+} from '@/constants/theme';
 import { adminStats, recentAlerts } from '@/services/mockData';
 import {
   dashKpis,
   dashLiveClasses,
   dashUpcoming,
-  dashConnectedTeachers,
-  dashConnectedStudents,
-  dashPendingScreenshots,
-  dashPendingReports,
-  dashPendingMaterials,
-  dashStudentsWaiting,
-  dashTeachersOffline,
   dashPendingPayments,
   dashNewBookings,
   dashMessages,
   dashSystemAlerts,
   type LiveClassRow,
   type UpcomingRow,
-  type ConnectedTeacherRow,
-  type ConnectedStudentRow,
-  type PendingScreenshotRow,
-  type PendingReportRow,
-  type PendingMaterialRow,
-  type StudentWaitingRow,
-  type TeacherOfflineRow,
   type PendingPaymentRow,
   type NewBookingRow,
   type MessageRow,
@@ -45,631 +50,440 @@ import {
 } from '@/services/dashboardMockData';
 
 // ============================================================================
-// Dashboard admin · Fase 4.
-// Desktop: SaaS profesional en 3 columnas con topbar, KPIs, tablas
-// compactas ordenables, buscables y filtrables.
-// Móvil y tablet: layout original (adminStats + Módulos), sin cambios.
+// Dashboard admin · Wordlish Design System v1.0
+//
+// Desktop  · KPIs arriba, 3 columnas debajo (reservas · en vivo · alertas).
+//           Todo respira: mucho blanco, sin líneas divisorias, sombras Apple.
+// Mobile   · Layout previo intacto.
 // ============================================================================
 
 export default function AdminDashboard() {
-  const router = useRouter();
   const { isDesktop } = useResponsive();
-  const [globalQuery, setGlobalQuery] = useState('');
-
   if (!isDesktop) {
     return <AdminDashboardMobile />;
   }
+  return <AdminDashboardDesktop />;
+}
 
-  const quickActions: QuickAction[] = [
-    { key: 'booking', label: 'Nueva reserva', icon: 'calendar', onPress: () => router.push('/booking/type' as any) },
-    { key: 'teacher', label: 'Nuevo profesor', icon: 'person-add', onPress: () => router.push('/(admin)/users' as any) },
-    { key: 'package', label: 'Nuevo paquete', icon: 'cube', onPress: () => router.push('/(admin)/packages' as any) },
-  ];
+// ============================================================================
+// Desktop · SaaS premium
+// ============================================================================
+function AdminDashboardDesktop() {
+  const router = useRouter();
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: motion.base,
+      useNativeDriver: true,
+    }).start();
+  }, [fade]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      edges={['top']}
+    >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         <PageContainer maxWidth={1400}>
-          <DashboardTopBar
-            query={globalQuery}
-            onQueryChange={setGlobalQuery}
-            notificationsCount={dashKpis.incidents + dashKpis.screenshotsPending}
-            onNotificationsPress={() => Alert.alert('Notificaciones', 'Bandeja en construcción.')}
-            quickActions={quickActions}
-          />
-
-          {/* Title + KPI strip */}
-          <View style={styles.titleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Panel operativo</Text>
-              <Text style={styles.subtitle}>
-                Todo lo que ocurre en Wordlish, en tiempo real
-              </Text>
+          <Animated.View style={{ opacity: fade, gap: spacing.block }}>
+            {/* ─── Cabecera ─────────────────────────────────────────────── */}
+            <View style={styles.headerRow}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={typography.subtitle}>Panel operativo</Text>
+                <Text style={typography.h1}>Todo Wordlish en un vistazo</Text>
+              </View>
+              <View style={styles.headerActions}>
+                <Button
+                  label="Nuevo profesor"
+                  leftIcon="person-add"
+                  variant="ghost"
+                  size="sm"
+                  fullWidth={false}
+                  onPress={() => router.push('/(admin)/users' as any)}
+                />
+                <Button
+                  label="Nueva reserva"
+                  leftIcon="calendar"
+                  size="sm"
+                  fullWidth={false}
+                  onPress={() => router.push('/booking/type' as any)}
+                />
+              </View>
             </View>
-          </View>
 
-          <View style={styles.kpiRow}>
-            <Kpi label="Clases hoy" value={dashKpis.classesToday} icon="calendar-outline" />
-            <Kpi label="En curso" value={dashKpis.liveNow} icon="play-circle" tone="success" />
-            <Kpi label="Profesores en línea" value={dashKpis.teachersOnline} icon="school-outline" tone="info" />
-            <Kpi label="Estudiantes conectados" value={dashKpis.studentsOnline} icon="people-outline" tone="info" />
-            <Kpi label="Screenshots pendientes" value={dashKpis.screenshotsPending} icon="camera-outline" tone="warning" />
-            <Kpi label="Reportes pendientes" value={dashKpis.reportsPending} icon="document-text-outline" tone="warning" />
-            <Kpi label="Pagos pendientes" value={dashKpis.paymentsPending} icon="card-outline" tone="warning" />
-            <Kpi label="Incidencias" value={dashKpis.incidents} icon="warning" tone="danger" />
-          </View>
-
-          {/* 3 columnas */}
-          <View style={styles.columns}>
-            {/* Columna 1 · Operativo en vivo */}
-            <View style={styles.col}>
-              <ColumnHeader label="En vivo" />
-
-              <DashboardPanel
-                title="Clases en curso"
-                count={dashLiveClasses.length}
-                icon="play-circle"
-                tone="success"
-                onSeeAll={() => router.push('/(supervisor)' as any)}
-              >
-                <DashboardTable<LiveClassRow>
-                  rows={dashLiveClasses}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'incidents', label: 'Incidencias', predicate: (r: LiveClassRow) => r.status !== 'ok' || r.screenshot !== 'ok' },
-                  ]}
-                  columns={[
-                    { key: 'teacher', label: 'Profesor', flex: 2 },
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    { key: 'subject', label: 'Materia', flex: 2 },
-                    {
-                      key: 'elapsedMin',
-                      label: 'Min',
-                      flex: 0.7,
-                      align: 'right',
-                      render: (r: LiveClassRow) => (
-                        <Text style={styles.mono}>{r.elapsedMin}′</Text>
-                      ),
-                    },
-                    {
-                      key: 'screenshot',
-                      label: 'SS',
-                      flex: 1,
-                      render: (r: LiveClassRow) => <StatusPill kind={r.screenshot} />,
-                    },
-                  ]}
-                  emptyText="Sin clases en curso"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Próximas clases"
-                count={dashUpcoming.length}
-                icon="time-outline"
-                onSeeAll={() => router.push('/(supervisor)' as any)}
-              >
-                <DashboardTable<UpcomingRow>
-                  rows={dashUpcoming}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'ind', label: 'Individual', predicate: (r: UpcomingRow) => r.kind === 'individual' },
-                    { key: 'grp', label: 'Grupal',    predicate: (r: UpcomingRow) => r.kind === 'group' },
-                  ]}
-                  columns={[
-                    { key: 'time',    label: 'Hora',      flex: 0.8 },
-                    { key: 'teacher', label: 'Profesor',  flex: 2 },
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    { key: 'subject', label: 'Materia',   flex: 1.6 },
-                    {
-                      key: 'in',
-                      label: 'Empieza',
-                      flex: 1.2,
-                      align: 'right',
-                      render: (r: UpcomingRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.in}</Text>
-                      ),
-                    },
-                  ]}
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Profesores conectados"
-                count={dashConnectedTeachers.length}
+            {/* ─── KPIs principales ────────────────────────────────────── */}
+            <View style={styles.kpiStrip}>
+              <StatCard
+                label="Clases hoy"
+                value={dashKpis.classesToday}
+                icon="calendar-outline"
+                tone="primary"
+                hint={`${dashKpis.liveNow} en curso ahora`}
+              />
+              <StatCard
+                label="Profesores en línea"
+                value={dashKpis.teachersOnline}
                 icon="school-outline"
                 tone="info"
-              >
-                <DashboardTable<ConnectedTeacherRow>
-                  rows={dashConnectedTeachers}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'special', label: 'Special', predicate: (r: ConnectedTeacherRow) => r.tier === 'special' },
-                  ]}
-                  columns={[
-                    { key: 'name',      label: 'Profesor',     flex: 2 },
-                    { key: 'since',     label: 'Desde',        flex: 0.9 },
-                    { key: 'nextClass', label: 'Próxima clase', flex: 2 },
-                    {
-                      key: 'tier',
-                      label: 'Nivel',
-                      flex: 1,
-                      render: (r: ConnectedTeacherRow) => <TierPill tier={r.tier} />,
-                    },
-                  ]}
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Estudiantes conectados"
-                count={dashConnectedStudents.length}
-                icon="people-outline"
-                tone="info"
-              >
-                <DashboardTable<ConnectedStudentRow>
-                  rows={dashConnectedStudents}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'name',       label: 'Estudiante', flex: 2 },
-                    { key: 'waitingFor', label: 'Con',        flex: 2 },
-                    {
-                      key: 'since',
-                      label: 'Estado',
-                      flex: 1.2,
-                      align: 'right',
-                      render: (r: ConnectedStudentRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.since}</Text>
-                      ),
-                    },
-                  ]}
-                />
-              </DashboardPanel>
-            </View>
-
-            {/* Columna 2 · Pendientes operativos */}
-            <View style={styles.col}>
-              <ColumnHeader label="Pendientes" />
-
-              <DashboardPanel
-                title="Screenshots pendientes"
-                count={dashPendingScreenshots.length}
-                tone="warning"
-                icon="camera-outline"
-              >
-                <DashboardTable<PendingScreenshotRow>
-                  rows={dashPendingScreenshots}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'teacher', label: 'Profesor', flex: 2 },
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    {
-                      key: 'minutesLate',
-                      label: 'Retraso',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: PendingScreenshotRow) => (
-                        <Text
-                          style={[
-                            styles.mono,
-                            { color: r.minutesLate > 10 ? colors.danger : colors.warning, textAlign: 'right' },
-                          ]}
-                        >
-                          {r.minutesLate}′
-                        </Text>
-                      ),
-                    },
-                  ]}
-                  emptyText="Todo al día"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Reportes pendientes"
-                count={dashPendingReports.length}
-                tone="warning"
-                icon="document-text-outline"
-              >
-                <DashboardTable<PendingReportRow>
-                  rows={dashPendingReports}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'over24', label: '+24h', predicate: (r: PendingReportRow) => r.hoursOverdue >= 24 },
-                  ]}
-                  columns={[
-                    { key: 'teacher',    label: 'Profesor',    flex: 2 },
-                    { key: 'student',    label: 'Estudiante',  flex: 2 },
-                    { key: 'finishedAt', label: 'Finalizó',    flex: 2 },
-                    {
-                      key: 'hoursOverdue',
-                      label: 'Retraso',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: PendingReportRow) => (
-                        <Text
-                          style={[
-                            styles.mono,
-                            { color: r.hoursOverdue >= 24 ? colors.danger : colors.warning, textAlign: 'right' },
-                          ]}
-                        >
-                          {r.hoursOverdue}h
-                        </Text>
-                      ),
-                    },
-                  ]}
-                  emptyText="Todo al día"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Material pendiente"
-                count={dashPendingMaterials.length}
-                tone="warning"
-                icon="library-outline"
-              >
-                <DashboardTable<PendingMaterialRow>
-                  rows={dashPendingMaterials}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'teacher', label: 'Profesor',   flex: 2 },
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    { key: 'subject', label: 'Materia',    flex: 1.6 },
-                    {
-                      key: 'due',
-                      label: 'Vence',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: PendingMaterialRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.due}</Text>
-                      ),
-                    },
-                  ]}
-                  emptyText="Sin pendientes"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Estudiantes esperando profesor"
-                count={dashStudentsWaiting.length}
-                tone={dashStudentsWaiting.length > 0 ? 'danger' : 'success'}
-                icon="hourglass-outline"
-              >
-                <DashboardTable<StudentWaitingRow>
-                  rows={dashStudentsWaiting}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    { key: 'teacher', label: 'Profesor',   flex: 2 },
-                    { key: 'since',   label: 'Desde',      flex: 1 },
-                    {
-                      key: 'minutes',
-                      label: 'Espera',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: StudentWaitingRow) => (
-                        <Text style={[styles.mono, { color: colors.danger, textAlign: 'right' }]}>{r.minutes}′</Text>
-                      ),
-                    },
-                  ]}
-                  emptyText="Nadie está esperando"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Profesores aún no ingresan"
-                count={dashTeachersOffline.length}
-                tone={dashTeachersOffline.length > 0 ? 'warning' : 'success'}
-                icon="person-outline"
-              >
-                <DashboardTable<TeacherOfflineRow>
-                  rows={dashTeachersOffline}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'teacher',  label: 'Profesor',    flex: 2 },
-                    { key: 'student',  label: 'Estudiante',  flex: 2 },
-                    { key: 'subject',  label: 'Materia',     flex: 1.6 },
-                    { key: 'startsIn', label: 'Inicia',      flex: 1, align: 'right' },
-                  ]}
-                  emptyText="Todos conectados"
-                />
-              </DashboardPanel>
-            </View>
-
-            {/* Columna 3 · Negocio · Mensajes · Alertas */}
-            <View style={styles.col}>
-              <ColumnHeader label="Negocio y alertas" />
-
-              <DashboardPanel
-                title="Pagos pendientes"
-                count={dashPendingPayments.length}
-                tone="warning"
+                hint={`${dashKpis.studentsOnline} estudiantes conectados`}
+              />
+              <StatCard
+                label="Pagos pendientes"
+                value={dashKpis.paymentsPending}
                 icon="card-outline"
-                onSeeAll={() => Alert.alert('Pagos', 'Módulo en construcción.')}
-              >
-                <DashboardTable<PendingPaymentRow>
-                  rows={dashPendingPayments}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'late', label: 'Vencidos', predicate: (r: PendingPaymentRow) => r.daysLate > 0 },
-                  ]}
-                  columns={[
-                    { key: 'student', label: 'Estudiante', flex: 2 },
-                    { key: 'concept', label: 'Concepto',   flex: 2 },
-                    {
-                      key: 'amount',
-                      label: 'Monto',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: PendingPaymentRow) => (
-                        <Text style={[styles.mono, { textAlign: 'right', fontWeight: '700' }]}>${r.amount}</Text>
-                      ),
-                    },
-                    {
-                      key: 'daysLate',
-                      label: 'Retraso',
-                      flex: 1,
-                      align: 'right',
-                      render: (r: PendingPaymentRow) => (
-                        <Text
-                          style={[
-                            styles.mono,
-                            { textAlign: 'right', color: r.daysLate > 0 ? colors.danger : colors.textMuted },
-                          ]}
-                        >
-                          {r.daysLate > 0 ? `${r.daysLate}d` : '—'}
-                        </Text>
-                      ),
-                    },
-                  ]}
-                  emptyText="Sin pagos vencidos"
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Nuevas reservas"
-                count={dashNewBookings.length}
-                tone="primary"
-                icon="calendar-outline"
-                onSeeAll={() => router.push('/booking/mine' as any)}
-              >
-                <DashboardTable<NewBookingRow>
-                  rows={dashNewBookings}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  columns={[
-                    { key: 'student',   label: 'Estudiante', flex: 2 },
-                    { key: 'teacher',   label: 'Profesor',   flex: 2 },
-                    { key: 'subject',   label: 'Materia',    flex: 1.6 },
-                    { key: 'date',      label: 'Fecha',      flex: 1 },
-                    {
-                      key: 'createdAt',
-                      label: 'Hace',
-                      flex: 1.2,
-                      align: 'right',
-                      render: (r: NewBookingRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.createdAt}</Text>
-                      ),
-                    },
-                  ]}
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Mensajes importantes"
-                count={dashMessages.length}
-                tone="info"
-                icon="chatbubble-ellipses-outline"
-              >
-                <DashboardTable<MessageRow>
-                  rows={dashMessages}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'danger',  label: 'Urgente',    predicate: (r: MessageRow) => r.severity === 'danger' },
-                    { key: 'warning', label: 'Importante', predicate: (r: MessageRow) => r.severity === 'warning' },
-                  ]}
-                  columns={[
-                    {
-                      key: 'from',
-                      label: 'De',
-                      flex: 2,
-                      render: (r: MessageRow) => (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                          <RoleDot role={r.role} />
-                          <Text style={styles.cellText} numberOfLines={1}>{r.from}</Text>
-                        </View>
-                      ),
-                    },
-                    { key: 'subject', label: 'Asunto', flex: 3 },
-                    {
-                      key: 'severity',
-                      label: 'Prioridad',
-                      flex: 1.2,
-                      render: (r: MessageRow) => <SeverityPill s={r.severity} />,
-                    },
-                    {
-                      key: 'createdAt',
-                      label: 'Hace',
-                      flex: 1.2,
-                      align: 'right',
-                      render: (r: MessageRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.createdAt}</Text>
-                      ),
-                    },
-                  ]}
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Alertas del sistema"
-                count={dashSystemAlerts.length}
-                tone="danger"
+                tone="warning"
+                hint="Requieren revisión"
+              />
+              <StatCard
+                label="Incidencias"
+                value={dashKpis.incidents}
                 icon="warning-outline"
-              >
-                <DashboardTable<SystemAlertRow>
-                  rows={dashSystemAlerts}
-                  keyExtractor={(r) => r.id}
-                  externalQuery={globalQuery}
-                  searchable={false}
-                  filters={[
-                    { key: 'crit', label: 'Crítica', predicate: (r: SystemAlertRow) => r.severity === 'danger' },
-                    { key: 'warn', label: 'Aviso',   predicate: (r: SystemAlertRow) => r.severity === 'warning' },
-                  ]}
-                  columns={[
-                    {
-                      key: 'title',
-                      label: 'Alerta',
-                      flex: 2,
-                      render: (r: SystemAlertRow) => (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                          <SeverityDot s={r.severity} />
-                          <Text style={styles.cellText} numberOfLines={1}>{r.title}</Text>
-                        </View>
-                      ),
-                    },
-                    { key: 'detail', label: 'Detalle', flex: 3 },
-                    {
-                      key: 'ts',
-                      label: 'Hora',
-                      flex: 0.9,
-                      align: 'right',
-                      render: (r: SystemAlertRow) => (
-                        <Text style={[styles.cellMuted, { textAlign: 'right' }]}>{r.ts}</Text>
-                      ),
-                    },
-                  ]}
-                />
-              </DashboardPanel>
+                tone="danger"
+                hint={`${dashKpis.screenshotsPending} sin screenshot`}
+              />
             </View>
-          </View>
 
-          <View style={{ height: spacing.xxl }} />
+            {/* ─── 3 columnas ──────────────────────────────────────────── */}
+            <View style={styles.grid}>
+              {/* Col 1 · Reservas (columna principal) */}
+              <View style={styles.colMain}>
+                <GlassCard>
+                  <PanelHead
+                    icon="calendar-outline"
+                    title="Nuevas reservas"
+                    subtitle="Últimas solicitudes recibidas"
+                    tone="primary"
+                    countLabel={`${dashNewBookings.length} activas`}
+                    onSeeAll={() => router.push('/booking/mine' as any)}
+                  />
+                  <DashboardTable<NewBookingRow>
+                    rows={dashNewBookings}
+                    keyExtractor={(r) => r.id}
+                    searchable={false}
+                    columns={[
+                      { key: 'student', label: 'Estudiante', flex: 2 },
+                      { key: 'teacher', label: 'Profesor', flex: 2 },
+                      { key: 'subject', label: 'Materia', flex: 1.4 },
+                      { key: 'date', label: 'Fecha', flex: 1 },
+                      {
+                        key: 'createdAt',
+                        label: 'Hace',
+                        flex: 1.2,
+                        align: 'right',
+                        render: (r: NewBookingRow) => (
+                          <Text style={[styles.cellMuted, { textAlign: 'right' }]}>
+                            {r.createdAt}
+                          </Text>
+                        ),
+                      },
+                    ]}
+                    emptyText="Sin reservas nuevas"
+                  />
+                </GlassCard>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="play-circle"
+                    title="Clases en curso"
+                    subtitle="Sesiones activas ahora mismo"
+                    tone="success"
+                    countLabel={`${dashLiveClasses.length} en vivo`}
+                  />
+                  <DashboardTable<LiveClassRow>
+                    rows={dashLiveClasses}
+                    keyExtractor={(r) => r.id}
+                    searchable={false}
+                    columns={[
+                      { key: 'teacher', label: 'Profesor', flex: 2 },
+                      { key: 'student', label: 'Estudiante', flex: 2 },
+                      { key: 'subject', label: 'Materia', flex: 1.6 },
+                      {
+                        key: 'elapsedMin',
+                        label: 'Min',
+                        flex: 0.7,
+                        align: 'right',
+                        render: (r: LiveClassRow) => (
+                          <Text style={[styles.mono, { textAlign: 'right' }]}>
+                            {r.elapsedMin}′
+                          </Text>
+                        ),
+                      },
+                      {
+                        key: 'screenshot',
+                        label: 'Screenshot',
+                        flex: 1.2,
+                        render: (r: LiveClassRow) => (
+                          <StatusBadge
+                            label={
+                              r.screenshot === 'ok'
+                                ? 'Ok'
+                                : r.screenshot === 'pending'
+                                ? 'Esperado'
+                                : 'Vencido'
+                            }
+                            tone={
+                              r.screenshot === 'ok'
+                                ? 'success'
+                                : r.screenshot === 'pending'
+                                ? 'warning'
+                                : 'danger'
+                            }
+                          />
+                        ),
+                      },
+                    ]}
+                    emptyText="Ninguna clase en curso"
+                  />
+                </Card>
+              </View>
+
+              {/* Col 2 · Próximo & operación */}
+              <View style={styles.colMid}>
+                <Card elevated>
+                  <PanelHead
+                    icon="time-outline"
+                    title="Próximas clases"
+                    subtitle="Comienzan en las próximas horas"
+                    tone="info"
+                    countLabel={`${dashUpcoming.length}`}
+                  />
+                  <DashboardTable<UpcomingRow>
+                    rows={dashUpcoming}
+                    keyExtractor={(r) => r.id}
+                    searchable={false}
+                    columns={[
+                      { key: 'time', label: 'Hora', flex: 0.9 },
+                      { key: 'teacher', label: 'Profesor', flex: 2 },
+                      { key: 'student', label: 'Estudiante', flex: 2 },
+                      {
+                        key: 'in',
+                        label: 'Empieza',
+                        flex: 1.2,
+                        align: 'right',
+                        render: (r: UpcomingRow) => (
+                          <Text style={[styles.cellMuted, { textAlign: 'right' }]}>
+                            {r.in}
+                          </Text>
+                        ),
+                      },
+                    ]}
+                    emptyText="Sin próximas clases"
+                  />
+                </Card>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="card-outline"
+                    title="Pagos pendientes"
+                    subtitle="Concilia pronto para no bloquear reservas"
+                    tone="warning"
+                    countLabel={`${dashPendingPayments.length}`}
+                    onSeeAll={() =>
+                      Alert.alert('Pagos', 'Módulo en construcción.')
+                    }
+                  />
+                  <View style={{ gap: spacing.sm }}>
+                    {dashPendingPayments.slice(0, 5).map((p) => (
+                      <PaymentRow key={p.id} payment={p} />
+                    ))}
+                  </View>
+                </Card>
+              </View>
+
+              {/* Col 3 · Alertas a la derecha */}
+              <View style={styles.colSide}>
+                <Card elevated tone="default">
+                  <PanelHead
+                    icon="warning-outline"
+                    title="Alertas del sistema"
+                    subtitle="Últimos eventos críticos"
+                    tone="danger"
+                    countLabel={`${dashSystemAlerts.length}`}
+                  />
+                  <View style={{ gap: spacing.md }}>
+                    {dashSystemAlerts.slice(0, 6).map((a) => (
+                      <AlertRow key={a.id} alert={a} />
+                    ))}
+                  </View>
+                </Card>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="chatbubble-ellipses-outline"
+                    title="Mensajes importantes"
+                    subtitle="Requieren atención hoy"
+                    tone="info"
+                    countLabel={`${dashMessages.length}`}
+                  />
+                  <View style={{ gap: spacing.md }}>
+                    {dashMessages.slice(0, 5).map((m) => (
+                      <MessageRowItem key={m.id} message={m} />
+                    ))}
+                  </View>
+                </Card>
+              </View>
+            </View>
+
+            <View style={{ height: spacing.xxl }} />
+          </Animated.View>
         </PageContainer>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ================== Piezas visuales ==================
+// ============================================================================
+// Piezas visuales · uso interno del dashboard
+// ============================================================================
 
-function ColumnHeader({ label }: { label: string }) {
-  return (
-    <View style={styles.colHead}>
-      <Text style={styles.colHeadText}>{label}</Text>
-    </View>
-  );
-}
-
-function Kpi({
-  label,
-  value,
+function PanelHead({
   icon,
-  tone = 'neutral',
+  title,
+  subtitle,
+  tone,
+  countLabel,
+  onSeeAll,
 }: {
-  label: string;
-  value: number;
   icon: string;
-  tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+  title: string;
+  subtitle?: string;
+  tone: 'primary' | 'success' | 'warning' | 'danger' | 'info';
+  countLabel?: string;
+  onSeeAll?: () => void;
 }) {
-  const TONES: Record<string, { bg: string; fg: string }> = {
-    neutral: { bg: colors.surfaceAlt, fg: colors.textSubtle },
-    info:    { bg: colors.infoSoft,    fg: colors.info },
+  const TONE: Record<string, { bg: string; fg: string }> = {
+    primary: { bg: colors.surfaceTinted, fg: colors.primary },
     success: { bg: colors.successSoft, fg: colors.success },
     warning: { bg: colors.warningSoft, fg: colors.warning },
-    danger:  { bg: colors.dangerSoft,  fg: colors.danger },
+    danger: { bg: colors.dangerSoft, fg: colors.danger },
+    info: { bg: colors.infoSoft, fg: colors.info },
   };
-  const t = TONES[tone];
+  const t = TONE[tone];
   return (
-    <View style={styles.kpi}>
-      <View style={[styles.kpiIcon, { backgroundColor: t.bg }]}>
-        <Ionicons name={icon as any} size={14} color={t.fg} />
+    <View style={panelHeadStyles.wrap}>
+      <View style={[panelHeadStyles.icon, { backgroundColor: t.bg }]}>
+        <Ionicons name={icon as any} size={18} color={t.fg} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.kpiValue}>{value}</Text>
-        <Text style={styles.kpiLabel} numberOfLines={1}>{label}</Text>
+        <View style={panelHeadStyles.titleRow}>
+          <Text style={typography.h3} numberOfLines={1}>
+            {title}
+          </Text>
+          {countLabel ? (
+            <StatusBadge label={countLabel} tone={tone as any} />
+          ) : null}
+        </View>
+        {subtitle ? (
+          <Text style={[typography.caption, { marginTop: 2 }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {onSeeAll ? (
+        <Pressable
+          onPress={onSeeAll}
+          hitSlop={8}
+          style={({ pressed }) => [
+            panelHeadStyles.seeAll,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={panelHeadStyles.seeAllText}>Ver todo</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function AlertRow({ alert }: { alert: SystemAlertRow }) {
+  const tone =
+    alert.severity === 'danger'
+      ? { bg: colors.dangerSoft, fg: colors.danger }
+      : alert.severity === 'warning'
+      ? { bg: colors.warningSoft, fg: colors.warning }
+      : { bg: colors.infoSoft, fg: colors.info };
+  return (
+    <View style={rowStyles.wrap}>
+      <View style={[rowStyles.dot, { backgroundColor: tone.fg }]} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={rowStyles.title} numberOfLines={1}>
+          {alert.title}
+        </Text>
+        <Text style={rowStyles.detail} numberOfLines={2}>
+          {alert.detail}
+        </Text>
+      </View>
+      <Text style={rowStyles.time}>{alert.ts}</Text>
+    </View>
+  );
+}
+
+function MessageRowItem({ message }: { message: MessageRow }) {
+  const roleColor =
+    message.role === 'teacher'
+      ? colors.primary
+      : message.role === 'guardian'
+      ? colors.info
+      : colors.success;
+  return (
+    <View style={rowStyles.wrap}>
+      <View style={[rowStyles.dot, { backgroundColor: roleColor }]} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={rowStyles.title} numberOfLines={1}>
+          {message.from}
+        </Text>
+        <Text style={rowStyles.detail} numberOfLines={2}>
+          {message.subject}
+        </Text>
+      </View>
+      <Text style={rowStyles.time}>{message.createdAt}</Text>
+    </View>
+  );
+}
+
+function PaymentRow({ payment }: { payment: PendingPaymentRow }) {
+  const late = payment.daysLate > 0;
+  return (
+    <View style={rowStyles.wrap}>
+      <View
+        style={[
+          rowStyles.dot,
+          { backgroundColor: late ? colors.danger : colors.warning },
+        ]}
+      />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={rowStyles.title} numberOfLines={1}>
+          {payment.student}
+        </Text>
+        <Text style={rowStyles.detail} numberOfLines={1}>
+          {payment.concept}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={rowStyles.amount}>${payment.amount}</Text>
+        <Text
+          style={[
+            rowStyles.time,
+            { color: late ? colors.danger : colors.textMuted },
+          ]}
+        >
+          {late ? `${payment.daysLate}d atraso` : 'A tiempo'}
+        </Text>
       </View>
     </View>
   );
 }
 
-function StatusPill({ kind }: { kind: 'ok' | 'pending' | 'late' }) {
-  const map = {
-    ok:      { label: 'Ok',       bg: colors.successSoft, fg: colors.success },
-    pending: { label: 'Esperado', bg: colors.warningSoft, fg: colors.warning },
-    late:    { label: 'Vencido',  bg: colors.dangerSoft,  fg: colors.danger },
-  } as const;
-  const m = map[kind];
-  return (
-    <View style={[styles.pill, { backgroundColor: m.bg }]}>
-      <Text style={[styles.pillText, { color: m.fg }]}>{m.label}</Text>
-    </View>
-  );
-}
-
-function TierPill({ tier }: { tier: 'essential' | 'special' }) {
-  const m = tier === 'special'
-    ? { label: 'Special',   bg: colors.primarySoft, fg: colors.primaryDark }
-    : { label: 'Essential', bg: colors.surfaceAlt,  fg: colors.textSubtle };
-  return (
-    <View style={[styles.pill, { backgroundColor: m.bg }]}>
-      <Text style={[styles.pillText, { color: m.fg }]}>{m.label}</Text>
-    </View>
-  );
-}
-
-function SeverityPill({ s }: { s: 'info' | 'warning' | 'danger' | 'success' }) {
-  const map = {
-    info:    { label: 'Normal',  bg: colors.infoSoft,    fg: colors.info },
-    warning: { label: 'Aviso',   bg: colors.warningSoft, fg: colors.warning },
-    danger:  { label: 'Urgente', bg: colors.dangerSoft,  fg: colors.danger },
-    success: { label: 'Ok',      bg: colors.successSoft, fg: colors.success },
-  } as const;
-  const m = map[s];
-  return (
-    <View style={[styles.pill, { backgroundColor: m.bg }]}>
-      <Text style={[styles.pillText, { color: m.fg }]}>{m.label}</Text>
-    </View>
-  );
-}
-
-function SeverityDot({ s }: { s: 'info' | 'warning' | 'danger' | 'success' }) {
-  const bg =
-    s === 'danger' ? colors.danger :
-    s === 'warning' ? colors.warning :
-    s === 'success' ? colors.success : colors.info;
-  return <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bg }} />;
-}
-
-function RoleDot({ role }: { role: 'student' | 'guardian' | 'teacher' }) {
-  const bg =
-    role === 'teacher' ? colors.primaryDark :
-    role === 'guardian' ? colors.info : colors.success;
-  return <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: bg }} />;
-}
-
-// ================== Mobile (layout previo intacto) ==================
-
+// ============================================================================
+// Mobile · layout previo intacto
+// ============================================================================
 function AdminDashboardMobile() {
   const router = useRouter();
   return (
@@ -677,18 +491,38 @@ function AdminDashboardMobile() {
       <Header title="Dashboard" subtitle="Panel de Administración" />
 
       <Text style={styles.section}>Operativos hoy</Text>
-      <View style={styles.grid}>
-        <MiniStat icon="calendar" value={adminStats.todayClasses} label="Clases del día" tone="primary" />
-        <MiniStat icon="play-circle" value={adminStats.activeClasses} label="En curso" tone="success" />
-        <MiniStat icon="school" value={adminStats.availableTeachers} label="Profes disponibles" tone="info" />
-        <MiniStat icon="hourglass" value={adminStats.pendingBookings} label="Reservas pendientes" tone="warning" />
+      <View style={styles.grid2}>
+        <MiniStat
+          icon="calendar"
+          value={adminStats.todayClasses}
+          label="Clases del día"
+          tone="primary"
+        />
+        <MiniStat
+          icon="play-circle"
+          value={adminStats.activeClasses}
+          label="En curso"
+          tone="success"
+        />
+        <MiniStat
+          icon="school"
+          value={adminStats.availableTeachers}
+          label="Profes disponibles"
+          tone="info"
+        />
+        <MiniStat
+          icon="hourglass"
+          value={adminStats.pendingBookings}
+          label="Reservas pendientes"
+          tone="warning"
+        />
       </View>
 
       <Text style={styles.section}>Financiero y calidad</Text>
       <View style={styles.hoursSoldCard}>
         <View style={styles.hoursSoldHeader}>
           <View style={styles.hoursSoldIcon}>
-            <Ionicons name="cart" size={20} color={colors.primaryDark} />
+            <Ionicons name="cart" size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.hoursSoldTitle}>Horas vendidas</Text>
@@ -697,26 +531,46 @@ function AdminDashboardMobile() {
         </View>
         <View style={styles.hoursSoldRow}>
           <View style={styles.hoursSoldCol}>
-            <Text style={styles.hoursSoldValue}>{adminStats.soldHoursMonth}</Text>
+            <Text style={styles.hoursSoldValue}>
+              {adminStats.soldHoursMonth}
+            </Text>
             <Text style={styles.hoursSoldLabel}>Este mes</Text>
           </View>
-          <View style={styles.hoursSoldDivider} />
           <View style={styles.hoursSoldCol}>
-            <Text style={styles.hoursSoldValue}>{adminStats.soldHoursYear.toLocaleString()}</Text>
+            <Text style={styles.hoursSoldValue}>
+              {adminStats.soldHoursYear.toLocaleString()}
+            </Text>
             <Text style={styles.hoursSoldLabel}>Acumulado anual</Text>
           </View>
         </View>
       </View>
-      <View style={styles.grid}>
-        <MiniStat icon="card" value={adminStats.pendingPayments} label="Pagos pendientes" tone="warning" />
-        <MiniStat icon="hourglass-outline" value={adminStats.consumedHours} label="Horas consumidas" tone="info" />
-        <MiniStat icon="document-text" value={adminStats.pendingReports} label="Reportes pendientes" tone="warning" />
+      <View style={styles.grid2}>
+        <MiniStat
+          icon="card"
+          value={adminStats.pendingPayments}
+          label="Pagos pendientes"
+          tone="warning"
+        />
+        <MiniStat
+          icon="hourglass-outline"
+          value={adminStats.consumedHours}
+          label="Horas consumidas"
+          tone="info"
+        />
+        <MiniStat
+          icon="document-text"
+          value={adminStats.pendingReports}
+          label="Reportes pendientes"
+          tone="warning"
+        />
       </View>
 
       <View style={styles.incidentCard}>
         <View style={styles.incidentLeft}>
           <Ionicons name="warning" size={22} color={colors.danger} />
-          <Text style={styles.incidentText}>{adminStats.incidents} incidencias activas</Text>
+          <Text style={styles.incidentText}>
+            {adminStats.incidents} incidencias activas
+          </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.danger} />
       </View>
@@ -724,7 +578,10 @@ function AdminDashboardMobile() {
       <Text style={styles.section}>Alertas recientes</Text>
       <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
         {recentAlerts.map((a) => {
-          const t = a.tone === 'danger' ? { bg: colors.dangerSoft, fg: colors.danger } : { bg: colors.warningSoft, fg: colors.warning };
+          const t =
+            a.tone === 'danger'
+              ? { bg: colors.dangerSoft, fg: colors.danger }
+              : { bg: colors.warningSoft, fg: colors.warning };
           return (
             <Card key={a.id}>
               <View style={styles.alertRow}>
@@ -743,20 +600,62 @@ function AdminDashboardMobile() {
 
       <Text style={styles.section}>Módulos</Text>
       <View style={{ gap: spacing.md }}>
-        <Module icon="people" title="Estudiantes y Acudientes" description="Perfiles y vínculos" onPress={() => router.push('/(admin)/users' as any)} />
-        <Module icon="school" title="Profesores" description="Materias, disponibilidad, pagos" onPress={() => router.push('/(admin)/users' as any)} />
-        <Module icon="cube" title="Paquetes" description="Catálogo y precios" onPress={() => router.push('/(admin)/packages' as any)} />
-        <Module icon="card" title="Pagos" description="Órdenes, cobros, reembolsos" onPress={() => Alert.alert('Pagos', 'Módulo en construcción.')} />
-        <Module icon="pricetag" title="Promociones" description="Descuentos y campañas" onPress={() => Alert.alert('Promociones', 'Módulo en construcción.')} />
-        <Module icon="settings" title="Configuración" description="Políticas y APIs" onPress={() => router.push('/(admin)/settings' as any)} />
+        <Module
+          icon="people"
+          title="Estudiantes y Acudientes"
+          description="Perfiles y vínculos"
+          onPress={() => router.push('/(admin)/users' as any)}
+        />
+        <Module
+          icon="school"
+          title="Profesores"
+          description="Materias, disponibilidad, pagos"
+          onPress={() => router.push('/(admin)/users' as any)}
+        />
+        <Module
+          icon="cube"
+          title="Paquetes"
+          description="Catálogo y precios"
+          onPress={() => router.push('/(admin)/packages' as any)}
+        />
+        <Module
+          icon="card"
+          title="Pagos"
+          description="Órdenes, cobros, reembolsos"
+          onPress={() => Alert.alert('Pagos', 'Módulo en construcción.')}
+        />
+        <Module
+          icon="pricetag"
+          title="Promociones"
+          description="Descuentos y campañas"
+          onPress={() =>
+            Alert.alert('Promociones', 'Módulo en construcción.')
+          }
+        />
+        <Module
+          icon="settings"
+          title="Configuración"
+          description="Políticas y APIs"
+          onPress={() => router.push('/(admin)/settings' as any)}
+        />
       </View>
     </Screen>
   );
 }
 
-function MiniStat({ icon, value, label, tone }: { icon: string; value: number; label: string; tone: 'primary' | 'success' | 'warning' | 'info' }) {
+function MiniStat({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: string;
+  value: number;
+  label: string;
+  tone: 'primary' | 'success' | 'warning' | 'info';
+}) {
   const TONES = {
-    primary: { bg: colors.primarySoft, fg: colors.primaryDark },
+    primary: { bg: colors.surfaceTinted, fg: colors.primary },
     success: { bg: colors.successSoft, fg: colors.success },
     warning: { bg: colors.warningSoft, fg: colors.warning },
     info: { bg: colors.infoSoft, fg: colors.info },
@@ -773,11 +672,27 @@ function MiniStat({ icon, value, label, tone }: { icon: string; value: number; l
   );
 }
 
-function Module({ icon, title, description, onPress }: { icon: string; title: string; description: string; onPress: () => void }) {
+function Module({
+  icon,
+  title,
+  description,
+  onPress,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  onPress: () => void;
+}) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.moduleCard, pressed && { opacity: 0.85 }]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.moduleCard,
+        pressed && { opacity: 0.85 },
+      ]}
+    >
       <View style={styles.iconWrap}>
-        <Ionicons name={icon as any} size={20} color={colors.primaryDark} />
+        <Ionicons name={icon as any} size={20} color={colors.primary} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={typography.bodyStrong}>{title}</Text>
@@ -788,160 +703,230 @@ function Module({ icon, title, description, onPress }: { icon: string; title: st
   );
 }
 
+// ============================================================================
+// Styles
+// ============================================================================
 const styles = StyleSheet.create({
   // Desktop
-  scrollContent: {
-    paddingVertical: spacing.md,
+  scroll: {
+    paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
-  titleRow: {
+  headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    alignItems: 'flex-end',
+    gap: spacing.lg,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: colors.textSubtle,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  kpiRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-    marginBottom: spacing.lg,
-  },
-  kpi: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexGrow: 1,
-    flexBasis: 160,
-    minWidth: 140,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  kpiIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kpiValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  kpiLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  columns: {
+  headerActions: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  kpiStrip: {
+    flexDirection: 'row',
+    gap: spacing.betweenCards,
+  },
+  grid: {
+    flexDirection: 'row',
+    gap: spacing.betweenCards,
     alignItems: 'flex-start',
   },
-  col: {
-    flex: 1,
-    gap: spacing.md,
+  colMain: {
+    flex: 2,
     minWidth: 0,
+    gap: spacing.betweenCards,
   },
-  colHead: {
-    paddingHorizontal: 2,
-    paddingBottom: 2,
+  colMid: {
+    flex: 1.6,
+    minWidth: 0,
+    gap: spacing.betweenCards,
   },
-  colHeadText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  colSide: {
+    flex: 1.2,
+    minWidth: 0,
+    gap: spacing.betweenCards,
   },
   mono: {
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: '700',
-  },
-  cellText: {
-    fontSize: 12,
-    color: colors.text,
-    flex: 1,
+    ...typography.numericSmall,
+    fontSize: 13,
   },
   cellMuted: {
-    fontSize: 11,
+    ...typography.caption,
     color: colors.textMuted,
-    fontWeight: '500',
-    flex: 1,
-  },
-  pill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-    alignSelf: 'flex-start',
-  },
-  pillText: {
-    fontSize: 10,
-    fontWeight: '700',
   },
 
   // Mobile (idéntico al layout previo)
-  section: { ...typography.h3, marginTop: spacing.lg, marginBottom: spacing.md },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statCard: { flexBasis: '47%', flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, alignItems: 'flex-start' },
-  iconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-  statValue: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 2 },
-  statLabel: { fontSize: 12, color: colors.textSubtle, fontWeight: '600' },
-  incidentCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.dangerSoft, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, borderWidth: 1, borderColor: colors.danger },
-  incidentLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  incidentText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
-  alertRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  moduleCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+  section: {
+    ...typography.h3,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  statCard: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.card,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: 'flex-start',
+    ...shadow.sm,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceTinted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  statValue: {
+    ...typography.numericSmall,
+    marginBottom: 2,
+  },
+  statLabel: { ...typography.caption, fontWeight: '600' },
+  incidentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.card,
+    padding: spacing.card,
+    marginTop: spacing.lg,
+  },
+  incidentLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  incidentText: {
+    color: colors.danger,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.iconText,
+  },
+  moduleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.iconText,
+    backgroundColor: colors.surface,
+    padding: spacing.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    ...shadow.sm,
+  },
   hoursSoldCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    borderRadius: radius.card,
+    padding: spacing.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSoft,
     marginBottom: spacing.md,
+    ...shadow.sm,
   },
   hoursSoldHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.iconText,
     marginBottom: spacing.md,
   },
   hoursSoldIcon: {
     width: 36,
     height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceTinted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hoursSoldTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  hoursSoldHint: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
-  hoursSoldRow: { flexDirection: 'row', gap: spacing.md },
+  hoursSoldTitle: {
+    ...typography.bodyStrong,
+    fontSize: 15,
+  },
+  hoursSoldHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  hoursSoldRow: { flexDirection: 'row', gap: spacing.lg },
   hoursSoldCol: { flex: 1 },
-  hoursSoldDivider: { width: 1, backgroundColor: colors.border },
-  hoursSoldValue: { fontSize: 24, fontWeight: '700', color: colors.text },
+  hoursSoldValue: {
+    ...typography.numericSmall,
+  },
   hoursSoldLabel: {
-    fontSize: 11,
-    color: colors.textSubtle,
-    fontWeight: '600',
+    ...typography.caption,
     marginTop: 2,
+  },
+});
+
+const panelHeadStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.iconText,
+    marginBottom: spacing.lg,
+  },
+  icon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  seeAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  seeAllText: {
+    ...typography.button,
+    fontSize: 13,
+    color: colors.primary,
+  },
+});
+
+const rowStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.iconText,
+    paddingVertical: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 8,
+  },
+  title: {
+    ...typography.bodyStrong,
+    fontSize: 14,
+  },
+  detail: {
+    ...typography.caption,
+    marginTop: 2,
+  },
+  time: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 12,
+    marginLeft: spacing.sm,
+  },
+  amount: {
+    ...typography.bodyStrong,
+    fontSize: 15,
+    color: colors.textStrong,
   },
 });
