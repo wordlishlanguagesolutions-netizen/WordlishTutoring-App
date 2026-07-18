@@ -241,6 +241,17 @@ function AdminDashboardDesktop() {
                     emptyText="Ninguna clase en curso"
                   />
                 </Card>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="stats-chart-outline"
+                    title="Actividad semanal"
+                    subtitle="Clases impartidas por día"
+                    tone="info"
+                    countLabel={`${weeklyActivity.reduce((s, d) => s + d.value, 0)} clases`}
+                  />
+                  <WeeklyActivityChart data={weeklyActivity} />
+                </Card>
               </View>
 
               {/* Col 2 · Próximo & operación */}
@@ -294,6 +305,17 @@ function AdminDashboardDesktop() {
                     ))}
                   </View>
                 </Card>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="trending-up-outline"
+                    title="Progreso del mes"
+                    subtitle="Meta operativa · Julio"
+                    tone="primary"
+                    countLabel={`${Math.round((monthlyProgress.delivered / monthlyProgress.target) * 100)}%`}
+                  />
+                  <MonthlyProgressBlock data={monthlyProgress} />
+                </Card>
               </View>
 
               {/* Col 3 · Alertas a la derecha */}
@@ -324,6 +346,21 @@ function AdminDashboardDesktop() {
                   <View style={{ gap: spacing.md }}>
                     {dashMessages.slice(0, 5).map((m) => (
                       <MessageRowItem key={m.id} message={m} />
+                    ))}
+                  </View>
+                </Card>
+
+                <Card elevated>
+                  <PanelHead
+                    icon="flag-outline"
+                    title="Próximos eventos"
+                    subtitle="Fechas clave de la operación"
+                    tone="primary"
+                    countLabel={`${upcomingEvents.length}`}
+                  />
+                  <View style={{ gap: spacing.md }}>
+                    {upcomingEvents.map((e) => (
+                      <EventRow key={e.id} event={e} />
                     ))}
                   </View>
                 </Card>
@@ -444,6 +481,166 @@ function MessageRowItem({ message }: { message: MessageRow }) {
         </Text>
       </View>
       <Text style={rowStyles.time}>{message.createdAt}</Text>
+    </View>
+  );
+}
+
+// ─── Datos derivados para las tarjetas informativas ────────────────────────
+// Nota: son locales al dashboard admin, dependen de mockDb y desaparecerán
+// cuando conectemos las series reales de OnSpace en Fase 3B.
+type WeeklyBar = { day: string; value: number };
+const weeklyActivity: WeeklyBar[] = [
+  { day: 'Lun', value: 42 },
+  { day: 'Mar', value: 51 },
+  { day: 'Mié', value: 48 },
+  { day: 'Jue', value: 55 },
+  { day: 'Vie', value: 61 },
+  { day: 'Sáb', value: 34 },
+  { day: 'Dom', value: 12 },
+];
+
+const monthlyProgress = {
+  delivered: 812,
+  target: 1100,
+  reportsCompleted: 794,
+  reportsTotal: 812,
+  newStudents: 38,
+  newStudentsTarget: 50,
+};
+
+type UpcomingEvent = {
+  id: string;
+  title: string;
+  detail: string;
+  when: string;
+  icon: string;
+  tone: 'primary' | 'warning' | 'info' | 'success';
+};
+const upcomingEvents: UpcomingEvent[] = [
+  {
+    id: 'e1',
+    title: 'Cierre de nómina',
+    detail: 'Revisa ajustes antes del corte',
+    when: 'Vie · 25 jul',
+    icon: 'cash-outline',
+    tone: 'warning',
+  },
+  {
+    id: 'e2',
+    title: 'Publicación de horarios',
+    detail: 'Profesores agenda de agosto',
+    when: 'Lun · 28 jul',
+    icon: 'calendar-outline',
+    tone: 'primary',
+  },
+  {
+    id: 'e3',
+    title: 'Reporte mensual',
+    detail: 'Métricas y estados de cuenta',
+    when: 'Jue · 31 jul',
+    icon: 'document-text-outline',
+    tone: 'info',
+  },
+  {
+    id: 'e4',
+    title: 'Vencimiento de planes',
+    detail: '9 estudiantes por renovar',
+    when: 'Sáb · 2 ago',
+    icon: 'refresh-outline',
+    tone: 'success',
+  },
+];
+
+function WeeklyActivityChart({ data }: { data: WeeklyBar[] }) {
+  const max = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <View style={chartStyles.wrap}>
+      {data.map((d) => {
+        const h = Math.max(6, Math.round((d.value / max) * 96));
+        return (
+          <View key={d.day} style={chartStyles.col}>
+            <View style={chartStyles.trackWrap}>
+              <View style={[chartStyles.bar, { height: h }]} />
+            </View>
+            <Text style={chartStyles.dayLabel}>{d.day}</Text>
+            <Text style={chartStyles.dayValue}>{d.value}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function MonthlyProgressBlock({ data }: { data: typeof monthlyProgress }) {
+  const items = [
+    {
+      label: 'Clases entregadas',
+      current: data.delivered,
+      target: data.target,
+      suffix: 'h',
+      tone: colors.primary,
+    },
+    {
+      label: 'Reportes completados',
+      current: data.reportsCompleted,
+      target: data.reportsTotal,
+      suffix: '',
+      tone: colors.info,
+    },
+    {
+      label: 'Nuevos estudiantes',
+      current: data.newStudents,
+      target: data.newStudentsTarget,
+      suffix: '',
+      tone: colors.success,
+    },
+  ];
+  return (
+    <View style={{ gap: spacing.md }}>
+      {items.map((it) => {
+        const pct = Math.min(1, it.current / it.target);
+        return (
+          <View key={it.label} style={{ gap: 6 }}>
+            <View style={progressStyles.headerRow}>
+              <Text style={progressStyles.label}>{it.label}</Text>
+              <Text style={progressStyles.value}>
+                {it.current}
+                {it.suffix} <Text style={progressStyles.target}>/ {it.target}{it.suffix}</Text>
+              </Text>
+            </View>
+            <View style={progressStyles.track}>
+              <View
+                style={[
+                  progressStyles.fill,
+                  { width: `${pct * 100}%`, backgroundColor: it.tone },
+                ]}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function EventRow({ event }: { event: UpcomingEvent }) {
+  const TONE: Record<string, { bg: string; fg: string }> = {
+    primary: { bg: colors.surfaceTinted, fg: colors.primary },
+    warning: { bg: colors.warningSoft, fg: colors.warning },
+    info: { bg: colors.infoSoft, fg: colors.info },
+    success: { bg: colors.successSoft, fg: colors.success },
+  };
+  const t = TONE[event.tone];
+  return (
+    <View style={eventStyles.wrap}>
+      <View style={[eventStyles.icon, { backgroundColor: t.bg }]}>
+        <Ionicons name={event.icon as any} size={16} color={t.fg} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={eventStyles.title} numberOfLines={1}>{event.title}</Text>
+        <Text style={eventStyles.detail} numberOfLines={1}>{event.detail}</Text>
+      </View>
+      <Text style={[eventStyles.when, { color: t.fg }]}>{event.when}</Text>
     </View>
   );
 }
@@ -894,6 +1091,108 @@ const panelHeadStyles = StyleSheet.create({
     ...typography.button,
     fontSize: 13,
     color: colors.primary,
+  },
+});
+
+const chartStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  col: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  trackWrap: {
+    height: 104,
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  bar: {
+    width: '70%',
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+    opacity: 0.85,
+  },
+  dayLabel: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  dayValue: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textStrong,
+  },
+});
+
+const progressStyles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  label: {
+    ...typography.caption,
+    fontSize: 13,
+    color: colors.textSubtle,
+    fontWeight: '600',
+  },
+  value: {
+    ...typography.bodyStrong,
+    fontSize: 14,
+    color: colors.textStrong,
+  },
+  target: {
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  track: {
+    height: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: radius.pill,
+  },
+});
+
+const eventStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.iconText,
+    paddingVertical: 4,
+  },
+  icon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    ...typography.bodyStrong,
+    fontSize: 14,
+  },
+  detail: {
+    ...typography.caption,
+    marginTop: 2,
+  },
+  when: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: spacing.sm,
   },
 });
 
