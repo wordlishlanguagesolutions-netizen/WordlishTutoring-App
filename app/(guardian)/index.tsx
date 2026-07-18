@@ -266,9 +266,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.md,
   },
-  hello: { fontSize: 12, color: colors.textMuted, fontWeight: '500' },
+  hello: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
   name: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.3,
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   chipText: {
     color: colors.textSubtle,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 14,
     maxWidth: 120,
   },
 
@@ -322,21 +322,21 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
   },
   statusLabel: {
-    fontSize: 10,
+    fontSize: 12,
     color: colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  statusValue: { fontSize: 13, fontWeight: '700', color: colors.text },
+  statusValue: { fontSize: 15, fontWeight: '700', color: colors.text },
   statusValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
 
   // Sección
   section: {
     ...typography.h3,
-    fontSize: 15,
+    fontSize: 17,
     marginTop: spacing.xxl,
     marginBottom: spacing.md,
   },
@@ -365,13 +365,13 @@ const styles = StyleSheet.create({
   },
   classSubject: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
   classTeacher: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '500',
     marginTop: 2,
   },
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     color: colors.textSubtle,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
   },
 
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.textOnPrimary,
   },
-  enterText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 15 },
+  enterText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 16 },
 
   // Hint inferior · texto discreto, sin recuadros
   hintRow: {
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   },
   hintText: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '500',
   },
 });

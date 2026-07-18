@@ -944,16 +944,18 @@ const styles = StyleSheet.create({
   },
   mono: {
     ...typography.numericSmall,
-    fontSize: 13,
+    fontSize: 15,
   },
   cellMuted: {
     ...typography.caption,
     color: colors.textMuted,
+    fontSize: 14,
   },
 
   // Mobile (idéntico al layout previo)
   section: {
     ...typography.h3,
+    fontSize: 18,
     marginTop: spacing.lg,
     marginBottom: spacing.md,
   },
@@ -982,7 +984,7 @@ const styles = StyleSheet.create({
     ...typography.numericSmall,
     marginBottom: 2,
   },
-  statLabel: { ...typography.caption, fontWeight: '600' },
+  statLabel: { ...typography.caption, fontSize: 14, fontWeight: '600' },
   incidentCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1000,7 +1002,7 @@ const styles = StyleSheet.create({
   incidentText: {
     color: colors.danger,
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 16,
   },
   alertRow: {
     flexDirection: 'row',
@@ -1043,10 +1045,11 @@ const styles = StyleSheet.create({
   },
   hoursSoldTitle: {
     ...typography.bodyStrong,
-    fontSize: 15,
+    fontSize: 16,
   },
   hoursSoldHint: {
     ...typography.caption,
+    fontSize: 14,
     color: colors.textMuted,
   },
   hoursSoldRow: { flexDirection: 'row', gap: spacing.lg },
@@ -1056,6 +1059,7 @@ const styles = StyleSheet.create({
   },
   hoursSoldLabel: {
     ...typography.caption,
+    fontSize: 14,
     marginTop: 2,
   },
 });
@@ -1089,7 +1093,7 @@ const panelHeadStyles = StyleSheet.create({
   },
   seeAllText: {
     ...typography.button,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.primary,
   },
 });
@@ -1121,13 +1125,13 @@ const chartStyles = StyleSheet.create({
   },
   dayLabel: {
     ...typography.caption,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
   },
   dayValue: {
     ...typography.caption,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.textStrong,
   },
@@ -1141,13 +1145,13 @@ const progressStyles = StyleSheet.create({
   },
   label: {
     ...typography.caption,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSubtle,
     fontWeight: '600',
   },
   value: {
     ...typography.bodyStrong,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textStrong,
   },
   target: {
@@ -1182,15 +1186,16 @@ const eventStyles = StyleSheet.create({
   },
   title: {
     ...typography.bodyStrong,
-    fontSize: 14,
+    fontSize: 15,
   },
   detail: {
     ...typography.caption,
+    fontSize: 14,
     marginTop: 2,
   },
   when: {
     ...typography.caption,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     marginLeft: spacing.sm,
   },
@@ -1211,21 +1216,22 @@ const rowStyles = StyleSheet.create({
   },
   title: {
     ...typography.bodyStrong,
-    fontSize: 14,
+    fontSize: 15,
   },
   detail: {
     ...typography.caption,
+    fontSize: 14,
     marginTop: 2,
   },
   time: {
     ...typography.caption,
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 13,
     marginLeft: spacing.sm,
   },
   amount: {
     ...typography.bodyStrong,
-    fontSize: 15,
+    fontSize: 17,
     color: colors.textStrong,
   },
 });

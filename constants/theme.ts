@@ -129,81 +129,82 @@ export const typography = {
   // Logotipo · Poppins SemiBold
   logo: {
     fontFamily: fonts.display,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '600' as const,
     letterSpacing: -0.2,
     color: colors.textStrong,
   },
 
-  // Títulos · Manrope SemiBold
+  // Títulos · Manrope SemiBold · escala ampliada v1.1 para reducir contrastes
+  // bruscos y llenar mejor las tarjetas de todos los roles.
   h1: {
     fontFamily: fonts.sansSemi,
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '600' as const,
     color: colors.textStrong,
     letterSpacing: -0.4,
-    lineHeight: 34,
+    lineHeight: 38,
   },
   h2: {
     fontFamily: fonts.sansSemi,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '600' as const,
     color: colors.textStrong,
     letterSpacing: -0.3,
-    lineHeight: 28,
+    lineHeight: 32,
   },
   h3: {
     fontFamily: fonts.sansSemi,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600' as const,
     color: colors.textStrong,
     letterSpacing: -0.2,
-    lineHeight: 24,
+    lineHeight: 28,
   },
 
   // Subtítulos · Manrope Medium
   subtitle: {
     fontFamily: fonts.sansMedium,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '500' as const,
     color: colors.textSubtle,
-    lineHeight: 22,
+    lineHeight: 26,
   },
 
   // Texto · Manrope Regular
   body: {
     fontFamily: fonts.sans,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '400' as const,
     color: colors.text,
-    lineHeight: 24,
+    lineHeight: 26,
   },
   bodyStrong: {
     fontFamily: fonts.sansSemi,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600' as const,
     color: colors.textStrong,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   caption: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '400' as const,
     color: colors.textSubtle,
-    lineHeight: 18,
+    lineHeight: 20,
   },
   label: {
     fontFamily: fonts.sansMedium,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500' as const,
     color: colors.text,
-    lineHeight: 20,
+    lineHeight: 22,
   },
 
   // Botones · Manrope Medium/SemiBold
   button: {
     fontFamily: fonts.sansSemi,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600' as const,
     letterSpacing: 0.1,
   },
@@ -211,19 +212,19 @@ export const typography = {
   // Números importantes · Manrope SemiBold
   numeric: {
     fontFamily: fonts.sansSemi,
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: '600' as const,
     color: colors.textStrong,
     letterSpacing: -0.5,
-    lineHeight: 38,
+    lineHeight: 44,
   },
   numericSmall: {
     fontFamily: fonts.sansSemi,
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '600' as const,
     color: colors.textStrong,
     letterSpacing: -0.3,
-    lineHeight: 26,
+    lineHeight: 32,
   },
 };
 

@@ -29,14 +29,22 @@ Objetivo: transmitir **Premium · Moderna · Tecnológica · Elegante · Minimal
 
 ## 2 · Tipografía
 
-| Rol | Familia | Peso |
-| --- | --- | --- |
-| Logo | Poppins | SemiBold |
-| Títulos (h1–h3) | Manrope | SemiBold |
-| Subtítulos | Manrope | Medium |
-| Cuerpo | Manrope | Regular |
-| Botones | Manrope | SemiBold |
-| Números importantes | Manrope | SemiBold |
+| Rol | Familia | Peso | Tamaño |
+| --- | --- | --- | --- |
+| Logo | Poppins | SemiBold | 22 |
+| h1 | Manrope | SemiBold | 30 / lh 38 |
+| h2 | Manrope | SemiBold | 24 / lh 32 |
+| h3 | Manrope | SemiBold | 20 / lh 28 |
+| Subtítulos | Manrope | Medium | 17 / lh 26 |
+| Cuerpo | Manrope | Regular | 17 / lh 26 |
+| Body Strong | Manrope | SemiBold | 17 / lh 24 |
+| Caption | Manrope | Regular | 14 / lh 20 |
+| Label | Manrope | Medium | 15 / lh 22 |
+| Botones | Manrope | SemiBold | 16 |
+| Números grandes | Manrope | SemiBold | 36 / lh 44 |
+| Números medianos | Manrope | SemiBold | 26 / lh 32 |
+
+**Regla dura v1.1:** ningún texto de UI puede ser menor a **13 px**. Los meta-datos y timestamps usan 13; el mínimo funcional para labels es 14. Con esto se eliminan los contrastes bruscos entre valores prominentes y textos secundarios diminutos que dejaban tarjetas con demasiado aire.
 
 Los tokens viven en `typography.*`. Si las familias no están cargadas en runtime, React Native cae al system UI font (SF Pro / Roboto / system-ui) — igualmente premium. La jerarquía se preserva por peso y tamaño.
 
