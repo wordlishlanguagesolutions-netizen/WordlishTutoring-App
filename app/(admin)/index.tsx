@@ -749,12 +749,6 @@ function AdminDashboardMobile() {
           tone="warning"
         />
         <MiniStat
-          icon="hourglass-outline"
-          value={adminStats.consumedHours}
-          label="Horas consumidas"
-          tone="info"
-        />
-        <MiniStat
           icon="document-text"
           value={adminStats.pendingReports}
           label="Reportes pendientes"
