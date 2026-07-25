@@ -10,6 +10,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 const ADMIN_NAV: SidebarItem[] = [
   { label: 'Dashboard', icon: 'grid', route: '/(admin)' },
   { label: 'Usuarios', icon: 'people', route: '/(admin)/users' },
+  { label: 'Pagos', icon: 'card', route: '/(admin)/finance' },
   { label: 'Paquetes', icon: 'cube', route: '/(admin)/packages' },
   { label: 'Ajustes', icon: 'settings', route: '/(admin)/settings' },
 ];
@@ -42,6 +43,13 @@ export default function AdminLayout() {
             options={{
               title: 'Usuarios',
               tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size} color={color} />,
+            }}
+          />
+          <Tabs.Screen
+            name="finance"
+            options={{
+              title: 'Pagos',
+              tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
             }}
           />
           <Tabs.Screen

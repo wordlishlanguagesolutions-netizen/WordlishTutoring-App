@@ -295,9 +295,7 @@ function AdminDashboardDesktop() {
                     subtitle="Concilia pronto para no bloquear reservas"
                     tone="warning"
                     countLabel={`${dashPendingPayments.length}`}
-                    onSeeAll={() =>
-                      Alert.alert('Pagos', 'Módulo en construcción.')
-                    }
+                    onSeeAll={() => router.push('/(admin)/finance' as any)}
                   />
                   <View style={{ gap: spacing.sm }}>
                     {dashPendingPayments.slice(0, 5).map((p) => (
@@ -812,8 +810,8 @@ function AdminDashboardMobile() {
         <Module
           icon="card"
           title="Pagos"
-          description="Órdenes, cobros, reembolsos"
-          onPress={() => Alert.alert('Pagos', 'Módulo en construcción.')}
+          description="Ingresos, gastos, nómina y utilidad"
+          onPress={() => router.push('/(admin)/finance' as any)}
         />
         <Module
           icon="pricetag"
