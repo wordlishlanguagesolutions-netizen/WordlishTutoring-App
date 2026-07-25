@@ -1,21 +1,15 @@
 // ============================================================================
 // Wordlish · Finance service.
 //
-// Fuente única de datos financieros mientras conectamos OnSpace Cloud.
-// Ofrece tres dominios:
-//   · Gastos (Expenses)     — costos operativos y suscripciones.
-//   · Nómina (Payroll)      — pagos a profesores derivados de clases.
-//   · Ingresos (Revenue)    — pagos recibidos de estudiantes.
+// **Gastos (Expenses)**: PERSISTIDOS en OnSpace Cloud (tabla `public.expenses`).
+//   El array local `expenses` funciona como caché. `hydrateExpenses()` sincroniza
+//   desde Cloud y `addExpense/updateExpense/deleteExpense` replican al backend.
 //
-// Y helpers que agregan métricas para el panel financiero admin:
-//   · Totales por periodo (día · semana · mes · año).
-//   · Utilidad = ingresos − gastos − nómina.
-//   · Próximos cobros automáticos, suscripciones por vencer.
-//   · Series mensuales para gráficos (12 meses).
-//
-// La API es intencionalmente cercana a lo que expondrá el backend Fase 3B+
-// para minimizar el refactor cuando migremos a OnSpace Cloud.
+// **Nómina y Revenue**: aún en memoria (se migran en Fase 3D con las tablas
+//   `teacher_payrolls` y `payments` que ya existen en Cloud).
 // ============================================================================
+
+import { expensesRepo } from '@/repositories/expenses';
 
 export type ExpenseFrequency = 'once' | 'weekly' | 'monthly' | 'annual';
 export type ExpenseStatus = 'active' | 'cancelled';
@@ -159,7 +153,7 @@ const TODAY = new Date();
 function iso(d: Date): string { return d.toISOString().slice(0, 10); }
 function addDays(d: Date, n: number) { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
 
-export const expenses: Expense[] = [
+export let expenses: Expense[] = [
   {
     id: 'e-zoom', name: 'Zoom Pro', category: 'operacion', amount: 15, currency: 'USD',
     frequency: 'monthly', billingDate: iso(addDays(TODAY, -12)),
@@ -598,24 +592,49 @@ export function formatMonthLabel(month: string): string {
 // (Fase 3B) sin cambiar la API pública.
 // ============================================================================
 
-export function addExpense(input: Omit<Expense, 'id'>): Expense {
-  const e: Expense = { ...input, id: `e-${Date.now().toString(36)}` };
+// ─── Cloud sync · Expenses ─────────────────────────────────────────────────
+let _hydrated = false;
+let _hydratePromise: Promise<void> | null = null;
+
+export async function hydrateExpenses(force = false): Promise<void> {
+  if (_hydrated && !force) return;
+  if (_hydratePromise) return _hydratePromise;
+  _hydratePromise = (async () => {
+    const rows = await expensesRepo.list();
+    if (rows.length > 0) {
+      expenses.length = 0;
+      rows.forEach((r) => expenses.push(r));
+    }
+    _hydrated = true;
+    _hydratePromise = null;
+  })();
+  return _hydratePromise;
+}
+
+export function isExpensesHydrated(): boolean {
+  return _hydrated;
+}
+
+export async function addExpense(input: Omit<Expense, 'id'>): Promise<Expense> {
+  const created = await expensesRepo.create(input);
+  const e: Expense = created ?? { ...input, id: `e-${Date.now().toString(36)}` };
   expenses.unshift(e);
   return e;
 }
 
-export function updateExpense(
+export async function updateExpense(
   id: string,
   patch: Partial<Omit<Expense, 'id'>>,
-): void {
+): Promise<void> {
   const target = expenses.find((e) => e.id === id);
-  if (!target) return;
-  Object.assign(target, patch);
+  if (target) Object.assign(target, patch);
+  await expensesRepo.update(id, patch);
 }
 
-export function deleteExpense(id: string): void {
+export async function deleteExpense(id: string): Promise<void> {
   const idx = expenses.findIndex((e) => e.id === id);
   if (idx >= 0) expenses.splice(idx, 1);
+  await expensesRepo.remove(id);
 }
 
 export function markPayrollPaid(id: string): void {

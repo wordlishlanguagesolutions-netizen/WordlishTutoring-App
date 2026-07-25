@@ -34,6 +34,7 @@ import {
   addExpense,
   updateExpense,
   deleteExpense,
+  hydrateExpenses,
   markPayrollPaid,
   markPayrollPending,
   listPayrollTeachers,
@@ -72,6 +73,16 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
 
 export default function FinanceScreen() {
   const [tab, setTab] = useState<Tab>('summary');
+  const [, setCloudTick] = useState(0);
+
+  React.useEffect(() => {
+    // Sincroniza gastos desde OnSpace Cloud al montar el panel.
+    let mounted = true;
+    hydrateExpenses()
+      .then(() => { if (mounted) setCloudTick((t) => t + 1); })
+      .catch(() => undefined);
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <Screen>
@@ -266,7 +277,7 @@ function ExpensesSection() {
   };
 
   const handleDelete = (id: string) => {
-    deleteExpense(id);
+    void deleteExpense(id);
     setSelected(null);
     refresh();
   };
@@ -1003,8 +1014,8 @@ function ExpenseFormModal({
       status,
       notes: notes.trim() || undefined,
     };
-    if (editing) updateExpense(editing.id, payload);
-    else addExpense(payload);
+    if (editing) void updateExpense(editing.id, payload);
+    else void addExpense(payload);
     onSaved();
   };
 
