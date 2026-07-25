@@ -8,15 +8,15 @@ import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
 
 // ============================================================================
-// Layout del acudiente · misma adaptación que estudiante.
-//   · < 1024 px: barra inferior actual, sin cambios.
-//   · ≥ 1024 px: sidebar lateral fija; barra inferior oculta.
+// Layout del acudiente.
+//
+// UNIFICACIÓN: "Reservar" y "Pagar" son un solo flujo. El tab "Mi plan"
+// se oculta; su contenido vive dentro de "Reservas".
 // ============================================================================
 
 const GUARDIAN_NAV: SidebarItem[] = [
   { label: 'Inicio', icon: 'home', route: '/(guardian)' },
   { label: 'Reservas', icon: 'add-circle', route: '/(guardian)/book' },
-  { label: 'Mi plan', icon: 'card', route: '/(guardian)/payments' },
   { label: 'Reportes', icon: 'document-text', route: '/(guardian)/progress' },
   { label: 'Perfil', icon: 'person', route: '/(guardian)/profile' },
 ];
@@ -47,17 +47,12 @@ export default function GuardianLayout() {
           <Tabs.Screen
             name="book"
             options={{
-              title: 'Reservar',
+              title: 'Reservas',
               tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" size={size} color={color} />,
             }}
           />
-          <Tabs.Screen
-            name="payments"
-            options={{
-              title: 'Mi plan',
-              tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
-            }}
-          />
+          {/* Mi plan · oculto del tab bar; sigue accesible por ruta directa */}
+          <Tabs.Screen name="payments" options={{ href: null }} />
           <Tabs.Screen
             name="progress"
             options={{
