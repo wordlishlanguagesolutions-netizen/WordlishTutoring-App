@@ -20,9 +20,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { TEACHER_TIERS, type TeacherTier } from '@/constants/policies';
 
 // ============================================================================
-// Reserva · flujo secundario cuando el usuario elige "profesor espec\u00edfico".
-// Layout minimalista: dos pesta\u00f1as (Essentials / Specials) con la lista
-// de profesores compatibles con la materia + nivel + plan del estudiante.
+// Reserva · flujo secundario cuando el usuario elige "profesor específico".
+// Layout minimalista: dos pestañas (Essentials / Specials) con la lista
+// de profesores compatibles con la materia + plan del estudiante.
 // Cada profesor pertenece obligatoriamente a un tier. La disponibilidad
 // horaria se resuelve en el paso siguiente (/booking/schedule).
 // ============================================================================
@@ -125,7 +125,7 @@ export default function BookingTeacher() {
               color={colors.textMuted}
             />
             <Text style={typography.caption}>
-              Vuelve para elegir materia y nivel.
+              Vuelve para elegir la materia.
             </Text>
           </View>
         ) : availableTiers.length === 0 ? (
@@ -136,7 +136,7 @@ export default function BookingTeacher() {
               color={colors.textMuted}
             />
             <Text style={typography.caption}>
-              No hay profesores compatibles con esta selecci\u00f3n.
+              No hay profesores compatibles con esta selección.
             </Text>
           </View>
         ) : (
@@ -203,9 +203,9 @@ export default function BookingTeacher() {
                   <View style={{ flex: 1 }}>
                     <Text style={s.teacherName}>{t.name}</Text>
                     <Text style={s.teacherMeta} numberOfLines={1}>
-                      {t.subjects.join(' \u00b7 ')}
+                      {t.subjects.join(' · ')}
                       {t.levels && t.levels.length > 0
-                        ? ` \u00b7 ${t.levels.join(', ')}`
+                        ? ` · ${t.levels.join(', ')}`
                         : ''}
                     </Text>
                   </View>
@@ -226,7 +226,7 @@ export default function BookingTeacher() {
           hitSlop={10}
         >
           <Text style={s.backLinkText}>
-            Prefiero que Wordlish elija por m\u00ed
+            Prefiero que Wordlish elija por mí
           </Text>
         </Pressable>
       </ScrollView>
