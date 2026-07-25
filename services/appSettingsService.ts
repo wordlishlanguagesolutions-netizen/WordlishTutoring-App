@@ -39,6 +39,12 @@ const DEFAULTS: Record<string, unknown> = {
   'features.push_notifications': false,
   // Políticas
   'policy.prepaid_only': true,
+  // Zoom (enlace único oficial de Wordlish)
+  'zoom.official_link': 'https://us06web.zoom.us/j/2797072933',
+  'zoom.meeting_id': '279 707 2933',
+  'zoom.enabled': true,
+  'zoom.default_label': 'Entrar a Zoom',
+  'zoom.provider': 'static_link',
 };
 
 const cache: Record<string, unknown> = { ...DEFAULTS };

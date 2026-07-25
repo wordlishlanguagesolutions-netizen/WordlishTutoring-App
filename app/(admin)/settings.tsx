@@ -38,6 +38,7 @@ import {
   type ClassKind,
 } from '@/services/teacherRatesConfig';
 import { CommunicationBlock } from '@/components/admin/CommunicationBlock';
+import { ZoomBlock } from '@/components/admin/ZoomBlock';
 
 // ============================================================================
 // Admin · Ajustes globales.
@@ -50,7 +51,6 @@ import { CommunicationBlock } from '@/components/admin/CommunicationBlock';
 const OPERATIONAL = [
   { icon: 'time-outline', title: 'Tolerancia profesor', value: '5 minutos' },
   { icon: 'time-outline', title: 'Tolerancia estudiante', value: '15 minutos' },
-  { icon: 'videocam-outline', title: 'Zoom API', value: 'No configurada' },
 ];
 
 export default function SettingsScreen() {
@@ -82,6 +82,14 @@ export default function SettingsScreen() {
         no hay número escrito en el código.
       </Text>
       <CommunicationBlock />
+
+      <Text style={styles.section}>Videoconferencia · Zoom</Text>
+      <Text style={typography.caption}>
+        Enlace único de Zoom para todas las clases de Wordlish. Todos los
+        botones "Entrar a Zoom" leen desde esta configuración; no hay URL
+        escrita en el código.
+      </Text>
+      <ZoomBlock />
 
       <Text style={styles.section}>Operación</Text>
       <View style={{ gap: spacing.sm }}>

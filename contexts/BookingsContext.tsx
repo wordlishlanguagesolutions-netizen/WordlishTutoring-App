@@ -18,6 +18,7 @@ import {
   packagesRepo,
 } from '@/repositories';
 import { createNotification } from '@/services/notificationService';
+import { getZoomUrl } from '@/services/zoomService';
 import { mockDb } from '@/services/mockDb';
 
 const HOLD_MS = 5 * 60 * 1000; // 5 minutos
@@ -171,7 +172,11 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         time: args.time,
         durationMin: 60,
         status: (consumed ? 'confirmed' : 'pending_payment') as BookingStatus,
-        zoomUrl: `https://zoom.us/j/${Math.floor(Math.random() * 9e9 + 1e9)}`,
+        // Enlace único fijo de Wordlish desde app_settings.zoom.official_link.
+        // No se genera URL aleatoria. Cuando se implemente Zoom OAuth por
+        // clase, `zoomService.getZoomUrlForBooking()` respetará este campo
+        // si el provider está en 'oauth'.
+        zoomUrl: getZoomUrl(),
         hourConsumed: consumed,
         packageId: consumed ? `pkg-${args.studentId}` : null,
         classRecordId: null,

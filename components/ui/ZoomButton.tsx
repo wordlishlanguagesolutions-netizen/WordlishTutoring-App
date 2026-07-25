@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import {
   colors,
@@ -9,8 +9,17 @@ import {
   typography,
   controlHeight,
 } from '@/constants/theme';
+import { openZoom, getZoomLabel, isZoomEnabled } from '@/services/zoomService';
+
+// ============================================================================
+// Botón único para abrir Zoom. Todas las pantallas lo usan.
+// URL: viene de `services/zoomService` (única fuente de verdad, leída
+// desde `public.app_settings.zoom.official_link`). Cuando se pase la
+// prop `url` (p.ej. reserva OAuth en el futuro), se prioriza.
+// ============================================================================
 
 interface ZoomButtonProps {
+  url?: string | null;
   onPress?: () => void;
   label?: string;
   disabled?: boolean;
@@ -18,32 +27,31 @@ interface ZoomButtonProps {
 }
 
 export function ZoomButton({
+  url,
   onPress,
-  label = 'Entrar a Zoom',
+  label,
   disabled,
   variant = 'primary',
 }: ZoomButtonProps) {
+  const finalLabel = label ?? getZoomLabel();
+  const enabled = isZoomEnabled();
+
   const handlePress =
-    onPress ??
-    (() =>
-      Alert.alert(
-        'Zoom',
-        'Simulación · el enlace se abrirá cuando conectemos la integración con Zoom.'
-      ));
+    onPress ?? (() => openZoom(url ?? undefined));
 
   if (variant === 'secondary') {
     return (
       <Pressable
         onPress={handlePress}
-        disabled={disabled}
+        disabled={disabled || !enabled}
         style={({ pressed }) => [
           secondaryStyles.btn,
           pressed && { opacity: 0.9 },
-          disabled && { opacity: 0.5 },
+          (disabled || !enabled) && { opacity: 0.5 },
         ]}
       >
         <Ionicons name="videocam" size={16} color={colors.primary} />
-        <Text style={secondaryStyles.text}>{label}</Text>
+        <Text style={secondaryStyles.text}>{finalLabel}</Text>
       </Pressable>
     );
   }
@@ -51,15 +59,15 @@ export function ZoomButton({
   return (
     <Pressable
       onPress={handlePress}
-      disabled={disabled}
+      disabled={disabled || !enabled}
       style={({ pressed }) => [
         primaryStyles.btn,
         pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] },
-        disabled && { opacity: 0.5 },
+        (disabled || !enabled) && { opacity: 0.5 },
       ]}
     >
       <Ionicons name="videocam" size={20} color={colors.textOnPrimary} />
-      <Text style={primaryStyles.text}>{label}</Text>
+      <Text style={primaryStyles.text}>{finalLabel}</Text>
     </Pressable>
   );
 }
