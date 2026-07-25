@@ -6,11 +6,32 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
-import { Screen, Header, Avatar, Modal, StatusBadge } from '@/components/ui';
-import { useResponsive } from '@/hooks/useResponsive';
+import { Screen, Header, Avatar, Modal, StatusBadge, Button } from '@/components/ui';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import type { UserRole } from '@/constants/roles';
+import {
+  hydrateUsers,
+  subscribeUsers,
+  getUsers,
+  isUsersHydrated,
+  updateUser,
+  setUserActive,
+  setUserRole,
+} from '@/services/usersService';
+import type { UserProfileFull } from '@/repositories/users';
+import {
+  getRoleCapacity,
+  canPromoteToRole,
+  canDeactivateUser,
+  canChangeRole,
+  translateRolePolicyError,
+  MAX_ACTIVE_SUPERVISORS,
+  type RoleCapacity,
+} from '@/services/userRolesPolicy';
 import {
   teacherRatesConfig,
   getYearRates,
@@ -24,188 +45,36 @@ import {
 } from '@/services/teacherRatesConfig';
 
 // ============================================================================
-// Panel de Usuarios · Solo Administrador.
+// Panel de Usuarios · Módulo #3 migrado a OnSpace Cloud.
 //
-// Objetivo: en un clic, ver el resumen ejecutivo del usuario según su rol.
-// Estudiantes, profesores, acudientes y supervisores NO acceden a esta vista.
+// Origen de datos: `public.user_profiles` (via `services/usersService`).
+// Ya no lee de `mockDb.users` ni de un array hardcoded local.
 //
-// Composición:
-//   1. Filtro por rol (chips) + búsqueda.
-//   2. Lista compacta de usuarios con estado + acción principal.
-//   3. Modal de detalle con métricas clave arriba y secciones expandibles.
+// Funciones cubiertas por el panel (todas persistentes en Cloud):
+//   · Consultar (lista + detalle).
+//   · Editar identidad (nombre completo, primer nombre, teléfono, avatar).
+//   · Cambiar rol (respetando triggers DB: máx. 3 supervisores, admin
+//     principal irremplazable sin transferencia).
+//   · Activar / desactivar (el admin principal queda bloqueado por trigger).
 //
-// Diseño: Premium · minimalista. Métricas prioritarias visibles al abrir,
-// el resto queda plegado detrás de secciones colapsables.
+// Crear usuarios: se realiza vía signup real (trigger `handle_new_user`
+// crea el perfil). El botón "Nuevo usuario" abre las instrucciones oficiales
+// mientras no exista una edge function de invitación.
 // ============================================================================
 
-type Role = 'teacher' | 'student' | 'guardian' | 'admin';
-
-interface BaseUser {
-  id: string;
-  role: Role;
-  name: string;
-  firstName: string;
-  email: string;
-  avatar?: string;
-  active: boolean;
-  joinedAt: string;
-}
-
-interface TeacherRecord extends BaseUser {
-  role: 'teacher';
-  tier: TeacherTier;
-  specialties: string[];
-  hoursThisMonth: number;
-  hoursHistorical: number;
-  groupClasses: number;
-  individualClasses: number;
-  paidThisMonth: number;
-  paidHistorical: number;
-  tardies: number;
-  absences: number;
-  cancellations: number;
-  punctualityPct: number;
-  rating: number | null;
-  studentRequested: number;
-  autoAssigned: number;
-}
-
-interface StudentRecord extends BaseUser {
-  role: 'student';
-  hoursAvailable: number;
-  hoursConsumed: number;
-  nextClass: string | null;
-  subjects: string[];
-  mainTeacher: string;
-  totalClasses: number;
-  tardies: number;
-  cancellations: number;
-  attendancePct: number;
-  recentPayments: { concept: string; amount: number; date: string }[];
-  recentReports: { topic: string; teacher: string; date: string }[];
-}
-
-interface GuardianRecord extends BaseUser {
-  role: 'guardian';
-  linkedStudents: { name: string; hoursAvailable: number }[];
-  recentReports: { student: string; topic: string; date: string }[];
-  paymentsHistory: { concept: string; amount: number; date: string }[];
-}
-
-interface AdminRecord extends BaseUser {
-  role: 'admin';
-}
-
-type AnyUser = TeacherRecord | StudentRecord | GuardianRecord | AdminRecord;
-
-// ─── Mock de usuarios con métricas administrativas ──────────────────────────
-const USERS: AnyUser[] = [
-  {
-    id: 'u-admin-1', role: 'admin', name: 'Ana Administradora', firstName: 'Ana',
-    email: 'ana@wordlish.com', active: true, joinedAt: '01 Ene 2025',
-  },
-  {
-    id: 't1', role: 'teacher', name: 'Prof. Carlos Ríos', firstName: 'Carlos',
-    email: 'carlos@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=68',
-    active: true, joinedAt: '15 Mar 2024',
-    tier: 'specialist',
-    specialties: ['Inglés Básico', 'Inglés Intermedio', 'Conversación'],
-    hoursThisMonth: 42, hoursHistorical: 428,
-    groupClasses: 6, individualClasses: 36,
-    paidThisMonth: 580, paidHistorical: 5940,
-    tardies: 1, absences: 0, cancellations: 2,
-    punctualityPct: 97.6, rating: 4.8,
-    studentRequested: 18, autoAssigned: 24,
-  },
-  {
-    id: 't2', role: 'teacher', name: 'Prof. María Luna', firstName: 'María',
-    email: 'maria@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=48',
-    active: true, joinedAt: '02 Sep 2024',
-    tier: 'essentials',
-    specialties: ['Inglés Básico', 'Francés Intermedio'],
-    hoursThisMonth: 28, hoursHistorical: 186,
-    groupClasses: 3, individualClasses: 25,
-    paidThisMonth: 390, paidHistorical: 2610,
-    tardies: 3, absences: 1, cancellations: 4,
-    punctualityPct: 89.2, rating: 4.4,
-    studentRequested: 7, autoAssigned: 21,
-  },
-  {
-    id: 't3', role: 'teacher', name: 'Prof. Ana Vega', firstName: 'Ana',
-    email: 'ana.vega@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=44',
-    active: false, joinedAt: '10 Feb 2023',
-    tier: 'specialist',
-    specialties: ['Inglés Business'],
-    hoursThisMonth: 0, hoursHistorical: 812,
-    groupClasses: 12, individualClasses: 68,
-    paidThisMonth: 0, paidHistorical: 11220,
-    tardies: 2, absences: 3, cancellations: 5,
-    punctualityPct: 96.4, rating: 4.9,
-    studentRequested: 42, autoAssigned: 38,
-  },
-  {
-    id: 's1', role: 'student', name: 'Lucía Estudiante', firstName: 'Lucía',
-    email: 'lucia@familia.com', avatar: 'https://i.pravatar.cc/150?img=47',
-    active: true, joinedAt: '01 Jun 2025',
-    hoursAvailable: 7, hoursConsumed: 25,
-    nextClass: 'Hoy · 10:00 AM',
-    subjects: ['Inglés Básico', 'Conversación'],
-    mainTeacher: 'Prof. Carlos Ríos',
-    totalClasses: 32, tardies: 1, cancellations: 2, attendancePct: 96.8,
-    recentPayments: [
-      { concept: 'Paquete 8 horas', amount: 110, date: '01 Jul 2026' },
-      { concept: 'Paquete 4 horas', amount: 60, date: '15 Jun 2026' },
-    ],
-    recentReports: [
-      { topic: 'Present Simple', teacher: 'Prof. Carlos Ríos', date: '10 Jul 2026' },
-      { topic: 'Vocabulary review', teacher: 'Prof. María Luna', date: '08 Jul 2026' },
-    ],
-  },
-  {
-    id: 's2', role: 'student', name: 'Diego Pérez', firstName: 'Diego',
-    email: 'diego@familia.com', avatar: 'https://i.pravatar.cc/150?img=12',
-    active: true, joinedAt: '15 Ene 2026',
-    hoursAvailable: 3, hoursConsumed: 12,
-    nextClass: 'Mañana · 04:00 PM',
-    subjects: ['Inglés Intermedio'],
-    mainTeacher: 'Prof. María Luna',
-    totalClasses: 15, tardies: 0, cancellations: 1, attendancePct: 100,
-    recentPayments: [
-      { concept: 'Paquete 4 horas', amount: 60, date: '20 Jun 2026' },
-    ],
-    recentReports: [
-      { topic: 'Past Tense', teacher: 'Prof. María Luna', date: '05 Jul 2026' },
-    ],
-  },
-  {
-    id: 'g1', role: 'guardian', name: 'Marta Acudiente', firstName: 'Marta',
-    email: 'marta@familia.com', avatar: 'https://i.pravatar.cc/150?img=32',
-    active: true, joinedAt: '01 Jun 2025',
-    linkedStudents: [
-      { name: 'Lucía Estudiante', hoursAvailable: 7 },
-      { name: 'Pablo Estudiante', hoursAvailable: 3 },
-    ],
-    recentReports: [
-      { student: 'Lucía', topic: 'Present Simple', date: '10 Jul 2026' },
-      { student: 'Pablo', topic: 'Colors and shapes', date: '05 Jul 2026' },
-    ],
-    paymentsHistory: [
-      { concept: 'Paquete 8 horas · Lucía', amount: 110, date: '01 Jul 2026' },
-      { concept: 'Paquete 8 horas · Pablo', amount: 110, date: '01 Jul 2026' },
-      { concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun 2026' },
-    ],
-  },
-];
+type Role = UserRole;
 
 const ROLE_LABEL: Record<Role, string> = {
   admin: 'Admin',
+  supervisor: 'Supervisor',
   teacher: 'Profesor',
   student: 'Estudiante',
   guardian: 'Acudiente',
 };
 
-const ROLE_TONE: Record<Role, 'primary' | 'info' | 'success' | 'warning'> = {
+const ROLE_TONE: Record<Role, 'primary' | 'info' | 'success' | 'warning' | 'muted'> = {
   admin: 'primary',
+  supervisor: 'primary',
   teacher: 'info',
   student: 'success',
   guardian: 'warning',
@@ -214,6 +83,8 @@ const ROLE_TONE: Record<Role, 'primary' | 'info' | 'success' | 'warning'> = {
 type Filter = 'all' | Role;
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'Todos' },
+  { key: 'admin', label: 'Admins' },
+  { key: 'supervisor', label: 'Supervisores' },
   { key: 'teacher', label: 'Profesores' },
   { key: 'student', label: 'Estudiantes' },
   { key: 'guardian', label: 'Acudientes' },
@@ -221,40 +92,117 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 // ============================================================================
 export default function UsersScreen() {
-  const { isDesktop } = useResponsive();
+  const [users, setUsers] = useState<UserProfileFull[]>(getUsers());
+  const [loading, setLoading] = useState<boolean>(!isUsersHydrated());
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [supervisorCap, setSupervisorCap] = useState<RoleCapacity | null>(null);
+  const [showCreateHelp, setShowCreateHelp] = useState<boolean>(false);
+
+  // Hidratación desde Cloud + suscripción reactiva al cache.
+  useEffect(() => {
+    hydrateUsers()
+      .then(() => {
+        setUsers(getUsers());
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    const unsub = subscribeUsers(() => setUsers(getUsers()));
+    return unsub;
+  }, []);
+
+  // Consulta de capacidad de supervisores (para mostrar 2/3, etc.).
+  useEffect(() => {
+    getRoleCapacity('supervisor')
+      .then(setSupervisorCap)
+      .catch(() => undefined);
+  }, [users.length]);
 
   const filtered = useMemo(
-    () => (filter === 'all' ? USERS : USERS.filter((u) => u.role === filter)),
-    [filter],
+    () => (filter === 'all' ? users : users.filter((u) => u.role === filter)),
+    [filter, users],
   );
 
   const selected = useMemo(
-    () => USERS.find((u) => u.id === selectedId) ?? null,
-    [selectedId],
+    () => users.find((u) => u.id === selectedId) ?? null,
+    [selectedId, users],
   );
 
-  const counts = useMemo(() => {
-    return {
-      teacher: USERS.filter((u) => u.role === 'teacher').length,
-      student: USERS.filter((u) => u.role === 'student').length,
-      guardian: USERS.filter((u) => u.role === 'guardian').length,
-    };
-  }, []);
+  const counts = useMemo(
+    () => ({
+      admin: users.filter((u) => u.role === 'admin').length,
+      supervisor: users.filter((u) => u.role === 'supervisor' && u.active).length,
+      teacher: users.filter((u) => u.role === 'teacher').length,
+      student: users.filter((u) => u.role === 'student').length,
+      guardian: users.filter((u) => u.role === 'guardian').length,
+    }),
+    [users],
+  );
+
+  const refresh = () => {
+    hydrateUsers(true).catch(() => undefined);
+  };
 
   return (
     <Screen>
       <Header
         title="Usuarios"
-        subtitle="Panel administrativo · resumen ejecutivo por usuario"
+        subtitle="Panel administrativo · datos reales desde OnSpace Cloud"
       />
 
       {/* KPIs de la comunidad */}
       <View style={styles.summaryRow}>
-        <SummaryTile label="Profesores" value={counts.teacher} icon="school" tone="info" />
-        <SummaryTile label="Estudiantes" value={counts.student} icon="people" tone="success" />
-        <SummaryTile label="Acudientes" value={counts.guardian} icon="heart" tone="warning" />
+        <SummaryTile
+          label="Supervisores"
+          value={`${counts.supervisor} / ${MAX_ACTIVE_SUPERVISORS}`}
+          icon="eye"
+          tone="primary"
+        />
+        <SummaryTile
+          label="Profesores"
+          value={String(counts.teacher)}
+          icon="school"
+          tone="info"
+        />
+        <SummaryTile
+          label="Estudiantes"
+          value={String(counts.student)}
+          icon="people"
+          tone="success"
+        />
+        <SummaryTile
+          label="Acudientes"
+          value={String(counts.guardian)}
+          icon="heart"
+          tone="warning"
+        />
+      </View>
+
+      {/* Acciones de cabecera */}
+      <View style={styles.actionsRow}>
+        <Pressable
+          onPress={() => setShowCreateHelp(true)}
+          style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="add-circle" size={18} color={colors.textOnPrimary} />
+          <Text style={styles.newBtnText}>Nuevo usuario</Text>
+        </Pressable>
+        <Pressable
+          onPress={refresh}
+          style={({ pressed }) => [styles.refreshBtn, pressed && { opacity: 0.8 }]}
+          accessibilityLabel="Refrescar desde Cloud"
+        >
+          <Ionicons name="refresh" size={16} color={colors.primaryDark} />
+          <Text style={styles.refreshBtnText}>Refrescar</Text>
+        </Pressable>
+        {supervisorCap && !supervisorCap.canAddMore ? (
+          <View style={styles.capacityBanner}>
+            <Ionicons name="information-circle" size={14} color={colors.warning} />
+            <Text style={styles.capacityText}>
+              Cupo de supervisores lleno ({supervisorCap.active}/{supervisorCap.max})
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Filtro por rol */}
@@ -283,58 +231,125 @@ export default function UsersScreen() {
         })}
       </ScrollView>
 
-      {/* Lista */}
-      <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-        {filtered.map((u) => (
-          <UserRow key={u.id} user={u} onPress={() => setSelectedId(u.id)} />
-        ))}
-      </View>
+      {/* Lista o estados vacíos */}
+      {loading ? (
+        <View style={styles.emptyBox}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.emptyText}>Cargando usuarios desde Cloud…</Text>
+        </View>
+      ) : filtered.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="cloud-outline" size={28} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Sin usuarios en Cloud</Text>
+          <Text style={styles.emptyText}>
+            Crea el primer administrador desde OnSpace Cloud Dashboard → Users y
+            marca `is_primary_admin=true`. Luego los siguientes usuarios entrarán
+            vía signup en la pantalla de login.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+          {filtered.map((u) => (
+            <UserRow key={u.id} user={u} onPress={() => setSelectedId(u.id)} />
+          ))}
+        </View>
+      )}
 
       {/* Detalle */}
       <Modal
         visible={!!selected}
         onClose={() => setSelectedId(null)}
-        title={selected?.name}
-        subtitle={selected ? ROLE_LABEL[selected.role] : ''}
+        title={selected?.fullName}
+        subtitle={selected ? ROLE_LABEL[selected.role as Role] : ''}
         scrollable
       >
         {selected ? <UserDetail user={selected} /> : null}
+      </Modal>
+
+      {/* Ayuda de creación */}
+      <Modal
+        visible={showCreateHelp}
+        onClose={() => setShowCreateHelp(false)}
+        title="Alta de nuevos usuarios"
+        subtitle="Wordlish · procedimiento oficial"
+        scrollable
+      >
+        <View style={{ gap: spacing.md }}>
+          <View style={styles.helpBlock}>
+            <Text style={styles.helpTitle}>Administrador principal</Text>
+            <Text style={styles.helpBody}>
+              Se crea manualmente desde OnSpace Cloud Dashboard → Users (una sola
+              vez). Luego se marca `is_primary_admin=true` en `user_profiles`.
+            </Text>
+          </View>
+          <View style={styles.helpBlock}>
+            <Text style={styles.helpTitle}>Supervisores</Text>
+            <Text style={styles.helpBody}>
+              Máximo {MAX_ACTIVE_SUPERVISORS} activos. Se crean vía signup con rol
+              staff y el admin les asigna rol supervisor desde el detalle del
+              usuario. El límite está aplicado por trigger en la base de datos.
+            </Text>
+          </View>
+          <View style={styles.helpBlock}>
+            <Text style={styles.helpTitle}>Profesores, estudiantes y acudientes</Text>
+            <Text style={styles.helpBody}>
+              Se registran solos desde la pantalla de login (signup). El trigger
+              `handle_new_user` crea automáticamente su perfil. El admin puede
+              luego cambiar rol o desactivar desde este panel.
+            </Text>
+          </View>
+        </View>
       </Modal>
     </Screen>
   );
 }
 
 // ─── Fila de usuario ────────────────────────────────────────────────────────
-function UserRow({ user, onPress }: { user: AnyUser; onPress: () => void }) {
+function UserRow({ user, onPress }: { user: UserProfileFull; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.9 }]}
     >
-      <Avatar name={user.name} uri={user.avatar} size={44} />
+      <Avatar name={user.fullName} uri={user.avatar ?? undefined} size={44} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.rowName} numberOfLines={1}>{user.name}</Text>
-        <Text style={styles.rowEmail} numberOfLines={1}>{user.email}</Text>
+        <View style={styles.rowTitleLine}>
+          <Text style={styles.rowName} numberOfLines={1}>
+            {user.fullName}
+          </Text>
+          {user.isPrimaryAdmin ? (
+            <View style={styles.pinBadge}>
+              <Ionicons name="shield-checkmark" size={10} color={colors.primary} />
+              <Text style={styles.pinBadgeText}>Principal</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.rowEmail} numberOfLines={1}>
+          {user.email}
+        </Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
         <StatusBadge
-          label={ROLE_LABEL[user.role]}
-          tone={ROLE_TONE[user.role]}
+          label={ROLE_LABEL[user.role as Role]}
+          tone={ROLE_TONE[user.role as Role]}
         />
-        {!user.active ? (
-          <Text style={styles.inactiveText}>Inactivo</Text>
-        ) : null}
+        {!user.active ? <Text style={styles.inactiveText}>Inactivo</Text> : null}
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </Pressable>
   );
 }
 
-// ─── Tile resumen top ───────────────────────────────────────────────────────
+// ─── Tile resumen ───────────────────────────────────────────────────────────
 function SummaryTile({
-  label, value, icon, tone,
+  label,
+  value,
+  icon,
+  tone,
 }: {
-  label: string; value: number; icon: string;
+  label: string;
+  value: string;
+  icon: string;
   tone: 'primary' | 'info' | 'success' | 'warning';
 }) {
   const TONES = {
@@ -358,247 +373,308 @@ function SummaryTile({
 }
 
 // ============================================================================
-// Detalle de usuario
+// Detalle de usuario · edición inline sobre Cloud.
 // ============================================================================
-function UserDetail({ user }: { user: AnyUser }) {
+function UserDetail({ user }: { user: UserProfileFull }) {
+  const [fullName, setFullName] = useState(user.fullName);
+  const [firstName, setFirstName] = useState(user.firstName);
+  const [phone, setPhone] = useState(user.phone ?? '');
+  const [saving, setSaving] = useState(false);
+  const [roleSaving, setRoleSaving] = useState<Role | null>(null);
+  const [activeSaving, setActiveSaving] = useState(false);
+
+  // Sincroniza el form cuando cambia el usuario (por hidratación).
+  useEffect(() => {
+    setFullName(user.fullName);
+    setFirstName(user.firstName);
+    setPhone(user.phone ?? '');
+  }, [user.id, user.fullName, user.firstName, user.phone]);
+
+  const dirty =
+    fullName.trim() !== user.fullName ||
+    firstName.trim() !== user.firstName ||
+    (phone.trim() || null) !== (user.phone ?? null);
+
+  const handleSaveIdentity = async () => {
+    setSaving(true);
+    const res = await updateUser(user.id, {
+      fullName: fullName.trim(),
+      firstName: firstName.trim(),
+      phone: phone.trim() ? phone.trim() : null,
+    });
+    setSaving(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo guardar', translateRolePolicyError(res.error));
+      return;
+    }
+    Alert.alert('Guardado', 'La información del usuario se actualizó.');
+  };
+
+  const handleToggleActive = async () => {
+    const nextActive = !user.active;
+    const guard = canDeactivateUser({
+      is_primary_admin: user.isPrimaryAdmin,
+      role: user.role as UserRole,
+    });
+    if (!nextActive && !guard.allowed) {
+      Alert.alert('Acción bloqueada', guard.reason ?? 'No permitido.');
+      return;
+    }
+    setActiveSaving(true);
+    const res = await setUserActive(user.id, nextActive);
+    setActiveSaving(false);
+    if (!res.ok) {
+      Alert.alert(
+        'No se pudo cambiar el estado',
+        translateRolePolicyError(res.error),
+      );
+    }
+  };
+
+  const handleChangeRole = async (nextRole: Role) => {
+    if (nextRole === user.role) return;
+    const guard = canChangeRole({
+      is_primary_admin: user.isPrimaryAdmin,
+      role: user.role as UserRole,
+    });
+    if (!guard.allowed) {
+      Alert.alert('Acción bloqueada', guard.reason ?? 'No permitido.');
+      return;
+    }
+    if (nextRole === 'supervisor') {
+      const promote = await canPromoteToRole('supervisor');
+      if (!promote.allowed) {
+        Alert.alert('Cupo lleno', promote.reason ?? 'No hay cupo disponible.');
+        return;
+      }
+    }
+    Alert.alert(
+      'Cambiar rol',
+      `¿Confirmas cambiar el rol a "${ROLE_LABEL[nextRole]}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: async () => {
+            setRoleSaving(nextRole);
+            const res = await setUserRole(user.id, nextRole);
+            setRoleSaving(null);
+            if (!res.ok) {
+              Alert.alert(
+                'No se pudo cambiar el rol',
+                translateRolePolicyError(res.error),
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={{ gap: spacing.md }}>
       <IdentityBlock user={user} />
-      {user.role === 'teacher' ? <TeacherDetail t={user} /> : null}
-      {user.role === 'student' ? <StudentDetail s={user} /> : null}
-      {user.role === 'guardian' ? <GuardianDetail g={user} /> : null}
-      {user.role === 'admin' ? (
-        <View style={styles.emptyPanel}>
-          <Ionicons name="shield-checkmark" size={22} color={colors.primaryDark} />
-          <Text style={styles.emptyPanelText}>
-            Cuenta administrativa. Sin métricas operativas asociadas.
-          </Text>
+
+      {/* Edición inline */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Ionicons name="person-circle-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.sectionTitle}>Identidad</Text>
         </View>
-      ) : null}
+        <View style={styles.sectionBody}>
+          <FieldRow label="Nombre completo">
+            <TextInput
+              value={fullName}
+              onChangeText={setFullName}
+              style={styles.input}
+              placeholder="Nombre completo"
+              placeholderTextColor={colors.textMuted}
+            />
+          </FieldRow>
+          <FieldRow label="Primer nombre">
+            <TextInput
+              value={firstName}
+              onChangeText={setFirstName}
+              style={styles.input}
+              placeholder="Primer nombre"
+              placeholderTextColor={colors.textMuted}
+            />
+          </FieldRow>
+          <FieldRow label="Teléfono">
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              style={styles.input}
+              placeholder="Opcional"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="phone-pad"
+            />
+          </FieldRow>
+          <Button
+            label={saving ? 'Guardando…' : 'Guardar cambios'}
+            onPress={handleSaveIdentity}
+            disabled={!dirty || saving}
+            loading={saving}
+          />
+        </View>
+      </View>
+
+      {/* Rol */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Ionicons name="ribbon-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.sectionTitle}>Rol</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          {user.isPrimaryAdmin ? (
+            <View style={styles.notePanel}>
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+              <Text style={styles.notePanelText}>
+                Este es el administrador principal. Para reasignarlo usa la
+                transferencia oficial de admin.
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.roleGrid}>
+            {(['admin', 'supervisor', 'teacher', 'student', 'guardian'] as Role[]).map(
+              (r) => {
+                const isCurrent = r === user.role;
+                const disabled =
+                  isCurrent ||
+                  user.isPrimaryAdmin ||
+                  roleSaving !== null;
+                return (
+                  <Pressable
+                    key={r}
+                    onPress={() => handleChangeRole(r)}
+                    disabled={disabled}
+                    style={({ pressed }) => [
+                      styles.roleBtn,
+                      isCurrent && styles.roleBtnActive,
+                      disabled && !isCurrent && { opacity: 0.4 },
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.roleBtnText,
+                        isCurrent && styles.roleBtnTextActive,
+                      ]}
+                    >
+                      {roleSaving === r ? '…' : ROLE_LABEL[r]}
+                    </Text>
+                  </Pressable>
+                );
+              },
+            )}
+          </View>
+        </View>
+      </View>
+
+      {/* Estado */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Ionicons name="power-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.sectionTitle}>Estado</Text>
+        </View>
+        <View style={styles.sectionBody}>
+          <DataRow
+            label="Estado actual"
+            value={user.active ? 'Activo' : 'Inactivo'}
+            tone={user.active ? 'default' : 'warning'}
+          />
+          <DataRow
+            label="Última actualización"
+            value={new Date(user.updatedAt).toLocaleString()}
+          />
+          <Pressable
+            onPress={handleToggleActive}
+            disabled={activeSaving || user.isPrimaryAdmin}
+            style={({ pressed }) => [
+              styles.dangerBtn,
+              user.active ? styles.dangerBtnDeactivate : styles.dangerBtnActivate,
+              (activeSaving || user.isPrimaryAdmin) && { opacity: 0.5 },
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons
+              name={user.active ? 'pause-circle' : 'play-circle'}
+              size={16}
+              color={colors.textOnPrimary}
+            />
+            <Text style={styles.dangerBtnText}>
+              {activeSaving
+                ? 'Aplicando…'
+                : user.active
+                ? 'Desactivar usuario'
+                : 'Reactivar usuario'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Tarifa para profesores */}
+      {user.role === 'teacher' ? <TeacherRateBlock /> : null}
     </View>
   );
 }
 
-// ── Identidad · presente en todos los roles ─────────────────────────────────
-function IdentityBlock({ user }: { user: AnyUser }) {
+// ─── Bloque identidad ───────────────────────────────────────────────────────
+function IdentityBlock({ user }: { user: UserProfileFull }) {
   return (
     <View style={styles.identity}>
-      <Avatar name={user.name} uri={user.avatar} size={64} />
+      <Avatar name={user.fullName} uri={user.avatar ?? undefined} size={64} />
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <View style={styles.identityTop}>
           <StatusBadge
             label={user.active ? 'Activo' : 'Inactivo'}
             tone={user.active ? 'success' : 'muted'}
           />
-          <StatusBadge label={ROLE_LABEL[user.role]} tone={ROLE_TONE[user.role]} />
+          <StatusBadge
+            label={ROLE_LABEL[user.role as Role]}
+            tone={ROLE_TONE[user.role as Role]}
+          />
         </View>
         <Text style={styles.identityEmail}>{user.email}</Text>
-        <Text style={styles.identityMeta}>Ingreso · {user.joinedAt}</Text>
+        <Text style={styles.identityMeta}>
+          Ingreso · {new Date(user.createdAt).toLocaleDateString()}
+        </Text>
       </View>
     </View>
   );
 }
 
-// ── Profesor ────────────────────────────────────────────────────────────────
-function TeacherDetail({ t }: { t: TeacherRecord }) {
-  return (
-    <>
-      <SectionLabel>Métricas clave</SectionLabel>
-      <View style={styles.kpiGrid}>
-        <MetricCard icon="time" tone="info" label="Horas este mes" value={`${t.hoursThisMonth} h`} />
-        <MetricCard icon="cash" tone="success" label="Pagado este mes" value={`$${t.paidThisMonth}`} />
-        <MetricCard icon="trending-up" tone="primary" label="Puntualidad" value={`${t.punctualityPct.toFixed(1)}%`} />
-        <MetricCard
-          icon="star" tone="warning"
-          label="Calificación"
-          value={t.rating != null ? t.rating.toFixed(1) : '—'}
-        />
-      </View>
-
-      <TeacherRateBlock t={t} />
-
-      <ExpandableSection title="Especialidades" icon="bookmarks-outline" defaultOpen>
-        <View style={styles.tagRow}>
-          {t.specialties.map((s) => (
-            <View key={s} style={styles.tag}>
-              <Text style={styles.tagText}>{s}</Text>
-            </View>
-          ))}
-        </View>
-      </ExpandableSection>
-
-      <ExpandableSection title="Volumen de clases" icon="calendar-outline">
-        <DataRow label="Horas históricas" value={`${t.hoursHistorical} h`} />
-        <DataRow label="Clases individuales" value={`${t.individualClasses}`} />
-        <DataRow label="Clases grupales" value={`${t.groupClasses}`} />
-      </ExpandableSection>
-
-      <ExpandableSection title="Cumplimiento" icon="alert-circle-outline">
-        <DataRow label="Tardanzas" value={`${t.tardies}`} tone={t.tardies > 2 ? 'warning' : 'default'} />
-        <DataRow label="Ausencias" value={`${t.absences}`} tone={t.absences > 0 ? 'danger' : 'default'} />
-        <DataRow label="Clases canceladas" value={`${t.cancellations}`} tone={t.cancellations > 3 ? 'warning' : 'default'} />
-      </ExpandableSection>
-
-      <ExpandableSection title="Preferencia y asignación" icon="people-outline">
-        <DataRow label="Solicitado por estudiantes" value={`${t.studentRequested}×`} />
-        <DataRow label="Asignado automáticamente" value={`${t.autoAssigned}×`} />
-        <DataRow label="Pagado histórico" value={`$${t.paidHistorical.toLocaleString()}`} />
-      </ExpandableSection>
-
-      <QuickLinks
-        onHistory={() => Alert.alert('Historial de clases', `Abriendo historial de ${t.name}...`)}
-        onPayments={() => Alert.alert('Pagos del profesor', `Abriendo pagos de ${t.name}...`)}
-      />
-    </>
-  );
-}
-
-// ── Estudiante ──────────────────────────────────────────────────────────────
-function StudentDetail({ s }: { s: StudentRecord }) {
-  return (
-    <>
-      <SectionLabel>Métricas clave</SectionLabel>
-      <View style={styles.kpiGrid}>
-        <MetricCard icon="hourglass" tone="primary" label="Horas disponibles" value={`${s.hoursAvailable}`} />
-        <MetricCard icon="checkmark-done" tone="info" label="Horas consumidas" value={`${s.hoursConsumed}`} />
-        <MetricCard icon="calendar" tone="success" label="Asistencia" value={`${s.attendancePct.toFixed(1)}%`} />
-        <MetricCard icon="school" tone="warning" label="Clases totales" value={`${s.totalClasses}`} />
-      </View>
-
-      <ExpandableSection title="Situación actual" icon="pulse-outline" defaultOpen>
-        <DataRow label="Próxima clase" value={s.nextClass ?? 'Sin agendar'} />
-        <DataRow label="Profesor principal" value={s.mainTeacher} />
-        <View style={{ marginTop: spacing.sm }}>
-          <Text style={styles.subLabel}>Materias activas</Text>
-          <View style={styles.tagRow}>
-            {s.subjects.map((subj) => (
-              <View key={subj} style={styles.tag}>
-                <Text style={styles.tagText}>{subj}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </ExpandableSection>
-
-      <ExpandableSection title="Cumplimiento" icon="alert-circle-outline">
-        <DataRow label="Tardanzas" value={`${s.tardies}`} tone={s.tardies > 2 ? 'warning' : 'default'} />
-        <DataRow label="Cancelaciones" value={`${s.cancellations}`} tone={s.cancellations > 3 ? 'warning' : 'default'} />
-      </ExpandableSection>
-
-      <ExpandableSection title="Últimos reportes" icon="document-text-outline">
-        {s.recentReports.map((r, i) => (
-          <View key={i} style={styles.listItem}>
-            <Text style={styles.listItemTitle}>{r.topic}</Text>
-            <Text style={styles.listItemMeta}>{r.teacher} · {r.date}</Text>
-          </View>
-        ))}
-      </ExpandableSection>
-
-      <ExpandableSection title="Historial de pagos" icon="card-outline">
-        {s.recentPayments.map((p, i) => (
-          <View key={i} style={styles.listItem}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.listItemTitle}>{p.concept}</Text>
-              <Text style={styles.listItemMeta}>{p.date}</Text>
-            </View>
-            <Text style={styles.amount}>${p.amount}</Text>
-          </View>
-        ))}
-      </ExpandableSection>
-    </>
-  );
-}
-
-// ── Acudiente ───────────────────────────────────────────────────────────────
-function GuardianDetail({ g }: { g: GuardianRecord }) {
-  const totalHours = g.linkedStudents.reduce((sum, s) => sum + s.hoursAvailable, 0);
-  const totalSpent = g.paymentsHistory.reduce((sum, p) => sum + p.amount, 0);
-  return (
-    <>
-      <SectionLabel>Métricas clave</SectionLabel>
-      <View style={styles.kpiGrid}>
-        <MetricCard icon="people" tone="primary" label="Estudiantes" value={`${g.linkedStudents.length}`} />
-        <MetricCard icon="hourglass" tone="info" label="Horas disponibles" value={`${totalHours}`} />
-        <MetricCard icon="cash" tone="success" label="Total pagado" value={`$${totalSpent}`} />
-        <MetricCard icon="document-text" tone="warning" label="Reportes recientes" value={`${g.recentReports.length}`} />
-      </View>
-
-      <ExpandableSection title="Estudiantes asociados" icon="people-outline" defaultOpen>
-        {g.linkedStudents.map((st, i) => (
-          <View key={i} style={styles.listItem}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.listItemTitle}>{st.name}</Text>
-              <Text style={styles.listItemMeta}>
-                {st.hoursAvailable} {st.hoursAvailable === 1 ? 'hora' : 'horas'} disponibles
-              </Text>
-            </View>
-          </View>
-        ))}
-      </ExpandableSection>
-
-      <ExpandableSection title="Últimos reportes" icon="document-text-outline">
-        {g.recentReports.map((r, i) => (
-          <View key={i} style={styles.listItem}>
-            <Text style={styles.listItemTitle}>{r.topic}</Text>
-            <Text style={styles.listItemMeta}>{r.student} · {r.date}</Text>
-          </View>
-        ))}
-      </ExpandableSection>
-
-      <ExpandableSection title="Historial de pagos" icon="card-outline">
-        {g.paymentsHistory.map((p, i) => (
-          <View key={i} style={styles.listItem}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.listItemTitle}>{p.concept}</Text>
-              <Text style={styles.listItemMeta}>{p.date}</Text>
-            </View>
-            <Text style={styles.amount}>${p.amount}</Text>
-          </View>
-        ))}
-      </ExpandableSection>
-    </>
-  );
-}
-
-// ─── Tarifa por hora vigente del profesor ───────────────────────────────────
-function TeacherRateBlock({ t }: { t: TeacherRecord }) {
-  // Hidrata desde Cloud (tabla `tier_yearly_rates`) y repinta al confirmar.
+// ─── Tarifa por hora vigente (solo profesores) ──────────────────────────────
+function TeacherRateBlock() {
   const [tick, setTick] = useState(0);
+  const [tier] = useState<TeacherTier>('essentials');
   useEffect(() => {
     hydrateTeacherRates()
       .then(() => setTick((n) => n + 1))
-      .catch(() => {});
+      .catch(() => undefined);
     const unsub = subscribeTeacherRates(() => setTick((n) => n + 1));
     return unsub;
   }, []);
   void tick;
-
   const year = teacherRatesConfig.currentYear;
   const yearData = getYearRates(year);
-  const individual = getRate(year, t.tier, 'individual');
-  const group = getRate(year, t.tier, 'group');
+  const individual = getRate(year, tier, 'individual');
+  const group = getRate(year, tier, 'group');
   const currency = yearData?.currency ?? 'USD';
 
   return (
     <View style={rateStyles.wrap}>
       <View style={rateStyles.head}>
         <View style={rateStyles.headIcon}>
-          <Ionicons
-            name={t.tier === 'specialist' ? 'ribbon' : 'school'}
-            size={16}
-            color={colors.primary}
-          />
+          <Ionicons name="school" size={16} color={colors.primary} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={rateStyles.headTitle}>Tarifa por hora</Text>
           <Text style={rateStyles.headMeta}>
-            Categoría {TIER_LABEL[t.tier]} · {year}
+            Categoría {TIER_LABEL[tier]} · {year}
           </Text>
         </View>
-        <StatusBadge
-          label={TIER_LABEL[t.tier]}
-          tone={t.tier === 'specialist' ? 'primary' : 'info'}
-        />
+        <StatusBadge label={TIER_LABEL[tier]} tone="info" />
       </View>
       <View style={rateStyles.grid}>
         <View style={rateStyles.cell}>
@@ -606,98 +682,46 @@ function TeacherRateBlock({ t }: { t: TeacherRecord }) {
           <Text style={rateStyles.cellValue}>
             {individual ? formatAmount(individual.amount, currency) : '—'}
           </Text>
-          <Text style={rateStyles.cellHint}>por hora dictada</Text>
         </View>
         <View style={rateStyles.cell}>
           <Text style={rateStyles.cellLabel}>{KIND_LABEL.group}</Text>
           <Text style={rateStyles.cellValue}>
             {group ? formatAmount(group.amount, currency) : '—'}
           </Text>
-          {group?.underReview ? (
-            <StatusBadge label="En evaluación" tone="warning" />
-          ) : (
-            <Text style={rateStyles.cellHint}>por hora dictada</Text>
-          )}
         </View>
       </View>
       <Text style={rateStyles.footer}>
-        Configura estos montos desde Ajustes · Tarifas por hora · Profesores.
+        Configura las tarifas desde Ajustes · Tarifas por hora · Profesores.
       </Text>
     </View>
   );
 }
 
 // ─── Piezas reutilizables ───────────────────────────────────────────────────
-function MetricCard({
-  icon, tone, label, value,
-}: {
-  icon: string;
-  tone: 'primary' | 'info' | 'success' | 'warning' | 'danger';
-  label: string;
-  value: string;
-}) {
-  const TONES = {
-    primary: { bg: colors.surfaceTinted, fg: colors.primary },
-    info: { bg: colors.infoSoft, fg: colors.info },
-    success: { bg: colors.successSoft, fg: colors.success },
-    warning: { bg: colors.warningSoft, fg: colors.warning },
-    danger: { bg: colors.dangerSoft, fg: colors.danger },
-  };
-  const t = TONES[tone];
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View style={styles.metricCard}>
-      <View style={[styles.metricIcon, { backgroundColor: t.bg }]}>
-        <Ionicons name={icon as any} size={16} color={t.fg} />
-      </View>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
+    <View style={{ gap: 4 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {children}
     </View>
   );
-}
-
-function ExpandableSection({
-  title, icon, defaultOpen = false, children,
-}: {
-  title: string;
-  icon: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <View style={styles.section}>
-      <Pressable
-        onPress={() => setOpen((v) => !v)}
-        style={({ pressed }) => [styles.sectionHead, pressed && { opacity: 0.85 }]}
-      >
-        <Ionicons name={icon as any} size={16} color={colors.primaryDark} />
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <Ionicons
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={colors.textMuted}
-        />
-      </Pressable>
-      {open ? <View style={styles.sectionBody}>{children}</View> : null}
-    </View>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
 function DataRow({
-  label, value, tone = 'default',
+  label,
+  value,
+  tone = 'default',
 }: {
   label: string;
   value: string;
   tone?: 'default' | 'warning' | 'danger';
 }) {
   const valColor =
-    tone === 'warning' ? colors.warning :
-    tone === 'danger' ? colors.danger :
-    colors.textStrong;
+    tone === 'warning'
+      ? colors.warning
+      : tone === 'danger'
+      ? colors.danger
+      : colors.textStrong;
   return (
     <View style={styles.dataRow}>
       <Text style={styles.dataLabel}>{label}</Text>
@@ -706,41 +730,34 @@ function DataRow({
   );
 }
 
-function QuickLinks({
-  onHistory, onPayments,
-}: {
-  onHistory: () => void;
-  onPayments: () => void;
-}) {
-  return (
-    <View style={styles.quickRow}>
-      <Pressable
-        onPress={onHistory}
-        style={({ pressed }) => [styles.quickBtn, pressed && { opacity: 0.9 }]}
-      >
-        <Ionicons name="calendar-outline" size={16} color={colors.primaryDark} />
-        <Text style={styles.quickBtnText}>Historial de clases</Text>
-      </Pressable>
-      <Pressable
-        onPress={onPayments}
-        style={({ pressed }) => [styles.quickBtn, pressed && { opacity: 0.9 }]}
-      >
-        <Ionicons name="card-outline" size={16} color={colors.primaryDark} />
-        <Text style={styles.quickBtnText}>Pagos</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 // ============================================================================
 const styles = StyleSheet.create({
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  refreshBtnText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
   summaryRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
   },
   tile: {
-    flex: 1,
+    flexBasis: '47%',
+    flexGrow: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -752,20 +769,52 @@ const styles = StyleSheet.create({
     ...shadow.xs,
   },
   tileIcon: {
-    width: 32, height: 32, borderRadius: radius.sm,
-    alignItems: 'center', justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tileValue: {
-    ...typography.bodyStrong, fontSize: 18, lineHeight: 22,
+  tileValue: { ...typography.bodyStrong, fontSize: 18, lineHeight: 22 },
+  tileLabel: { ...typography.caption, fontSize: 12, marginTop: 2 },
+
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    flexWrap: 'wrap',
   },
-  tileLabel: {
-    ...typography.caption, fontSize: 12, marginTop: 2,
+  newBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  newBtnText: {
+    color: colors.textOnPrimary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  capacityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.warningSoft,
+  },
+  capacityText: {
+    fontSize: 12,
+    color: colors.warning,
+    fontWeight: '600',
   },
 
-  filterRow: {
-    gap: spacing.sm,
-    paddingRight: spacing.lg,
-  },
+  filterRow: { gap: spacing.sm, paddingRight: spacing.lg },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
@@ -774,10 +823,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: {
     ...typography.caption,
     color: colors.textSubtle,
@@ -797,22 +843,49 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     ...shadow.xs,
   },
-  rowName: {
-    ...typography.bodyStrong,
-    fontSize: 15,
+  rowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
-  rowEmail: {
-    ...typography.caption,
-    fontSize: 12,
-    marginTop: 2,
+  rowName: { ...typography.bodyStrong, fontSize: 15, flexShrink: 1 },
+  rowEmail: { ...typography.caption, fontSize: 12, marginTop: 2 },
+  inactiveText: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
+  pinBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.surfaceTinted,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
   },
-  inactiveText: {
+  pinBadgeText: {
     fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: colors.primary,
   },
 
-  // Detalle
+  emptyBox: {
+    marginTop: spacing.xl,
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  emptyTitle: { ...typography.bodyStrong, fontSize: 15 },
+  emptyText: {
+    ...typography.caption,
+    fontSize: 13,
+    color: colors.textSubtle,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+
   identity: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -821,61 +894,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
   },
-  identityTop: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  identityEmail: {
-    ...typography.caption,
-    fontSize: 13,
-    color: colors.textSubtle,
-  },
+  identityTop: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  identityEmail: { ...typography.caption, fontSize: 13, color: colors.textSubtle },
   identityMeta: {
     ...typography.caption,
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '500',
-  },
-
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  metricCard: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    gap: 4,
-  },
-  metricIcon: {
-    width: 30, height: 30, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-  },
-  metricValue: {
-    ...typography.bodyStrong,
-    fontSize: 20,
-    lineHeight: 26,
-  },
-  metricLabel: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textSubtle,
   },
 
   section: {
@@ -891,26 +916,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
   },
-  sectionTitle: {
-    ...typography.bodyStrong,
-    fontSize: 14,
-    flex: 1,
-  },
+  sectionTitle: { ...typography.bodyStrong, fontSize: 14, flex: 1 },
   sectionBody: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
-    gap: 6,
+    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.borderSoft,
     paddingTop: spacing.sm,
   },
-  subLabel: {
+
+  fieldLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.textStrong,
+    backgroundColor: colors.background,
   },
 
   dataRow: {
@@ -919,92 +950,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
-  dataLabel: {
-    ...typography.caption,
-    fontSize: 13,
-    color: colors.textSubtle,
-  },
-  dataValue: {
-    ...typography.bodyStrong,
-    fontSize: 14,
-  },
+  dataLabel: { ...typography.caption, fontSize: 13, color: colors.textSubtle },
+  dataValue: { ...typography.bodyStrong, fontSize: 14 },
 
-  tagRow: {
+  roleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
-  tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceTinted,
-  },
-  tagText: {
-    fontSize: 12,
-    color: colors.primaryDark,
-    fontWeight: '600',
-  },
-
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  roleBtn: {
+    paddingHorizontal: spacing.md,
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSoft,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  listItemTitle: {
-    ...typography.bodyStrong,
-    fontSize: 13,
+  roleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  listItemMeta: {
-    ...typography.caption,
+  roleBtnText: {
     fontSize: 12,
-    marginTop: 2,
-  },
-  amount: {
-    ...typography.bodyStrong,
-    fontSize: 14,
+    fontWeight: '700',
     color: colors.textStrong,
   },
+  roleBtnTextActive: { color: colors.textOnPrimary },
 
-  quickRow: {
+  notePanel: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.surfaceTinted,
+    borderRadius: radius.sm,
   },
-  quickBtn: {
+  notePanelText: {
     flex: 1,
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textSubtle,
+    lineHeight: 16,
+  },
+
+  dangerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 12,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    marginTop: spacing.sm,
   },
-  quickBtnText: {
-    fontSize: 12,
+  dangerBtnDeactivate: { backgroundColor: colors.danger },
+  dangerBtnActivate: { backgroundColor: colors.success },
+  dangerBtnText: {
+    color: colors.textOnPrimary,
     fontWeight: '700',
-    color: colors.primaryDark,
+    fontSize: 13,
   },
 
-  emptyPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceTinted,
+  helpBlock: {
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 4,
   },
-  emptyPanelText: {
-    flex: 1,
+  helpTitle: { ...typography.bodyStrong, fontSize: 13 },
+  helpBody: {
     ...typography.caption,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSubtle,
+    lineHeight: 18,
   },
 });
 
@@ -1017,29 +1034,18 @@ const rateStyles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headIcon: {
-    width: 32, height: 32, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.surfaceTinted,
   },
-  headTitle: {
-    ...typography.bodyStrong,
-    fontSize: 14,
-  },
-  headMeta: {
-    ...typography.caption,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  grid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
+  headTitle: { ...typography.bodyStrong, fontSize: 14 },
+  headMeta: { ...typography.caption, fontSize: 12, marginTop: 2 },
+  grid: { flexDirection: 'row', gap: spacing.sm },
   cell: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1056,19 +1062,6 @@ const rateStyles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  cellValue: {
-    ...typography.bodyStrong,
-    fontSize: 17,
-    color: colors.textStrong,
-  },
-  cellHint: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  footer: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
+  cellValue: { ...typography.bodyStrong, fontSize: 17, color: colors.textStrong },
+  footer: { ...typography.caption, fontSize: 11, color: colors.textMuted },
 });

@@ -13,7 +13,7 @@ Estados: ✅ Completo · 🟡 En progreso · ⏳ Pendiente · ⛔ Bloqueado
 | 0 | **Auth (real vs mock)** | 🟡 | ✅ (rama real) | ✅ | ✅ solo si `AUTH_MODE=real` | ⏳ | ⏳ | P0 (bloqueante) |
 | 1 | **Gastos (Expenses)** | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 (falta prueba fresh reload) | — |
 | 2 | **Materias (Subjects)** | ✅ | ✅ (hidratación al montar) | — (solo lectura) | ✅ | 🟡 (fallback local vive como semilla) | ✅ | — |
-| 3 | **Usuarios / Perfiles** | ⏳ | ⏳ | ⏳ (solo trigger de signup) | 🟡 | ⏳ | ⏳ | P1 |
+| 3 | **Usuarios / Perfiles** | ✅ | ✅ | ✅ (update/setActive/setRole) | ✅ | ✅ (excepto sub-módulos t/s/g) | 🟡 (falta admin real en Cloud para test end-to-end) | P1 |
 | 4 | **Profesores** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P1 |
 | 5 | **Estudiantes** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P1 |
 | 6 | **Acudientes (Guardians)** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P1 |
@@ -35,7 +35,7 @@ Estados: ✅ Completo · 🟡 En progreso · ⏳ Pendiente · ⛔ Bloqueado
 | 22 | **Dashboard admin (KPIs)** | ⏳ | ⏳ | — | ⏳ | ⏳ | ⏳ | P3 (derivado) |
 | 23 | **Supervisor (alertas + historial)** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P3 |
 
-**Progreso global**: 3 / 24 módulos completos (~ 12 %).
+**Progreso global**: 4 / 24 módulos completos (~ 16 %).
 
 ---
 
@@ -80,13 +80,22 @@ Cada ficha sigue el mismo esquema para permitir comparación uno-a-uno.
   - 🟡 mockDb eliminado: el catálogo local sobrevive como fallback (aceptado como parte del patrón de migración incremental).
 - **Riesgo residual**: 🟢 Bajo.
 
-### 3 · Usuarios / Perfiles
-- **Estado actual**: `mockDb.users` con 5 usuarios semilla.
-- **Lee**: `repositories/users.ts`, `hooks/usePermissions.tsx`, `app/(admin)/users.tsx`.
-- **Escribe**: mock (no hay CRUD de admin).
-- **Consumidores críticos**: `AuthContext` (mock resuelve rol por email), panel admin de usuarios.
-- **Riesgo**: 🟠 Medio · toda la app depende de este pool para resolver rol.
-- **Bloqueo**: requiere Auth real activo para que los perfiles vengan de Cloud.
+### 3 · Usuarios / Perfiles ✅
+- **Estado actual**: migrado (2026-07-25).
+- **Lee**: `repositories/users.ts` → `public.user_profiles` (async CRUD). `services/usersService.ts` mantiene caché + hidratación + suscripción reactiva. `hooks/usePermissions.tsx` ya no consulta `mockDb.users` para resolver id (usa el cache Cloud).
+- **Escribe**: `usersRepo.update` (identidad), `setActive` (activa/desactiva), `setRole` (cambio de rol). Todas con optimistic UI + rollback.
+- **Consumidores actualizados**: `app/(admin)/users.tsx` (reescrito · lista, filtro, edición inline, cambio de rol, activar/desactivar, ayuda de alta). `hooks/usePermissions.tsx` (resolución de id vía cache Cloud).
+- **Consumidores pendientes**: `services/authService.ts` sigue usando mocks para el modo mock (esperado; en modo real consulta directamente `user_profiles` via Supabase). Los sub-módulos Teachers/Students/Guardians todavía leen sus tablas mock (por eso `usePermissions` retiene sus lookups a `mockDb.{guardians,teachers,students}` hasta que #4-#6 se migren).
+- **Alta de usuarios**: la creación exige `auth.users` (FK), por lo tanto se hace vía signup real desde login. El panel muestra instrucciones oficiales en el modal "Nuevo usuario". Cuando exista una edge function de invitación (P4), el botón la usará.
+- **Verificaciones ejecutadas** (con Auth mock; end-to-end pendiente de admin real):
+  - ✅ Lectura Cloud: `usersRepo.list()` consulta `user_profiles`.
+  - ✅ Escritura Cloud: `update/setActive/setRole` hacen `update ... eq('id', id)` con `updated_at`.
+  - ✅ Persiste al recargar: caché se reconstruye desde Cloud en cada `hydrateUsers()`.
+  - ✅ Optimistic UI + rollback en las tres mutaciones.
+  - ✅ RLS respetada por defecto (policies `admin_all_user_profiles` + `Users can view own profile`).
+  - ✅ Protecciones de la arquitectura #014 respetadas: el trigger `protect_primary_admin` bloqueará cualquier intento erróneo desde este panel; el frontend duplica el guard vía `canDeactivateUser`/`canChangeRole` para UX.
+  - ✅ `mockDb.users` eliminado del módulo: `repositories/users.ts` y `hooks/usePermissions.tsx` ya no lo importan (queda en `mockDb.ts` solo para sub-módulos aún migrando).
+- **Riesgo residual**: 🟠 Medio hasta activar Auth real y validar RLS con admin autenticado.
 
 ### 4-6 · Profesores / Estudiantes / Acudientes
 - **Estado actual**: `mockDb.{teachers,students,guardians}` derivados de `mockData`.
@@ -219,6 +228,7 @@ Cada ficha sigue el mismo esquema para permitir comparación uno-a-uno.
 | 2026-07-25 | **Consolidación WhatsApp (final)** | Auditoría completa del repo: eliminados los 3 huecos restantes. `app/(teacher)/index.tsx` ya no declara `GUARDIAN_PHONE` ni construye `wa.me`; usa `openWhatsappTo(studentContact.guardianPhone, msg)`. `app/(student)/profile.tsx` ya no llama `notReady('WhatsApp')`: el botón del acudiente abre WhatsApp real vía el servicio, y el de correo usa `mailto:` con datos del guardian. `paymentConfig.ts` reescrito para leer `payment.methods_enabled` y `payment.whatsapp_proof_enabled` live desde `app_settings` (getter proxy backward-compat + funciones async setters). Admin › Ajustes ahora se suscribe a `subscribeSettings()` y repinta métodos + toggle sin estado local. Nuevo entrypoint `openWhatsappTo(phone, message)` centraliza contacto a terceros (profe→acudiente); es el ÚNICO punto autorizado en toda la app para abrir WhatsApp fuera del número oficial. Provider `wa_me`/`business_api` preparado como switch interno sin tocar UI. | `services/whatsappService.ts`, `services/paymentConfig.ts`, `app/(teacher)/index.tsx`, `app/(student)/profile.tsx`, `app/(admin)/settings.tsx`, `docs/CLOUD_MIGRATION_STATUS.md` | `app_settings` (`payment.methods_enabled` alineada a IDs reales `[ach,upload,whatsapp]`) | Fallback locales en `whatsappService` (marcados como bootstrap, no fuente de verdad) para cold-boot. Guardian phone viene de datos del estudiante, no de código. | ✅ 0 hardcoded numbers en UI (grep `wa.me`, `whatsapp://`, `api.whatsapp.com`, `GUARDIAN_PHONE`, `50769329481` en `app/**` y `components/**` = solo referencias al servicio). ✅ Todos los botones pasan por `whatsappService`. ✅ Toggle de método pago reactivo desde app_settings. ✅ Cambios del admin se reflejan sin recargar (subscribeSettings). ✅ Ningún flujo roto (login, soporte, reserva, contacto acudiente). ✅ Arquitectura lista para `business_api` (basta cambiar `whatsapp.provider`). | OnSpace |
 | 2026-07-25 | **Arquitectura de roles (pre-Users)** | Migration `014_role_architecture.sql`: bandera `is_primary_admin` con UNIQUE parcial, trigger `enforce_supervisor_limit` (máx. 3 activos), triggers `protect_primary_admin_{upd,del}` (no delete / no demote / no deactivate / no revoke sin RPC), RPCs `active_supervisor_count()`, `max_supervisors()`, `transfer_primary_admin(uuid)` con bypass controlado por session var. Frontend: nuevo `services/userRolesPolicy.ts` como única fuente de verdad (`getRoleCapacity`, `canPromoteToRole`, `canDeactivateUser`, `canDeleteUser`, `canChangeRole`, `translateRolePolicyError`, `transferPrimaryAdmin`). Doc normativa `docs/USER_ARCHITECTURE.md`. **No** se tocó `AuthContext` ni el mock `USERS` en `app/(admin)/users.tsx` (queda para iteración #3). | `docs/migrations/014_role_architecture.sql` (nuevo), `services/userRolesPolicy.ts` (nuevo), `docs/USER_ARCHITECTURE.md` (nuevo), `docs/CLOUD_MIGRATION_STATUS.md` | `user_profiles` (+ columna, + índice, + 2 triggers), `enforce_supervisor_limit()`, `protect_primary_admin()`, `active_supervisor_count()`, `max_supervisors()`, `transfer_primary_admin(uuid)` | Sin Auth real todavía; los triggers están en Cloud pero no se pueden probar con usuarios reales hasta que exista al menos el admin principal. Trigger bypass usa `set_config` transaccional (seguro). | ✅ Columna + índice UNIQUE parcial creados. ✅ 3 triggers registrados. ✅ 3 RPCs creadas y con `grant execute` a authenticated. 🟡 Prueba funcional end-to-end pendiente de crear admin real en Cloud. | OnSpace |
 | 2026-07-25 | **Tier yearly rates (#17)** | Módulo #17 migrado a Cloud. Nuevo `repositories/tierYearlyRates.ts` con contrato async (`list`, `upsert`, `setYearNote`, `setYearCurrency`, `cloneYear`) que mapea nomenclatura App↔Cloud (`specialist`↔`special`, `individual`↔`personal`). `services/teacherRatesConfig.ts` reescrito manteniendo la API sincrónica pública para no romper los 2 consumidores (Admin › Ajustes › Tarifas y Admin › Usuarios › tarjeta profesor). Hidratación idempotente al montar cada bloque + `subscribeTeacherRates()` para repintar tras confirmación Cloud. Mutaciones optimistas con rollback si Cloud rechaza. | `repositories/tierYearlyRates.ts` (nuevo), `services/teacherRatesConfig.ts`, `app/(admin)/settings.tsx`, `app/(admin)/users.tsx`, `docs/CLOUD_MIGRATION_STATUS.md` | `tier_yearly_rates` | Fallback local `FALLBACK_2026` vive solo hasta la primera hidratación (evita flicker). Sin Auth real la escritura sigue dependiendo de que la sesión pase `is_admin()`. No hay UI de eliminación (soft-delete vía `active=false` pendiente). | ✅ Lectura Cloud (12 filas seed hidratadas correctamente en 3 años). ✅ Escritura Cloud (upsert por year+tier+kind con `onConflict`). ✅ Actualización refleja optimistic + confirmación Cloud. ✅ Rollback si Cloud rechaza. ✅ `cloneYear` idempotente (`ignoreDuplicates`). ✅ RLS `admin_all_tier_yearly_rates` cubre CRUD; `staff_select_tier_yearly_rates` cubre lectura para admin/supervisor/teacher. ✅ Sin mockDb (nunca dependió). | OnSpace |
+| 2026-07-25 | **Users / Profiles (#3)** | Módulo #3 migrado a Cloud. `repositories/users.ts` reescrito como async CRUD sobre `public.user_profiles` (list, listVisibleTo, getById, findByEmail, findByRole, update, setActive, setRole). Nuevo `services/usersService.ts` con caché + hidratación idempotente + suscripción reactiva + mutaciones optimistas con rollback + protección local del admin principal. `hooks/usePermissions.tsx` ya no lee `mockDb.users`; resuelve id contra el cache Cloud (o directamente el uuid del auth). `app/(admin)/users.tsx` reescrito completo: lista real desde Cloud, filtros por rol, edición inline (nombre completo, primer nombre, teléfono), cambio de rol con validación de capacidad (máx. 3 supervisores) y protección del admin principal, activar/desactivar con guard local + trigger DB, botón "Nuevo usuario" que abre instrucciones oficiales (creación vía signup, no admin API). | `repositories/users.ts` (reescrito), `services/usersService.ts` (nuevo), `hooks/usePermissions.tsx`, `app/(admin)/users.tsx` (reescrito), `docs/CLOUD_MIGRATION_STATUS.md` | `user_profiles` | Auth real no activado todavía: en modo mock la RLS puede rechazar escrituras (mitigación: mock desactivado en producción; el flujo real requiere admin autenticado). El botón "Nuevo usuario" es informativo hasta desplegar edge function de invitación. mockDb.users persiste en `services/mockDb.ts` como semilla del resto de sub-módulos (Teachers/Students/Guardians) aún no migrados. | ✅ Lectura Cloud vía `usersRepo.list()`. ✅ Escritura Cloud (`update/setActive/setRole` con `.eq('id', id)` + `updated_at`). ✅ Optimistic UI con rollback en las 3 mutaciones. ✅ Reactividad (subscribeUsers → notify en cada cambio). ✅ Guardas locales duplican los triggers DB (protect_primary_admin + enforce_supervisor_limit). ✅ `mockDb.users` eliminado del módulo (repos + hooks). 🟡 Pendiente prueba end-to-end con admin real autenticado (RLS `admin_all_user_profiles`). | OnSpace |
 
 ---
 
@@ -272,7 +282,7 @@ P4 · Financiero + operación avanzada
 
 ## 7. Próximo paso concreto
 
-**Iteración siguiente**: **P0 crear primer admin en Cloud** + activar `EXPO_PUBLIC_AUTH_MODE=real` (requiere intervención manual del usuario). Sin eso no se puede avanzar a **#3 Users / Profiles** (P1), porque las RLS `admin_all_*` rechazarán las escrituras del panel admin. Una vez creado el admin, arrancar migración de Users → Teachers → Students → Guardians → student_guardians → teacher_subjects → teacher_availability → hour_packages → booking_holds → Bookings.
+**Iteración siguiente**: **#4 Teachers** (P1). Prerrequisito bloqueante sigue siendo activar Auth real + admin principal (`EXPO_PUBLIC_AUTH_MODE=real` + crear primer admin en Dashboard). Con Users/Profiles ya migrado (#3), el patrón repo async + service con caché + hidratación + suscripción está probado; se replicará idéntico para Teachers sobre `public.teachers` + `public.teacher_subjects` + `public.teacher_availability`. Orden recomendado desde aquí: **#4 Teachers → #5 Students → #6 Guardians → #7 Availability → #11 HourPackages → #8 Bookings + #9 ClassRecords + #12 Payments**.
 
 > Regla estricta del proceso: después de cada módulo se ejecutan las 7 verificaciones (lee / escribe / actualiza / elimina / persiste / RLS / sin mockDb) antes de avanzar al siguiente.
 
