@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,13 @@ import {
   PAYMENT_METHODS,
   paymentConfig,
   setWhatsappProofEnabled,
+  isPaymentMethodEnabled,
   type PaymentMethodOption,
 } from '@/services/paymentConfig';
+import {
+  hydrateAppSettings,
+  subscribeSettings,
+} from '@/services/appSettingsService';
 import {
   teacherRatesConfig,
   getYearRates,
@@ -49,13 +54,21 @@ const OPERATIONAL = [
 ];
 
 export default function SettingsScreen() {
-  const [waEnabled, setWaEnabled] = useState<boolean>(
-    paymentConfig.whatsappProofEnabled,
-  );
+  // Re-render reactivo cuando cambia cualquier valor de app_settings.
+  const [settingsTick, setSettingsTick] = useState(0);
+
+  useEffect(() => {
+    hydrateAppSettings().catch(() => {});
+    const unsub = subscribeSettings(() => setSettingsTick((t) => t + 1));
+    return unsub;
+  }, []);
+
+  // Valor live desde app_settings (nunca cacheado en estado local).
+  const waEnabled = paymentConfig.whatsappProofEnabled;
 
   const toggleWhatsapp = (v: boolean) => {
-    setWhatsappProofEnabled(v);
-    setWaEnabled(v);
+    // Optimistic + rollback los maneja el servicio; el subscribe repinta.
+    setWhatsappProofEnabled(v).catch(() => {});
   };
 
   return (
@@ -124,9 +137,9 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+      <View style={{ gap: spacing.sm, marginTop: spacing.md }} key={`methods-${settingsTick}`}>
         {PAYMENT_METHODS.map((m) => (
-          <MethodRow key={m.id} method={m} />
+          <MethodRow key={m.id} method={m} active={isPaymentMethodEnabled(m.id)} />
         ))}
       </View>
 
@@ -398,8 +411,7 @@ function TeacherRatesBlock() {
   );
 }
 
-function MethodRow({ method }: { method: PaymentMethodOption }) {
-  const active = method.enabled;
+function MethodRow({ method, active }: { method: PaymentMethodOption; active: boolean }) {
   return (
     <Card>
       <View style={styles.row}>

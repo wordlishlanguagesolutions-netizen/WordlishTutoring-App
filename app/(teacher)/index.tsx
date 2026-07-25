@@ -6,8 +6,6 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
-  Alert,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
@@ -29,7 +27,9 @@ import {
   teacherTodayClasses,
   teacherActiveClass,
   teacherPendingReports,
+  studentContact,
 } from '@/services/mockData';
+import { openWhatsappTo } from '@/services/whatsappService';
 import { POLICIES } from '@/constants/policies';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookings } from '@/hooks/useBookings';
@@ -50,7 +50,9 @@ type FlowStep =
   | 'report_pending'
   | 'report_sent';
 
-const GUARDIAN_PHONE = '+50765551234';
+// El teléfono del acudiente proviene de los datos del estudiante en
+// clase (perfil del guardian). No se declara ningún número aquí; toda
+// apertura de WhatsApp pasa por `openWhatsappTo()` del servicio único.
 const WAIT_SNOOZE_MS = 5 * 60_000;
 
 function fmtHm(ts: number): string {
@@ -144,14 +146,10 @@ export default function TeacherHome() {
   };
 
   const handleWhatsApp = () => {
-    const msg = encodeURIComponent(
-      `Hola, te contactamos desde Wordlish. La clase ya inició y aún no vemos al estudiante conectado.`,
-    );
-    const url = `https://wa.me/${GUARDIAN_PHONE.replace(/[^0-9]/g, '')}?text=${msg}`;
+    const msg =
+      'Hola, te contactamos desde Wordlish. La clase ya inició y aún no vemos al estudiante conectado.';
     logEvent(`WhatsApp al acudiente · ${fmtHm(Date.now())}`);
-    Linking.openURL(url).catch(() =>
-      Alert.alert('WhatsApp', 'No se pudo abrir WhatsApp en este dispositivo.'),
-    );
+    openWhatsappTo(studentContact.guardianPhone, msg);
   };
 
   const handleEndClass = () => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Alert, Linking } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Card, Avatar, StatusBadge, SupportRow } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
@@ -12,6 +12,7 @@ import {
   ContactChannel,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
+import { openWhatsappTo } from '@/services/whatsappService';
 
 export default function StudentProfile() {
   const { logout } = useAuth();
@@ -234,10 +235,27 @@ function TeacherRow({ name, avatar }: { name: string; avatar: string }) {
 }
 
 function GuardianModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  // Arquitectura lista: en fase siguiente, cada botón invocará
-  // pushService.send(), sendWhatsapp() o sendEmail() del guardian.
+  // Push queda pendiente hasta integrar Expo Push / FCM / APNs.
   const notReady = (channel: string) =>
     Alert.alert(channel, 'Integración pendiente. Se enviará por este medio en la próxima fase.');
+
+  // WhatsApp pasa por el servicio único (número desde app_settings solo
+  // para el asesor oficial; aquí usamos el teléfono del acudiente que
+  // viene de los datos del estudiante).
+  const handleWhatsApp = () => {
+    openWhatsappTo(
+      studentContact.guardianPhone,
+      `Hola ${studentContact.guardian.split(' ')[0]}, te contacto desde la app de Wordlish.`,
+    );
+  };
+
+  // Correo abre el cliente nativo con el email real del acudiente.
+  const handleEmail = () => {
+    Linking.openURL(`mailto:${studentContact.guardianEmail}`).catch(() =>
+      Alert.alert('Correo', 'No se pudo abrir el cliente de correo.'),
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalBg}>
@@ -266,12 +284,9 @@ function GuardianModal({ visible, onClose }: { visible: boolean; onClose: () => 
           </View>
           <View style={styles.modalActions}>
             <ContactAction icon="notifications" label="Push" onPress={() => notReady('Push')} />
-            <ContactAction icon="logo-whatsapp" label="WhatsApp" onPress={() => notReady('WhatsApp')} />
-            <ContactAction icon="mail" label="Correo" onPress={() => notReady('Correo')} />
+            <ContactAction icon="logo-whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
+            <ContactAction icon="mail" label="Correo" onPress={handleEmail} />
           </View>
-          <Text style={[typography.caption, { textAlign: 'center', marginTop: spacing.md }]}>
-            Integraciones listas para la próxima fase.
-          </Text>
         </View>
       </View>
     </Modal>
