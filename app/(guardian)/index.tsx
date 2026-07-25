@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
@@ -15,6 +14,7 @@ import { Avatar } from '@/components/ui';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { linkedStudents, currentGuardian, PAYMENT_STATUS } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
+import { openZoom, getZoomUrl } from '@/services/zoomService';
 import { publicClassStatus, type InternalClassStage } from '@/constants/designPhilosophy';
 
 // ============================================================================
@@ -77,11 +77,9 @@ export default function GuardianHome() {
     stage === 'teacher_online' ||
     stage === 'starting_soon';
 
-  const handleEnter = () =>
-    Alert.alert(
-      'Ver clase',
-      'Se abrirá la sesión de Zoom cuando conectemos la integración.',
-    );
+  // Abre el enlace oficial de Zoom desde services/zoomService (única
+  // fuente de verdad, leída de public.app_settings.zoom.official_link).
+  const handleEnter = () => openZoom(getZoomUrl());
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>

@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
+import { Avatar, PageContainer, WebTwoColumn, ZoomButton } from '@/components/ui';
 import { CoachBanner } from '@/components/teacher/CoachBanner';
 import { GrowthCard } from '@/components/teacher/GrowthCard';
 import { TeacherHint } from '@/components/teacher/TeacherHint';
@@ -291,6 +291,12 @@ export default function TeacherHome() {
       </View>
 
       <Text style={styles.stepText}>{stepLabel}</Text>
+
+      {step !== 'report_sent' && step !== 'report_pending' && step !== 'ended' ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <ZoomButton variant="secondary" label="Volver a Zoom" />
+        </View>
+      ) : null}
 
       {step === 'screenshot_pending' ? (
         <>
