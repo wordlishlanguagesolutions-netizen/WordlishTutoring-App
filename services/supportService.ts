@@ -1,18 +1,18 @@
-// Wordlish · Soporte único vía WhatsApp
-// -----------------------------------------------------------------------------
-// Punto de entrada único para todo contacto con el asesor de Wordlish. Un solo
-// clic abre WhatsApp con un mensaje prellenado que se adapta al rol y, cuando
-// se especifica, a la pantalla actual. No hay menús, alertas ni pasos
-// intermedios: el asesor gestiona clases, pagos, reservas, reprogramaciones,
-// dudas y soporte técnico.
+// ============================================================================
+// Wordlish · Soporte único vía WhatsApp.
 //
-// Al centralizar aquí el número y las plantillas de mensaje, cualquier ajuste
-// futuro (cambio de teléfono, textos por rol) se hace en un solo lugar.
+// Punto de entrada único para todo contacto con el asesor de Wordlish.
+// A partir de ahora NO define el número ni construye URLs: delega en
+// `whatsappService`, que a su vez lee el número oficial desde
+// `public.app_settings`. Único lugar donde vive el número: el backend.
+//
+// Al centralizar aquí solo el copy por rol, cualquier ajuste de tono se
+// hace en este archivo; los cambios de teléfono, mensaje predeterminado
+// o habilitación se hacen en Admin → Ajustes → Comunicación.
+// ============================================================================
 
-import { Alert, Linking } from 'react-native';
 import type { UserRole } from '@/constants/roles';
-
-export const WORDLISH_ADVISOR_PHONE = '50765551234';
+import { openWhatsapp } from './whatsappService';
 
 // Contexto opcional para enriquecer el mensaje. Ej: pantalla activa.
 export interface SupportContext {
@@ -38,8 +38,10 @@ const MESSAGES_BY_ROLE: Record<UserRole, string> = {
 export const LOGIN_SUPPORT_MESSAGE =
   'Hola, necesito ayuda para ingresar a la aplicación de Wordlish.';
 
-// Devuelve el mensaje adaptado al rol y, cuando aplica, a la pantalla actual.
-// Si no se conoce el rol, cae al mensaje genérico de login para no bloquear.
+/**
+ * Devuelve el mensaje adaptado al rol y, cuando aplica, a la pantalla actual.
+ * Si no se conoce el rol, cae al mensaje genérico de login para no bloquear.
+ */
 export function getSupportMessage(
   role: UserRole | null | undefined,
   ctx?: SupportContext,
@@ -51,34 +53,20 @@ export function getSupportMessage(
   return base;
 }
 
-// Construye la URL whatsapp:// con el mensaje URL-encoded.
-function buildWhatsappUrl(message: string): string {
-  const encoded = encodeURIComponent(message);
-  return `whatsapp://send?phone=${WORDLISH_ADVISOR_PHONE}&text=${encoded}`;
-}
-
-// Abre WhatsApp con el mensaje prellenado. Si WhatsApp no está instalado,
-// muestra un Alert nativo con instrucción — nunca falla en silencio.
+/**
+ * Abre WhatsApp con el asesor. Respeta el toggle global de WhatsApp
+ * configurado por el admin.
+ */
 export function contactAdvisor(
   role: UserRole | null | undefined,
   ctx?: SupportContext,
 ): void {
-  const url = buildWhatsappUrl(getSupportMessage(role, ctx));
-  Linking.openURL(url).catch(() =>
-    Alert.alert(
-      'WhatsApp no disponible',
-      'Instala WhatsApp para contactar al asesor de Wordlish.',
-    ),
-  );
+  openWhatsapp(getSupportMessage(role, ctx));
 }
 
-// Variante para la pantalla de ingreso: no requiere rol.
+/**
+ * Variante para la pantalla de ingreso: no requiere rol.
+ */
 export function contactLoginSupport(): void {
-  const url = buildWhatsappUrl(LOGIN_SUPPORT_MESSAGE);
-  Linking.openURL(url).catch(() =>
-    Alert.alert(
-      'WhatsApp no disponible',
-      'Instala WhatsApp para contactar al asesor de Wordlish.',
-    ),
-  );
+  openWhatsapp(LOGIN_SUPPORT_MESSAGE);
 }

@@ -32,6 +32,7 @@ import {
   type TeacherTier,
   type ClassKind,
 } from '@/services/teacherRatesConfig';
+import { CommunicationBlock } from '@/components/admin/CommunicationBlock';
 
 // ============================================================================
 // Admin · Ajustes globales.
@@ -60,6 +61,14 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <Header title="Ajustes" subtitle="Configuración global" />
+
+      <Text style={styles.section}>Comunicación</Text>
+      <Text style={typography.caption}>
+        Número oficial de WhatsApp de Wordlish y módulos donde aparece el
+        botón de contacto. Toda la app lo lee desde esta configuración;
+        no hay número escrito en el código.
+      </Text>
+      <CommunicationBlock />
 
       <Text style={styles.section}>Operación</Text>
       <View style={{ gap: spacing.sm }}>
