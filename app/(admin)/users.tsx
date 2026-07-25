@@ -11,6 +11,15 @@ import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, Avatar, Modal, StatusBadge } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import {
+  teacherRatesConfig,
+  getYearRates,
+  getRate,
+  formatAmount,
+  TIER_LABEL,
+  KIND_LABEL,
+  type TeacherTier,
+} from '@/services/teacherRatesConfig';
 
 // ============================================================================
 // Panel de Usuarios · Solo Administrador.
@@ -42,6 +51,7 @@ interface BaseUser {
 
 interface TeacherRecord extends BaseUser {
   role: 'teacher';
+  tier: TeacherTier;
   specialties: string[];
   hoursThisMonth: number;
   hoursHistorical: number;
@@ -96,6 +106,7 @@ const USERS: AnyUser[] = [
     id: 't1', role: 'teacher', name: 'Prof. Carlos Ríos', firstName: 'Carlos',
     email: 'carlos@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=68',
     active: true, joinedAt: '15 Mar 2024',
+    tier: 'specialist',
     specialties: ['Inglés Básico', 'Inglés Intermedio', 'Conversación'],
     hoursThisMonth: 42, hoursHistorical: 428,
     groupClasses: 6, individualClasses: 36,
@@ -108,6 +119,7 @@ const USERS: AnyUser[] = [
     id: 't2', role: 'teacher', name: 'Prof. María Luna', firstName: 'María',
     email: 'maria@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=48',
     active: true, joinedAt: '02 Sep 2024',
+    tier: 'essentials',
     specialties: ['Inglés Básico', 'Francés Intermedio'],
     hoursThisMonth: 28, hoursHistorical: 186,
     groupClasses: 3, individualClasses: 25,
@@ -120,6 +132,7 @@ const USERS: AnyUser[] = [
     id: 't3', role: 'teacher', name: 'Prof. Ana Vega', firstName: 'Ana',
     email: 'ana.vega@wordlish.com', avatar: 'https://i.pravatar.cc/150?img=44',
     active: false, joinedAt: '10 Feb 2023',
+    tier: 'specialist',
     specialties: ['Inglés Business'],
     hoursThisMonth: 0, hoursHistorical: 812,
     groupClasses: 12, individualClasses: 68,
@@ -400,6 +413,8 @@ function TeacherDetail({ t }: { t: TeacherRecord }) {
         />
       </View>
 
+      <TeacherRateBlock t={t} />
+
       <ExpandableSection title="Especialidades" icon="bookmarks-outline" defaultOpen>
         <View style={styles.tagRow}>
           {t.specialties.map((s) => (
@@ -540,6 +555,62 @@ function GuardianDetail({ g }: { g: GuardianRecord }) {
         ))}
       </ExpandableSection>
     </>
+  );
+}
+
+// ─── Tarifa por hora vigente del profesor ───────────────────────────────────
+function TeacherRateBlock({ t }: { t: TeacherRecord }) {
+  const year = teacherRatesConfig.currentYear;
+  const yearData = getYearRates(year);
+  const individual = getRate(year, t.tier, 'individual');
+  const group = getRate(year, t.tier, 'group');
+  const currency = yearData?.currency ?? 'COP';
+
+  return (
+    <View style={rateStyles.wrap}>
+      <View style={rateStyles.head}>
+        <View style={rateStyles.headIcon}>
+          <Ionicons
+            name={t.tier === 'specialist' ? 'ribbon' : 'school'}
+            size={16}
+            color={colors.primary}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={rateStyles.headTitle}>Tarifa por hora</Text>
+          <Text style={rateStyles.headMeta}>
+            Categoría {TIER_LABEL[t.tier]} · {year}
+          </Text>
+        </View>
+        <StatusBadge
+          label={TIER_LABEL[t.tier]}
+          tone={t.tier === 'specialist' ? 'primary' : 'info'}
+        />
+      </View>
+      <View style={rateStyles.grid}>
+        <View style={rateStyles.cell}>
+          <Text style={rateStyles.cellLabel}>{KIND_LABEL.individual}</Text>
+          <Text style={rateStyles.cellValue}>
+            {individual ? formatAmount(individual.amount, currency) : '—'}
+          </Text>
+          <Text style={rateStyles.cellHint}>por hora dictada</Text>
+        </View>
+        <View style={rateStyles.cell}>
+          <Text style={rateStyles.cellLabel}>{KIND_LABEL.group}</Text>
+          <Text style={rateStyles.cellValue}>
+            {group ? formatAmount(group.amount, currency) : '—'}
+          </Text>
+          {group?.underReview ? (
+            <StatusBadge label="En evaluación" tone="warning" />
+          ) : (
+            <Text style={rateStyles.cellHint}>por hora dictada</Text>
+          )}
+        </View>
+      </View>
+      <Text style={rateStyles.footer}>
+        Configura estos montos desde Ajustes · Tarifas por hora · Profesores.
+      </Text>
+    </View>
   );
 }
 
@@ -921,5 +992,70 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 13,
     color: colors.textSubtle,
+  },
+});
+
+const rateStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headIcon: {
+    width: 32, height: 32, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surfaceTinted,
+  },
+  headTitle: {
+    ...typography.bodyStrong,
+    fontSize: 14,
+  },
+  headMeta: {
+    ...typography.caption,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  grid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  cell: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.md,
+    gap: 4,
+  },
+  cellLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  cellValue: {
+    ...typography.bodyStrong,
+    fontSize: 17,
+    color: colors.textStrong,
+  },
+  cellHint: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  footer: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textMuted,
   },
 });
