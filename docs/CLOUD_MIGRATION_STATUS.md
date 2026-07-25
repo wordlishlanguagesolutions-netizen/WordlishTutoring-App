@@ -203,6 +203,7 @@ Cada ficha sigue el mismo esquema para permitir comparación uno-a-uno.
 |---|---|---|---|---|---|---|---|
 | 2026-07-25 | **Expenses** | Creada tabla `public.expenses` (+RLS +seed). Repo Cloud real. Hidratación en `financeService.hydrateExpenses()`. CRUD desde Admin › Pagos. | `repositories/expenses.ts` (nuevo), `services/financeService.ts`, `app/(admin)/finance.tsx` | `expenses` | Falta validar RLS con admin autenticado (mock no dispara `is_admin()`). | Crear/editar/eliminar en UI. Reload pendiente en modo real. | OnSpace |
 | 2026-07-25 | **Auditoría estructurada** | Reescrito este documento con tablero maestro + ficha por módulo. | `docs/CLOUD_MIGRATION_STATUS.md` | — | — | — | OnSpace |
+| 2026-07-25 | **Infraestructura Fase 1** | Creadas 6 tablas nuevas + RLS + función `expire_booking_holds()` + seeds demo. | `docs/migrations/013_infrastructure_phase1.sql`, `docs/CLOUD_MIGRATION_STATUS.md` | `tier_yearly_rates`, `app_settings`, `booking_holds`, `support_tickets`, `onboarding_state`, `announcements` | RLS no probado con Auth real (mock no dispara `is_admin()`); unique parcial de holds requiere teachers reales para test de doble reserva. | Verificación por count: 12 tarifas + 10 settings insertadas, resto 0 (correcto). | OnSpace |
 
 ---
 
@@ -259,3 +260,118 @@ P4 · Financiero + operación avanzada
 **Iteración siguiente**: Módulo **#2 Subjects** (lectura pura, 8 filas ya en Cloud, riesgo bajo). Sirve para validar el patrón `repository async → hook → pantalla` sin tocar lógica de negocio. Al cerrar, se marca ✅ y se procede con **#3 Users** que sí desbloquea todo el resto.
 
 > Antes de iniciar, confirmar en este documento que la ficha del módulo objetivo está completa y aceptada.
+
+---
+
+## 8. Infraestructura Fase 1 · Tablas creadas 2026-07-25
+
+Migración: `docs/migrations/013_infrastructure_phase1.sql`
+
+| Infraestructura | Creada | RLS | Seed | Persistencia probada | Integrada al frontend |
+|---|---|---|---|---|---|
+| **tier_yearly_rates** | ✅ | ✅ admin-all / staff-select | ✅ 12 filas (2024–2026 · essentials/special · personal/group) | 🟡 seed insertado, falta CRUD con admin real | ⏳ pendiente refactor de `services/teacherRatesConfig.ts` |
+| **app_settings** | ✅ | ✅ admin-all / authenticated-select-public | ✅ 10 claves (payment, booking, materials, features, policy) | 🟡 seed insertado, falta lectura desde frontend | ⏳ pendiente refactor de `services/paymentConfig.ts` |
+| **booking_holds** | ✅ | ✅ admin-all / user-manage-own / active-select | — (se pobla en runtime) | 🟡 tabla vacía, unique parcial garantiza no-doble-reserva a nivel DB | ⏳ pendiente refactor de `BookingsContext.createHold/releaseHold` |
+| **support_tickets** | ✅ | ✅ admin-all / supervisor-all / user-insert-select-own | — | 🟡 tabla vacía | ⏳ pendiente conectar `services/supportService.contactAdvisor` |
+| **onboarding_state** | ✅ | ✅ admin-all / user-manage-own | — | 🟡 tabla vacía | ⏳ pendiente flujo post-signup |
+| **announcements** | ✅ | ✅ admin-all / authenticated-select-visible-by-audience | — | 🟡 tabla vacía | ⏳ pendiente UI de avisos (no confundir con chat) |
+| **Función `expire_booking_holds()`** | ✅ | security definer | — | 🟡 no llamada aún | ⏳ pendiente cron o Edge Function |
+
+### Notas de diseño
+- **tier_yearly_rates** convive con la tabla existente `teacher_rates` (que es *por profesor específico*). Las tarifas globales por rango van aquí; las excepciones por profesor siguen en `teacher_rates`.
+- **booking_holds** tiene un `unique index parcial` sobre `(teacher_id, scheduled_date, scheduled_time) where status='active'`. Esto **imposibilita a nivel DB** que dos usuarios reserven el mismo slot, incluso si el frontend falla.
+- **announcements** implementa avisos **unidireccionales**. NO se creó `chat_messages` porque el usuario pidió evitar un chat completo sin necesidad comprobada.
+- **app_settings** es JSONB para permitir cualquier estructura futura sin migraciones. Se marca `is_public` cuando el valor puede ser leído por cualquier autenticado.
+
+---
+
+## 9. Fase 2 · Datos maestros (plan, no ejecutado)
+
+Tablas maestras aún vacías en Cloud (bloquea Auth real y migración de módulos):
+
+| Tabla | Filas | Estrategia recomendada |
+|---|---|---|
+| `user_profiles` | 0 | Poblada automáticamente por trigger `handle_new_user` al hacer signup. **Requiere Auth real + crear primer admin desde el Dashboard.** |
+| `staff` | 0 | CRUD desde admin panel una vez haya perfiles. |
+| `teachers` | 0 | Insertar tras crear staff con role=teacher. |
+| `students` | 0 | Insertar desde flujo de acudiente o admin. |
+| `guardians` | 0 | Insertar al primer signup con role=guardian. |
+| `student_guardians` | 0 | Insertar al vincular estudiante a acudiente. |
+| `subjects` | 8 ✅ | Ya seed inicial en migración 002. |
+| `teacher_subjects` | 0 | Insertar al asignar materias a profesor. |
+| `teacher_availability` | 0 | Insertar cuando el profesor publica su semana. |
+| `hour_packages` | 0 | Insertar al primer pago confirmado. |
+
+**Reglas para poblar**:
+- No inventar datos de producción. Los seeds demo van marcados con `demo:v1` en algún campo `notes/note` o `metadata`.
+- Separar seeds demo en `docs/migrations/010_seeders_dev.sql` y `012_dev_test_users_bootstrap.sql` (ya existentes).
+- **No activar `EXPO_PUBLIC_AUTH_MODE=real` hasta que el primer admin exista y su perfil esté correctamente ligado.**
+
+---
+
+## 10. Fase 3 · Auditoría de Edge Functions (no desplegadas)
+
+| Función | Propósito | Tablas usadas | Trigger | Secretos | Estado | Riesgo | Alternativa si no se puede desplegar |
+|---|---|---|---|---|---|---|---|
+| `payroll_compute` | Calcular liquidación mensual por profesor (horas × tarifa − ajustes) | `class_records`, `attendance`, `tier_yearly_rates`, `teacher_rates`, `teacher_payrolls`, `payroll_adjustments` | Cron mensual (día 1) o manual desde admin | — (usa service role) | ⏳ No desplegada | 🟠 Medio · depende de Bookings + ClassRecords migrados | Cálculo en repositorio async con botón manual en admin |
+| `reminders_dispatcher` | Enviar recordatorios 24h/1h antes de clase | `class_records`, `notifications`, `push_tokens` | Cron cada 15 min | `EXPO_ACCESS_TOKEN` (Expo Push) | ⏳ No desplegada | 🟠 Medio | Polling desde app con `Notifications.scheduleNotificationAsync` local |
+| `auto_close_class` | Cerrar clases que quedaron abiertas >90 min | `class_records`, `class_events`, `system_alerts` | Cron cada 30 min | — | ⏳ No desplegada | 🟢 Bajo | Trigger DB en `class_records` con `pg_cron` (si OnSpace lo soporta) o cierre manual |
+| `push_dispatcher` | Enviar push cuando se crea una notificación in_app | `notifications`, `push_tokens` | Trigger AFTER INSERT en `notifications` | `EXPO_ACCESS_TOKEN` / `FCM_SERVER_KEY` / `APNS_KEY_ID` | ⏳ No desplegada | 🟠 Medio | Sin push (solo in-app) hasta desplegar |
+
+**Nota honesta**: OnSpace Cloud soporta Edge Functions estándar Supabase, pero **ninguna** de estas está desplegada todavía. No se puede afirmar que están operativas.
+
+---
+
+## 11. Fase 4 · Secretos e integraciones pendientes
+
+| Integración | Secretos necesarios | Configurados | Uso |
+|---|---|---|---|
+| **Zoom OAuth** | `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_ACCOUNT_ID` | ❌ | Salas dinámicas por clase (hoy son URLs aleatorias) |
+| **Pasarela de pago** | `STRIPE_SECRET_KEY` o `PAGUELOFACIL_KEY` o `WOMPI_PRIVATE_KEY` | ❌ | Cobros con tarjeta |
+| **Push (Expo)** | `EXPO_ACCESS_TOKEN` | ❌ | Envío de push server-side |
+| **Push (FCM)** | `FCM_SERVER_KEY` | ❌ | Android nativo si se separa de Expo |
+| **Push (APNs)** | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` | ❌ | iOS nativo si se separa de Expo |
+| **SMTP transaccional** | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | ❌ | Emails de Auth personalizados |
+| **Google OAuth** | Client ID/Secret en Auth Settings | ❌ | Sign-in with Google |
+| **Apple OAuth** | Services ID + Team ID + Key en Auth Settings | ❌ | Sign-in with Apple |
+| **Deep links** | Site URL `onspaceapp://auth` en Auth Settings | ❌ | Callback OAuth |
+
+**Regla**: ninguno de estos secretos debe vivir en el repo. Se solicitan vía `request_backend_keys` cuando se implemente cada integración.
+
+---
+
+## 12. Diagnóstico honesto de esta iteración
+
+### Qué quedó creado ✅
+- 6 tablas nuevas en Cloud: `tier_yearly_rates`, `app_settings`, `booking_holds`, `support_tickets`, `onboarding_state`, `announcements`.
+- RLS activo en las 6 con políticas por rol.
+- Función `expire_booking_holds()` (security definer).
+- Unique parcial que previene doble reserva a nivel DB.
+- Migración versionada `013_infrastructure_phase1.sql` con rollback comentado.
+- Seeds demo: 12 tarifas anuales + 10 configuraciones globales.
+
+### Qué quedó conectado 🟡
+- **Nada del frontend**. Las tablas existen pero ningún servicio las lee todavía. Esto es intencional: primero infra, luego migración.
+- La única tabla actualmente conectada al frontend sigue siendo `expenses` (de la iteración anterior).
+
+### Qué sigue siendo mock ❌
+- Todo lo que era mock antes lo sigue siendo (Bookings, Payments, Users, Reports, Materials, Payroll, Notifications, Tarifas UI, Payment config UI).
+- `services/paymentConfig.ts` sigue en memoria.
+- `services/teacherRatesConfig.ts` sigue en memoria.
+- `BookingsContext.createHold` sigue en memoria.
+
+### Qué requiere intervención manual del usuario 🔧
+1. Agregar `EXPO_PUBLIC_AUTH_MODE=real` a `.env` (yo no puedo editar `.env`).
+2. Crear el primer admin desde OnSpace Cloud Dashboard → Users.
+3. Confirmar que el trigger `handle_new_user` crea el perfil correctamente.
+4. Configurar Site URL `onspaceapp://auth` en Auth Settings.
+5. Habilitar Google/Apple OAuth en Auth Settings (solo cuando se necesiten).
+6. Proveer secretos vía `request_backend_keys` cuando integremos Zoom/pagos/push.
+
+### Qué integraciones externas siguen pendientes 🔌
+- Zoom OAuth, pasarela de pago real, push (Expo/FCM/APNs), SMTP, Google/Apple OAuth.
+
+### Siguiente módulo recomendado (respetando el orden pedido) ➡️
+**#2 Subjects** — migración de lectura pura, 8 filas ya en Cloud, riesgo bajo. Sirve como calentamiento del patrón `repository async → hook → pantalla` antes de tocar Users → Reservas → Pagos → Clases → Nómina.
+
+> **No se recomienda saltar a Bookings directamente**. Bookings depende de Teachers, Students, Guardians y HourPackages estar en Cloud. Migrar Bookings primero rompería el flujo completo.
