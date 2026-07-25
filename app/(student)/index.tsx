@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, StatusBar, Alert } from 'react-native';
+import { ScrollView, StatusBar } from 'react-native';
 import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
+import { openZoom, getZoomUrl } from '@/services/zoomService';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import {
   currentStudent,
@@ -58,11 +59,9 @@ export default function StudentHome() {
   const attendanceRegistered =
     hasNextClass && nextClass.screenshotStatus === 'received';
 
-  const handleEnterClass = () =>
-    Alert.alert(
-      phase === 'far' ? 'Entrar a Zoom' : 'Entrar a mi clase',
-      'Simulación · el enlace se abrirá cuando conectemos la integración con Zoom.',
-    );
+  // Abre el enlace oficial de Zoom desde services/zoomService (única
+  // fuente de verdad, leída de public.app_settings.zoom.official_link).
+  const handleEnterClass = () => openZoom(getZoomUrl());
 
   const showLiveButton = phase === 'imminent' || phase === 'live';
 
