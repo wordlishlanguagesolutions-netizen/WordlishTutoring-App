@@ -10,6 +10,7 @@ import {
   canCancel, canReschedule, getTeacherAvailableSlots, generateNextDays,
 } from '@/services/bookingService';
 import { useBookings } from '@/hooks/useBookings';
+import { getZoomUrlForBooking, getMeetingIdDisplay } from '@/services/zoomService';
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -86,7 +87,7 @@ export default function BookingDetail() {
           </View>
           {b.status === 'confirmed' && (
             <View style={{ marginTop: spacing.lg }}>
-              <ZoomButton />
+              <ZoomButton url={getZoomUrlForBooking(b.zoomUrl)} />
             </View>
           )}
         </View>
@@ -133,11 +134,17 @@ export default function BookingDetail() {
         <Card>
           <View style={s.zoomBox}>
             <Ionicons name="videocam" size={18} color={colors.primaryDark} />
-            <Text style={s.zoomUrl} numberOfLines={1}>{b.zoomUrl}</Text>
+            <Text style={s.zoomUrl} numberOfLines={1}>{getZoomUrlForBooking(b.zoomUrl)}</Text>
           </View>
-          <Text style={[typography.caption, { marginTop: spacing.sm }]}>
-            Simulación · integración real con Zoom pendiente
-          </Text>
+          <View style={{ marginTop: spacing.sm }}>
+            <Text style={typography.caption}>ID de reunión: {getMeetingIdDisplay()}</Text>
+            <Text style={[typography.caption, { marginTop: 2 }]}>
+              Sala oficial de Wordlish. Usa este mismo enlace para todas tus clases.
+            </Text>
+          </View>
+          <View style={{ marginTop: spacing.md }}>
+            <ZoomButton variant="secondary" url={getZoomUrlForBooking(b.zoomUrl)} />
+          </View>
         </Card>
 
         <Text style={s.section}>Información</Text>

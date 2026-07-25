@@ -16,6 +16,7 @@ import { Card, Avatar, StatusBadge, ZoomButton, KnowCard } from '@/components/ui
 import { ClassTimeline } from '@/components/class';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { POLICY_COPY } from '@/constants/policies';
+import { openZoom, getZoomUrlForBooking, getMeetingIdDisplay } from '@/services/zoomService';
 import {
   PRE_CLASS_TIPS,
   STUDENT_LATE_MESSAGE,
@@ -206,10 +207,10 @@ export default function ClassManagementScreen() {
   };
 
   const onEnterClass = () => {
-    Alert.alert(
-      'Zoom',
-      'Simulación · el enlace se abrirá cuando conectemos la integración con Zoom.',
-    );
+    // Enlace único de Wordlish desde app_settings.zoom.official_link.
+    // Cuando Zoom OAuth por clase esté activo, getZoomUrlForBooking()
+    // priorizará la URL guardada en el booking.
+    openZoom(getZoomUrlForBooking(booking?.zoomUrl ?? null));
   };
 
   const submitReport = () => {
