@@ -31,10 +31,19 @@ import {
   formatMoney,
   formatMonthLabel,
   humanDaysToNext,
+  addExpense,
+  updateExpense,
+  deleteExpense,
+  markPayrollPaid,
+  markPayrollPending,
+  listPayrollTeachers,
+  payrollBySubject,
   EXPENSE_CATEGORY_LABEL,
   EXPENSE_CATEGORY_ICON,
   EXPENSE_FREQUENCY_LABEL,
   type Expense,
+  type ExpenseFrequency,
+  type ExpenseStatus,
   type PayrollEntry,
   type RevenueEntry,
   type ExpenseCategory,
@@ -230,16 +239,37 @@ function SummarySection() {
 // 1 · GASTOS
 // ============================================================================
 function ExpensesSection() {
-  const exp = expenseSummary();
-  const byCategory = expensesByCategory();
-  const series = monthlyExpenseSeries();
+  const [tick, setTick] = useState(0);
+  const refresh = () => setTick((t) => t + 1);
+  const exp = useMemo(() => expenseSummary(), [tick]);
+  const byCategory = useMemo(() => expensesByCategory(), [tick]);
+  const series = useMemo(() => monthlyExpenseSeries(), [tick]);
   const [selected, setSelected] = useState<Expense | null>(null);
   const [filter, setFilter] = useState<ExpenseCategory | 'all'>('all');
+  const [formMode, setFormMode] = useState<
+    | null
+    | { mode: 'create' }
+    | { mode: 'edit'; expense: Expense }
+  >(null);
 
   const filtered = useMemo(
-    () => (filter === 'all' ? expenses : expenses.filter((e) => e.category === filter)),
-    [filter],
+    () =>
+      filter === 'all'
+        ? expenses.slice()
+        : expenses.filter((e) => e.category === filter),
+    [filter, tick],
   );
+
+  const handleSaved = () => {
+    setFormMode(null);
+    refresh();
+  };
+
+  const handleDelete = (id: string) => {
+    deleteExpense(id);
+    setSelected(null);
+    refresh();
+  };
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -248,6 +278,14 @@ function ExpensesSection() {
         <KpiCard tone="warning" icon="pie-chart-outline" label="Gasto anual" value={formatMoney(exp.year)} />
         <KpiCard tone="info" icon="time-outline" label="Cobros en 14 d" value={`${exp.upcoming.length}`} />
       </View>
+
+      <Pressable
+        onPress={() => setFormMode({ mode: 'create' })}
+        style={({ pressed }) => [styles.primaryCta, pressed && { opacity: 0.9 }]}
+      >
+        <Ionicons name="add-circle" size={18} color={colors.textOnPrimary} />
+        <Text style={styles.primaryCtaText}>Nuevo gasto</Text>
+      </Pressable>
 
       <SectionLabel>Evolución mensual</SectionLabel>
       <View style={styles.card}>
@@ -338,8 +376,38 @@ function ExpensesSection() {
         subtitle={selected ? EXPENSE_CATEGORY_LABEL[selected.category] : ''}
         scrollable
       >
-        {selected ? <ExpenseDetail expense={selected} /> : null}
+        {selected ? (
+          <View style={{ gap: spacing.md }}>
+            <ExpenseDetail expense={selected} />
+            <View style={styles.detailActions}>
+              <Pressable
+                onPress={() => {
+                  const target = selected;
+                  setSelected(null);
+                  setFormMode({ mode: 'edit', expense: target });
+                }}
+                style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.primaryDark} />
+                <Text style={styles.secondaryBtnText}>Editar</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleDelete(selected.id)}
+                style={({ pressed }) => [styles.dangerBtn, pressed && { opacity: 0.9 }]}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                <Text style={styles.dangerBtnText}>Eliminar</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </Modal>
+
+      <ExpenseFormModal
+        mode={formMode}
+        onClose={() => setFormMode(null)}
+        onSaved={handleSaved}
+      />
     </View>
   );
 }
@@ -366,15 +434,35 @@ function ExpenseDetail({ expense }: { expense: Expense }) {
 // 2 · NÓMINA
 // ============================================================================
 function PayrollSection() {
-  const sum = payrollSummary();
-  const months = listPayrollMonths();
+  const [tick, setTick] = useState(0);
+  const refresh = () => setTick((t) => t + 1);
+  const sum = useMemo(() => payrollSummary(), [tick]);
+  const months = useMemo(() => listPayrollMonths(), [tick]);
   const [month, setMonth] = useState<string>(months[0] ?? sum.cm);
-  const list = payrollListByMonth(month);
+  const teachers = useMemo(() => listPayrollTeachers(), [tick]);
+  const [teacherFilter, setTeacherFilter] = useState<string | 'all'>('all');
+
+  const list = useMemo(() => {
+    const base = payrollListByMonth(month);
+    return teacherFilter === 'all'
+      ? base
+      : base.filter((p) => p.teacherId === teacherFilter);
+  }, [month, teacherFilter, tick]);
+
+  const bySubject = useMemo(() => payrollBySubject(month), [month, tick]);
+
   const paidTotal = list.filter((p) => p.status === 'paid').reduce((s, p) => s + p.total, 0);
   const pendingTotal = list.filter((p) => p.status === 'pending').reduce((s, p) => s + p.total, 0);
   const totalHours = list.reduce((s, p) => s + p.hoursIndividual + p.hoursGroup, 0);
   const avg = list.length ? Math.round((paidTotal + pendingTotal) / list.length) : 0;
   const [selected, setSelected] = useState<PayrollEntry | null>(null);
+
+  const handleTogglePaid = (entry: PayrollEntry) => {
+    if (entry.status === 'pending') markPayrollPaid(entry.id);
+    else markPayrollPending(entry.id);
+    refresh();
+    setSelected(null);
+  };
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -401,33 +489,101 @@ function PayrollSection() {
         ))}
       </ScrollView>
 
+      <SectionLabel>Profesor</SectionLabel>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        <FilterChip
+          active={teacherFilter === 'all'}
+          label="Todos"
+          onPress={() => setTeacherFilter('all')}
+        />
+        {teachers.map((t) => (
+          <FilterChip
+            key={t.id}
+            active={teacherFilter === t.id}
+            label={t.name.replace('Prof. ', '')}
+            onPress={() => setTeacherFilter(t.id)}
+          />
+        ))}
+      </ScrollView>
+
       <SectionLabel>Detalle por profesor</SectionLabel>
       <View style={{ gap: spacing.sm }}>
         {list.length === 0 ? (
           <Text style={typography.caption}>Sin registros para este periodo.</Text>
         ) : list.map((p) => (
-          <Pressable
-            key={p.id}
-            onPress={() => setSelected(p)}
-            style={({ pressed }) => [styles.payrollRow, pressed && { opacity: 0.9 }]}
-          >
-            <Avatar name={p.teacherName} size={40} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.rowTitle} numberOfLines={1}>{p.teacherName}</Text>
-              <Text style={styles.rowMeta} numberOfLines={1}>
-                {p.hoursIndividual} h ind · {p.hoursGroup} h grupal · {p.tier === 'specialist' ? 'Specialist' : 'Essentials'}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 4 }}>
-              <Text style={styles.rowAmount}>{formatMoney(p.total, 'COP')}</Text>
-              <StatusBadge
-                label={p.status === 'paid' ? 'Pagado' : 'Pendiente'}
-                tone={p.status === 'paid' ? 'success' : 'warning'}
-              />
-            </View>
-          </Pressable>
+          <View key={p.id} style={styles.payrollRow}>
+            <Pressable
+              onPress={() => setSelected(p)}
+              style={({ pressed }) => [
+                { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minWidth: 0 },
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Avatar name={p.teacherName} size={40} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.rowTitle} numberOfLines={1}>{p.teacherName}</Text>
+                <Text style={styles.rowMeta} numberOfLines={1}>
+                  {p.hoursIndividual} h ind · {p.hoursGroup} h grupal · {p.tier === 'specialist' ? 'Specialist' : 'Essentials'}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <Text style={styles.rowAmount}>{formatMoney(p.total, 'COP')}</Text>
+                <StatusBadge
+                  label={p.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                  tone={p.status === 'paid' ? 'success' : 'warning'}
+                />
+              </View>
+            </Pressable>
+            {p.status === 'pending' ? (
+              <Pressable
+                onPress={() => handleTogglePaid(p)}
+                style={({ pressed }) => [styles.payAction, pressed && { opacity: 0.9 }]}
+              >
+                <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
+                <Text style={styles.payActionText}>Pagar</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ))}
       </View>
+
+      <SectionLabel>Costo por materia</SectionLabel>
+      {bySubject.length === 0 ? (
+        <Text style={typography.caption}>Sin datos suficientes para distribuir por materia.</Text>
+      ) : (
+        <View style={{ gap: spacing.sm }}>
+          {bySubject.map((s) => {
+            const max = bySubject[0]?.amount ?? 1;
+            const pct = s.amount / max;
+            return (
+              <View key={s.subject} style={styles.categoryRow}>
+                <View style={[styles.chargeIcon, { backgroundColor: colors.infoSoft }]}>
+                  <Ionicons name="book-outline" size={16} color={colors.info} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.rowTitle}>{s.subject}</Text>
+                    <Text style={styles.rowAmount}>{formatMoney(s.amount, 'COP')}</Text>
+                  </View>
+                  <Text style={styles.rowMeta}>{s.hours} h estimadas</Text>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.max(6, pct * 100)}%`, backgroundColor: colors.info },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       <Modal
         visible={!!selected}
@@ -435,6 +591,19 @@ function PayrollSection() {
         title={selected?.teacherName}
         subtitle={selected ? formatMonthLabel(selected.month) : ''}
         scrollable
+        primaryAction={
+          selected
+            ? {
+                label: selected.status === 'paid' ? 'Marcar pendiente' : 'Marcar pagado',
+                onPress: () => handleTogglePaid(selected),
+              }
+            : undefined
+        }
+        secondaryAction={
+          selected
+            ? { label: 'Cerrar', onPress: () => setSelected(null) }
+            : undefined
+        }
       >
         {selected ? <PayrollDetail entry={selected} /> : null}
       </Modal>
@@ -766,6 +935,271 @@ function CashFlowChart({ data }: { data: { label: string; revenue: number; expen
   );
 }
 
+// ─── Formulario de gasto (crear / editar) ───────────────────────────────────
+function ExpenseFormModal({
+  mode,
+  onClose,
+  onSaved,
+}: {
+  mode: null | { mode: 'create' } | { mode: 'edit'; expense: Expense };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const visible = !!mode;
+  const editing = mode?.mode === 'edit' ? mode.expense : null;
+
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<ExpenseCategory>('software');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  const [frequency, setFrequency] = useState<ExpenseFrequency>('monthly');
+  const [billingDate, setBillingDate] = useState('');
+  const [nextBillingDate, setNextBillingDate] = useState('');
+  const [method, setMethod] = useState('Tarjeta');
+  const [status, setStatus] = useState<ExpenseStatus>('active');
+  const [notes, setNotes] = useState('');
+
+  React.useEffect(() => {
+    if (!visible) return;
+    if (editing) {
+      setName(editing.name);
+      setCategory(editing.category);
+      setAmount(String(editing.amount));
+      setCurrency(editing.currency);
+      setFrequency(editing.frequency);
+      setBillingDate(editing.billingDate);
+      setNextBillingDate(editing.nextBillingDate);
+      setMethod(editing.method);
+      setStatus(editing.status);
+      setNotes(editing.notes ?? '');
+    } else {
+      const today = new Date().toISOString().slice(0, 10);
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1);
+      setName('');
+      setCategory('software');
+      setAmount('');
+      setCurrency('USD');
+      setFrequency('monthly');
+      setBillingDate(today);
+      setNextBillingDate(next.toISOString().slice(0, 10));
+      setMethod('Tarjeta');
+      setStatus('active');
+      setNotes('');
+    }
+  }, [visible, editing]);
+
+  const handleSave = () => {
+    const parsed = Number(amount.replace(/[^0-9.]/g, '')) || 0;
+    const payload = {
+      name: name.trim() || 'Sin nombre',
+      category,
+      amount: parsed,
+      currency: currency.trim().toUpperCase() || 'USD',
+      frequency,
+      billingDate: billingDate || new Date().toISOString().slice(0, 10),
+      nextBillingDate: nextBillingDate || billingDate || new Date().toISOString().slice(0, 10),
+      method: method.trim() || 'Tarjeta',
+      status,
+      notes: notes.trim() || undefined,
+    };
+    if (editing) updateExpense(editing.id, payload);
+    else addExpense(payload);
+    onSaved();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      onClose={onClose}
+      title={editing ? 'Editar gasto' : 'Nuevo gasto'}
+      subtitle={editing ? EXPENSE_CATEGORY_LABEL[editing.category] : 'Registrar un costo operativo'}
+      scrollable
+      primaryAction={{ label: 'Guardar', onPress: handleSave }}
+      secondaryAction={{ label: 'Cancelar', onPress: onClose }}
+    >
+      <View style={{ gap: spacing.md }}>
+        <FormField label="Nombre">
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Ej. Zoom Pro"
+            placeholderTextColor={colors.textMuted}
+            style={formStyles.input}
+          />
+        </FormField>
+
+        <FormField label="Categoría">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {(Object.keys(EXPENSE_CATEGORY_LABEL) as ExpenseCategory[]).map((c) => (
+              <FilterChip
+                key={c}
+                active={category === c}
+                label={EXPENSE_CATEGORY_LABEL[c]}
+                onPress={() => setCategory(c)}
+              />
+            ))}
+          </ScrollView>
+        </FormField>
+
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <View style={{ flex: 2 }}>
+            <FormField label="Valor">
+              <TextInput
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+                style={formStyles.input}
+              />
+            </FormField>
+          </View>
+          <View style={{ flex: 1 }}>
+            <FormField label="Moneda">
+              <TextInput
+                value={currency}
+                onChangeText={setCurrency}
+                autoCapitalize="characters"
+                maxLength={4}
+                placeholder="USD"
+                placeholderTextColor={colors.textMuted}
+                style={formStyles.input}
+              />
+            </FormField>
+          </View>
+        </View>
+
+        <FormField label="Frecuencia">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {(Object.keys(EXPENSE_FREQUENCY_LABEL) as ExpenseFrequency[]).map((f) => (
+              <FilterChip
+                key={f}
+                active={frequency === f}
+                label={EXPENSE_FREQUENCY_LABEL[f]}
+                onPress={() => setFrequency(f)}
+              />
+            ))}
+          </ScrollView>
+        </FormField>
+
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <FormField label="Fecha de cobro">
+              <TextInput
+                value={billingDate}
+                onChangeText={setBillingDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                style={formStyles.input}
+              />
+            </FormField>
+          </View>
+          <View style={{ flex: 1 }}>
+            <FormField label="Próximo cobro">
+              <TextInput
+                value={nextBillingDate}
+                onChangeText={setNextBillingDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                style={formStyles.input}
+              />
+            </FormField>
+          </View>
+        </View>
+
+        <FormField label="Método de pago">
+          <TextInput
+            value={method}
+            onChangeText={setMethod}
+            placeholder="Tarjeta, PayPal, Transferencia…"
+            placeholderTextColor={colors.textMuted}
+            style={formStyles.input}
+          />
+        </FormField>
+
+        <FormField label="Estado">
+          <View style={styles.filterRow}>
+            <FilterChip
+              active={status === 'active'}
+              label="Activo"
+              onPress={() => setStatus('active')}
+            />
+            <FilterChip
+              active={status === 'cancelled'}
+              label="Cancelado"
+              onPress={() => setStatus('cancelled')}
+            />
+          </View>
+        </FormField>
+
+        <FormField label="Observaciones">
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notas internas (opcional)"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            numberOfLines={3}
+            style={[formStyles.input, formStyles.textarea]}
+          />
+        </FormField>
+      </View>
+    </Modal>
+  );
+}
+
+function FormField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View>
+      <Text style={formStyles.label}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+// ============================================================================
+const formStyles = StyleSheet.create({
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.textStrong,
+    backgroundColor: colors.surface,
+  },
+  textarea: {
+    minHeight: 72,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
+});
+
 // ============================================================================
 const styles = StyleSheet.create({
   tabsRow: {
@@ -949,9 +1383,8 @@ const styles = StyleSheet.create({
   },
 
   payrollRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    flexDirection: 'column',
+    gap: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.md,
@@ -1027,6 +1460,79 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textSubtle,
+  },
+
+  primaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: radius.pill,
+    ...shadow.sm,
+  },
+  primaryCtaText: {
+    color: colors.textOnPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  detailActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  secondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  secondaryBtnText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dangerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.dangerSoft,
+    backgroundColor: colors.dangerSoft,
+  },
+  dangerBtnText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  payAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    marginTop: spacing.sm,
+  },
+  payActionText: {
+    color: colors.textOnPrimary,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
 

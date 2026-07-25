@@ -592,3 +592,88 @@ export function formatMonthLabel(month: string): string {
   const d = new Date(Number(y), Number(m) - 1, 1);
   return d.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
 }
+
+// ============================================================================
+// Mutaciones · en memoria. Se reemplazarán por llamadas a OnSpace Cloud
+// (Fase 3B) sin cambiar la API pública.
+// ============================================================================
+
+export function addExpense(input: Omit<Expense, 'id'>): Expense {
+  const e: Expense = { ...input, id: `e-${Date.now().toString(36)}` };
+  expenses.unshift(e);
+  return e;
+}
+
+export function updateExpense(
+  id: string,
+  patch: Partial<Omit<Expense, 'id'>>,
+): void {
+  const target = expenses.find((e) => e.id === id);
+  if (!target) return;
+  Object.assign(target, patch);
+}
+
+export function deleteExpense(id: string): void {
+  const idx = expenses.findIndex((e) => e.id === id);
+  if (idx >= 0) expenses.splice(idx, 1);
+}
+
+export function markPayrollPaid(id: string): void {
+  const p = payrollEntries.find((x) => x.id === id);
+  if (!p) return;
+  p.status = 'paid';
+  p.paidAt = new Date().toISOString().slice(0, 10);
+}
+
+export function markPayrollPending(id: string): void {
+  const p = payrollEntries.find((x) => x.id === id);
+  if (!p) return;
+  p.status = 'pending';
+  p.paidAt = undefined;
+}
+
+export function listPayrollTeachers(): { id: string; name: string }[] {
+  const map = new Map<string, string>();
+  payrollEntries.forEach((p) => map.set(p.teacherId, p.teacherName));
+  return [...map.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Distribuye el costo de nómina del periodo entre las materias, usando
+// como proxy las horas consumidas registradas en ingresos. Es la mejor
+// aproximación mientras `class_records` no persista `subject_id`.
+export function payrollBySubject(
+  month?: string,
+): { subject: string; amount: number; hours: number }[] {
+  const list = month
+    ? payrollEntries.filter((p) => p.month === month)
+    : payrollEntries;
+  if (list.length === 0) return [];
+  const totalCost = list.reduce((s, p) => s + p.total, 0);
+  const totalHours = list.reduce(
+    (s, p) => s + p.hoursIndividual + p.hoursGroup,
+    0,
+  );
+  if (totalHours === 0) return [];
+
+  const bySubj = new Map<string, number>();
+  revenues
+    .filter((r) => r.status === 'paid' && r.subject)
+    .forEach((r) => {
+      bySubj.set(r.subject!, (bySubj.get(r.subject!) ?? 0) + r.hoursConsumed);
+    });
+  const totalRevHours = [...bySubj.values()].reduce((s, v) => s + v, 0);
+  if (totalRevHours === 0) return [];
+
+  return [...bySubj.entries()]
+    .map(([subject, h]) => {
+      const share = h / totalRevHours;
+      return {
+        subject,
+        amount: Math.round(totalCost * share),
+        hours: Math.round(totalHours * share),
+      };
+    })
+    .sort((a, b) => b.amount - a.amount);
+}
