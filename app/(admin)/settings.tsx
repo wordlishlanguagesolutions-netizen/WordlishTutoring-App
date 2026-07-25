@@ -29,8 +29,8 @@ import {
   upsertRate,
   cloneYear,
   setCurrentYear,
-  setYearNote,
-  setYearCurrency,
+  hydrateTeacherRates,
+  subscribeTeacherRates,
   formatAmount,
   TIER_LABEL,
   KIND_LABEL,
@@ -169,10 +169,23 @@ type EditingCell = {
 
 function TeacherRatesBlock() {
   const [year, setYear] = useState<number>(teacherRatesConfig.currentYear);
-  const [tick, setTick] = useState(0); // force re-render after in-memory mutations
+  const [tick, setTick] = useState(0); // repinta tras hydrate / mutación Cloud
   const [editing, setEditing] = useState<EditingCell>(null);
   const [newYearOpen, setNewYearOpen] = useState(false);
   const [newYearValue, setNewYearValue] = useState<string>('');
+
+  // Hidrata desde Cloud al montar y se suscribe a cambios (optimistic +
+  // confirmación remota) para repintar automáticamente.
+  useEffect(() => {
+    hydrateTeacherRates()
+      .then(() => {
+        setYear(teacherRatesConfig.currentYear);
+        setTick((t) => t + 1);
+      })
+      .catch(() => {});
+    const unsub = subscribeTeacherRates(() => setTick((t) => t + 1));
+    return unsub;
+  }, []);
 
   const years = useMemo(() => listYears(), [tick]);
   const data = useMemo(() => getYearRates(year), [year, tick]);
@@ -198,7 +211,10 @@ function TeacherRatesBlock() {
   const saveEdit = () => {
     if (!editing) return;
     const parsed = Number(editing.amount.replace(/[^0-9.]/g, '')) || 0;
-    upsertRate(year, editing.tier, editing.kind, parsed, editing.underReview);
+    // Optimistic + persistencia Cloud (fire-and-forget con rollback interno).
+    upsertRate(year, editing.tier, editing.kind, parsed, editing.underReview).catch(
+      (err) => console.warn('[settings.saveEdit] upsertRate error', err),
+    );
     setEditing(null);
     forceRefresh();
   };
@@ -209,7 +225,9 @@ function TeacherRatesBlock() {
     if (getYearRates(parsed)) {
       changeYear(parsed);
     } else {
-      cloneYear(year, parsed);
+      cloneYear(year, parsed).catch((err) =>
+        console.warn('[settings.createNewYear] cloneYear error', err),
+      );
       changeYear(parsed);
     }
     setNewYearOpen(false);

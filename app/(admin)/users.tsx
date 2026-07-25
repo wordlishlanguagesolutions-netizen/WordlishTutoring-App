@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   getYearRates,
   getRate,
   formatAmount,
+  hydrateTeacherRates,
+  subscribeTeacherRates,
   TIER_LABEL,
   KIND_LABEL,
   type TeacherTier,
@@ -560,11 +562,22 @@ function GuardianDetail({ g }: { g: GuardianRecord }) {
 
 // ─── Tarifa por hora vigente del profesor ───────────────────────────────────
 function TeacherRateBlock({ t }: { t: TeacherRecord }) {
+  // Hidrata desde Cloud (tabla `tier_yearly_rates`) y repinta al confirmar.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    hydrateTeacherRates()
+      .then(() => setTick((n) => n + 1))
+      .catch(() => {});
+    const unsub = subscribeTeacherRates(() => setTick((n) => n + 1));
+    return unsub;
+  }, []);
+  void tick;
+
   const year = teacherRatesConfig.currentYear;
   const yearData = getYearRates(year);
   const individual = getRate(year, t.tier, 'individual');
   const group = getRate(year, t.tier, 'group');
-  const currency = yearData?.currency ?? 'COP';
+  const currency = yearData?.currency ?? 'USD';
 
   return (
     <View style={rateStyles.wrap}>
