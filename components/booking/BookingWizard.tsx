@@ -4,7 +4,8 @@ import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { Card, Avatar, StatusBadge } from '@/components/ui';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { SUBJECTS_CATALOG, TEACHERS_FULL, dateUtils } from '@/services/mockData';
+import { TEACHERS_FULL, dateUtils } from '@/services/mockData';
+import { getSubjects, hydrateSubjects, getSubjectsVersion } from '@/services/subjectsService';
 import {
   getTeachersForSubject, getTeacherAvailableSlots, generateNextDays,
   hasStudentConflict, Hold,
@@ -22,6 +23,20 @@ export function BookingWizard({ student }: Props) {
 
   const [step, setStep] = useState<Step>(1);
   const [subject, setSubject] = useState<string | null>(null);
+  const [subjectsTick, setSubjectsTick] = useState<number>(getSubjectsVersion());
+
+  // Hidratar catálogo de materias desde Cloud al montar (módulo #2 migrado)
+  useEffect(() => {
+    let alive = true;
+    hydrateSubjects().then(() => {
+      if (alive) setSubjectsTick(getSubjectsVersion());
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const subjectsList = useMemo(() => getSubjects(), [subjectsTick]);
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [chosenTeacherId, setChosenTeacherId] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
@@ -107,7 +122,7 @@ export function BookingWizard({ student }: Props) {
         <View>
           <Text style={s.title}>1. Elige materia</Text>
           <View style={{ gap: spacing.sm }}>
-            {SUBJECTS_CATALOG.map((x) => (
+            {subjectsList.map((x) => (
               <SelectRow key={x} label={x} icon="school-outline" active={subject === x}
                 onPress={() => { setSubject(x); setTeacherId(null); }} />
             ))}

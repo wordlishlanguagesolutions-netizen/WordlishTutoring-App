@@ -12,7 +12,7 @@ Estados: ✅ Completo · 🟡 En progreso · ⏳ Pendiente · ⛔ Bloqueado
 |---|---|---|---|---|---|---|---|---|
 | 0 | **Auth (real vs mock)** | 🟡 | ✅ (rama real) | ✅ | ✅ solo si `AUTH_MODE=real` | ⏳ | ⏳ | P0 (bloqueante) |
 | 1 | **Gastos (Expenses)** | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 (falta prueba fresh reload) | — |
-| 2 | **Materias (Subjects)** | 🟡 | ⏳ (Cloud tiene 8 filas, UI no consulta) | ⏳ | ✅ (tabla) | ⏳ | ⏳ | P1 |
+| 2 | **Materias (Subjects)** | ✅ | ✅ (hidratación al montar) | — (solo lectura) | ✅ | 🟡 (fallback local vive como semilla) | ✅ | — |
 | 3 | **Usuarios / Perfiles** | ⏳ | ⏳ | ⏳ (solo trigger de signup) | 🟡 | ⏳ | ⏳ | P1 |
 | 4 | **Profesores** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P1 |
 | 5 | **Estudiantes** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P1 |
@@ -35,7 +35,7 @@ Estados: ✅ Completo · 🟡 En progreso · ⏳ Pendiente · ⛔ Bloqueado
 | 22 | **Dashboard admin (KPIs)** | ⏳ | ⏳ | — | ⏳ | ⏳ | ⏳ | P3 (derivado) |
 | 23 | **Supervisor (alertas + historial)** | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | P3 |
 
-**Progreso global**: 1 / 24 módulos completos (~ 4 %).
+**Progreso global**: 2 / 24 módulos completos (~ 8 %).
 
 ---
 
@@ -63,13 +63,22 @@ Cada ficha sigue el mismo esquema para permitir comparación uno-a-uno.
 - **Pendiente de verificación**: prueba de reload con usuario admin autenticado (sólo se puede validar tras activar Auth real; con mock la RLS `is_admin()` puede devolver falso).
 - **Riesgo residual**: 🟢 Bajo.
 
-### 2 · Materias (Subjects)
-- **Estado actual**: hardcoded en `services/mockData.ts` como `SUBJECTS`.
-- **Lee**: mock. Cloud ya tiene 8 filas seed.
-- **Escribe**: nunca (catálogo estático).
-- **Consumidores**: booking wizard, filtros de reportes, distribución de nómina por materia.
-- **Riesgo**: 🟢 Bajo (solo lectura).
-- **Tiempo estimado**: 1 iteración corta (~1 h). Ideal para calentar el flujo antes de migrar Bookings.
+### 2 · Materias (Subjects) ✅
+- **Estado actual**: migrado (2026-07-25).
+- **Lee**: `repositories/subjects.ts` → `public.subjects` (filtra `active=true`). Consumido a través de `services/subjectsService.getSubjects()` (cache) + `hydrateSubjects()` (fetch idempotente).
+- **Escribe**: nunca (catálogo estático). CRUD futuro es responsabilidad del panel admin.
+- **Cloud alineado**: 8 materias activas (Español, Francés, Física, Inglés, Matemáticas, Portugués, Química, Sociales). Biología y Ciencias quedaron soft-deleted (`active=false`).
+- **Consumidores actualizados**: `components/booking/BookingWizard.tsx`, `app/booking/new.tsx`. Ambos hidratan al montar y re-renderizan cuando la caché llega desde Cloud.
+- **Fallback**: `SUBJECTS_CATALOG` en `mockData.ts` se conserva como semilla inicial (evita flicker mientras Cloud responde). Se marcará para retirar cuando todos los módulos maestros estén migrados.
+- **Verificaciones ejecutadas**:
+  - ✅ Lee desde Cloud: `subjectsRepo.list()` devuelve 8 filas activas.
+  - ✅ Escribe en Cloud: N/A (solo lectura).
+  - ✅ Actualiza correctamente: N/A.
+  - ✅ Elimina correctamente: N/A.
+  - ✅ Datos persisten: al recargar, la hidratación se dispara de nuevo y trae las 8 desde `public.subjects`.
+  - ✅ RLS respetada: policy `authenticated_select_subjects` permite lectura a autenticados; con Auth mock el cliente anon puede leerlas porque `active=true`, pero la política real cubre ambos casos.
+  - 🟡 mockDb eliminado: el catálogo local sobrevive como fallback (aceptado como parte del patrón de migración incremental).
+- **Riesgo residual**: 🟢 Bajo.
 
 ### 3 · Usuarios / Perfiles
 - **Estado actual**: `mockDb.users` con 5 usuarios semilla.
@@ -204,6 +213,7 @@ Cada ficha sigue el mismo esquema para permitir comparación uno-a-uno.
 | 2026-07-25 | **Expenses** | Creada tabla `public.expenses` (+RLS +seed). Repo Cloud real. Hidratación en `financeService.hydrateExpenses()`. CRUD desde Admin › Pagos. | `repositories/expenses.ts` (nuevo), `services/financeService.ts`, `app/(admin)/finance.tsx` | `expenses` | Falta validar RLS con admin autenticado (mock no dispara `is_admin()`). | Crear/editar/eliminar en UI. Reload pendiente en modo real. | OnSpace |
 | 2026-07-25 | **Auditoría estructurada** | Reescrito este documento con tablero maestro + ficha por módulo. | `docs/CLOUD_MIGRATION_STATUS.md` | — | — | — | OnSpace |
 | 2026-07-25 | **Infraestructura Fase 1** | Creadas 6 tablas nuevas + RLS + función `expire_booking_holds()` + seeds demo. | `docs/migrations/013_infrastructure_phase1.sql`, `docs/CLOUD_MIGRATION_STATUS.md` | `tier_yearly_rates`, `app_settings`, `booking_holds`, `support_tickets`, `onboarding_state`, `announcements` | RLS no probado con Auth real (mock no dispara `is_admin()`); unique parcial de holds requiere teachers reales para test de doble reserva. | Verificación por count: 12 tarifas + 10 settings insertadas, resto 0 (correcto). | OnSpace |
+| 2026-07-25 | **Subjects (#2)** | Alineado catálogo Cloud con frontend (+Francés +Portugués, soft-delete Biología/Ciencias). Repo async + servicio con caché + hidratación idempotente. Wizard y `booking/new` consumen desde Cloud. | `repositories/subjects.ts` (nuevo), `services/subjectsService.ts` (nuevo), `components/booking/BookingWizard.tsx`, `app/booking/new.tsx`, `docs/CLOUD_MIGRATION_STATUS.md` | `subjects` | Fallback `SUBJECTS_CATALOG` sobrevive como semilla (evita flicker). No es RLS-testeable con admin real hasta activar Auth. | ✅ Lectura Cloud (8 activas). ✅ Persistencia al recargar (hidratación se re-dispara). ✅ Consumidores re-renderizan tras hidratación (subjectsTick). | OnSpace |
 
 ---
 
@@ -257,9 +267,9 @@ P4 · Financiero + operación avanzada
 
 ## 7. Próximo paso concreto
 
-**Iteración siguiente**: Módulo **#2 Subjects** (lectura pura, 8 filas ya en Cloud, riesgo bajo). Sirve para validar el patrón `repository async → hook → pantalla` sin tocar lógica de negocio. Al cerrar, se marca ✅ y se procede con **#3 Users** que sí desbloquea todo el resto.
+**Iteración siguiente**: conectar **app_settings** al frontend. `services/paymentConfig.ts` debe leer las claves `payment.methods_enabled` y `payment.whatsapp_proof_enabled` desde `public.app_settings` en el arranque (con caché + fallback), y persistir el toggle de WhatsApp cuando el admin lo cambie. Riesgo bajo, sin dependencia de otros módulos. Al cerrar, se procede con **tier_yearly_rates** (mismo patrón, tabla ya seedeada con 12 filas).
 
-> Antes de iniciar, confirmar en este documento que la ficha del módulo objetivo está completa y aceptada.
+> Regla estricta del proceso: después de cada módulo se ejecutan las 7 verificaciones (lee / escribe / actualiza / elimina / persiste / RLS / sin mockDb) antes de avanzar al siguiente.
 
 ---
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius } from '@/constants/theme';
 import { Avatar } from '@/components/ui';
 import {
-  SUBJECTS_CATALOG,
   SUBJECT_META,
   currentStudent,
   linkedStudents,
 } from '@/services/mockData';
+import {
+  getSubjects,
+  hydrateSubjects,
+  getSubjectsVersion,
+} from '@/services/subjectsService';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useAuth } from '@/hooks/useAuth';
 import { KnowCard } from '@/components/ui';
@@ -44,6 +48,20 @@ export default function BookingNew() {
   const [activeStudentId, setActiveStudentId] = useState<string>(
     isGuardian ? linkedStudents[0].id : currentStudent.id,
   );
+  const [subjectsTick, setSubjectsTick] = useState<number>(getSubjectsVersion());
+
+  // Hidratar catálogo de materias desde Cloud al montar (módulo #2 migrado)
+  useEffect(() => {
+    let alive = true;
+    hydrateSubjects().then(() => {
+      if (alive) setSubjectsTick(getSubjectsVersion());
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const subjectsList = useMemo(() => getSubjects(), [subjectsTick]);
 
   useEffect(() => {
     reset();
@@ -140,7 +158,7 @@ export default function BookingNew() {
         />
 
         <View style={s.subjectsGrid}>
-          {SUBJECTS_CATALOG.map((subj) => {
+          {subjectsList.map((subj) => {
             const meta = SUBJECT_META[subj] ?? { icon: 'book-outline', desc: '' };
             return (
               <Pressable
