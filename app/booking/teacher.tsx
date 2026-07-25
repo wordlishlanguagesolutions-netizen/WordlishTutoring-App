@@ -104,7 +104,7 @@ export default function BookingTeacher() {
           <Ionicons name="chevron-back" size={20} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.stepText}>Paso 3 de 4</Text>
+          <Text style={s.stepText}>Opcional</Text>
           <Text style={s.title}>Elige tu profesor</Text>
         </View>
       </View>

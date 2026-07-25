@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
@@ -18,9 +19,26 @@ import { useBookings } from '@/hooks/useBookings';
 import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
+import {
+  getActivePaymentMethods,
+  type PaymentMethodOption,
+} from '@/services/paymentConfig';
 
-// Las reglas rápidas viven ahora en POLICY_COPY.bookingSummary
-// (constants/policies.ts). Se muestran a través de <KnowCard />.
+// ============================================================================
+// Reserva · Paso 3 de 3: resumen + método de pago inline.
+//
+// Filosofía "una necesidad = un solo flujo": el estudiante no sale a otra
+// pantalla para pagar. Si tiene horas disponibles, se salta el bloque de
+// pagos y confirma directamente. Si no, elige un método (tarjeta, Yappy,
+// ACH, comprobante, WhatsApp) sin abandonar el resumen.
+//
+// La arquitectura de pagos es 100% escalable: el catálogo vive en
+// `services/paymentConfig.ts`. Cuando se conecte una pasarela real
+// (Stripe / PagueloFacil / Wompi / Yappy) basta con marcar `enabled: true`
+// y proveer credenciales — la UI no cambia.
+// ============================================================================
+
+const PRICE_PER_HOUR = 18; // USD, dato mock para mostrar precio cuando no hay plan
 
 export default function BookingSummary() {
   const router = useRouter();
@@ -29,6 +47,13 @@ export default function BookingSummary() {
 
   const hold = holds.find((h) => h.id === draft.holdId);
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
+  const requiresPayment = hoursLeft === 0;
+
+  const paymentMethods = useMemo(() => getActivePaymentMethods(), []);
+  const [methodId, setMethodId] = useState<string | null>(
+    paymentMethods[0]?.id ?? null,
+  );
+  const [proofName, setProofName] = useState<string | null>(null);
 
   const [remaining, setRemaining] = useState<number>(() =>
     hold ? Math.max(0, Math.floor((hold.expiresAt - Date.now()) / 1000)) : 0,
@@ -51,8 +76,6 @@ export default function BookingSummary() {
     }
   }, [draft.date, draft.time, draft.teacherId, draft.subject, draft.studentId]);
 
-  // Cada vez que la pantalla vuelve al foco, refresca si las políticas se
-  // visualizaron (por ejemplo tras volver del modal de Tips).
   useFocusEffect(
     useCallback(() => {
       setPoliciesViewed(policiesAck.hasViewed(draft.studentId));
@@ -82,10 +105,42 @@ export default function BookingSummary() {
     router.push(`/class/policies?studentId=${draft.studentId}` as any);
   };
 
+  const method = paymentMethods.find((m) => m.id === methodId) ?? null;
+
+  const handleUploadProof = () => {
+    // La carga real de imagen/PDF se implementará con expo-document-picker
+    // cuando conectemos el bucket `payment-receipts`. Por ahora simulamos
+    // la selección para mantener el flujo unificado.
+    Alert.alert('Comprobante', 'Selecciona un archivo', [
+      {
+        text: 'Imagen',
+        onPress: () => setProofName('comprobante.jpg'),
+      },
+      {
+        text: 'PDF',
+        onPress: () => setProofName('comprobante.pdf'),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
+
+  const canConfirm = useMemo(() => {
+    if (busy) return false;
+    if (hold && remaining === 0) return false;
+    if (!policiesViewed) return false;
+    if (requiresPayment) {
+      if (!method) return false;
+      if (method.requiresProof && !proofName) return false;
+    }
+    return true;
+  }, [busy, hold, remaining, policiesViewed, requiresPayment, method, proofName]);
+
   const onConfirm = () => {
-    if (busy) return;
-    if (!policiesViewed) {
-      setError('Revisa las políticas antes de confirmar.');
+    if (!canConfirm) {
+      if (!policiesViewed) setError('Revisa las políticas antes de confirmar.');
+      else if (requiresPayment && !method) setError('Elige un método de pago.');
+      else if (requiresPayment && method?.requiresProof && !proofName)
+        setError('Adjunta tu comprobante para continuar.');
       return;
     }
     setBusy(true);
@@ -116,10 +171,20 @@ export default function BookingSummary() {
   };
 
   const holdExpired = hold ? remaining === 0 : false;
-  const confirmDisabled = busy || holdExpired || !policiesViewed;
+
+  const primaryLabel = requiresPayment
+    ? method?.kind === 'gateway'
+      ? 'Pagar y confirmar'
+      : method?.requiresProof && proofName
+      ? 'Enviar y confirmar'
+      : 'Confirmar reserva'
+    : 'Confirmar reserva';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      edges={['top']}
+    >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={s.header}>
@@ -127,7 +192,7 @@ export default function BookingSummary() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 4 de 4</Text>
+          <Text style={typography.caption}>Paso 3 de 3</Text>
           <Text style={typography.h2}>Resumen</Text>
         </View>
       </View>
@@ -135,7 +200,7 @@ export default function BookingSummary() {
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
-        <StepDots current={3} />
+        <StepDots current={2} />
 
         {hold && !holdExpired && (
           <View style={s.holdBanner}>
@@ -166,7 +231,13 @@ export default function BookingSummary() {
         </View>
 
         <View style={s.card}>
-          <Row avatar={draft.teacherAvatar} name={draft.teacherName} role="Profesor" />
+          <Row
+            avatar={draft.teacherAvatar}
+            name={
+              draft.teacherId === 'any' ? 'Auto-asignación' : draft.teacherName
+            }
+            role="Profesor"
+          />
           <Divider />
           <Row avatar={draft.studentAvatar} name={draft.studentName} role="Estudiante" />
         </View>
@@ -178,31 +249,118 @@ export default function BookingSummary() {
             label="Horas disponibles"
             value={`${hoursLeft} h`}
           />
-          <InfoLine icon="person-add-outline" label="Suplente" value="Sin asignar" />
+          {requiresPayment ? (
+            <InfoLine
+              icon="pricetag-outline"
+              label="Precio"
+              value={`$${PRICE_PER_HOUR.toFixed(2)}`}
+            />
+          ) : null}
           <InfoLine
-            icon={hoursLeft > 0 ? 'checkmark-circle' : 'card-outline'}
+            icon={requiresPayment ? 'card-outline' : 'checkmark-circle'}
             label="Estado inicial"
-            value={hoursLeft > 0 ? 'Confirmada' : 'Pendiente de pago'}
-            tone={hoursLeft > 0 ? 'success' : 'warning'}
+            value={requiresPayment ? 'Pendiente de pago' : 'Confirmada'}
+            tone={requiresPayment ? 'warning' : 'success'}
             last
           />
         </View>
 
-        {/* 💡 Lo que debes saber (reglas visibles antes de confirmar) */}
+        {/* ═════════════ Método de pago (inline) ═════════════ */}
+        {requiresPayment ? (
+          <View style={s.paySection}>
+            <Text style={s.payTitle}>Método de pago</Text>
+            <Text style={s.paySubtitle}>
+              Elige cómo quieres pagar esta reserva.
+            </Text>
+
+            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+              {paymentMethods.map((m) => (
+                <PaymentOptionRow
+                  key={m.id}
+                  option={m}
+                  selected={methodId === m.id}
+                  onPress={() => {
+                    setMethodId(m.id);
+                    setError('');
+                    if (!m.requiresProof) setProofName(null);
+                  }}
+                />
+              ))}
+              {paymentMethods.length === 0 ? (
+                <View style={s.emptyPay}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                  <Text style={s.emptyPayText}>
+                    No hay métodos de pago activos. Contacta al administrador.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {method?.requiresProof && !method.whatsappOnly ? (
+              <Pressable
+                onPress={handleUploadProof}
+                style={({ pressed }) => [
+                  s.uploadBox,
+                  proofName ? s.uploadBoxDone : null,
+                  pressed && { opacity: 0.9 },
+                ]}
+              >
+                <Ionicons
+                  name={proofName ? 'checkmark-circle' : 'cloud-upload-outline'}
+                  size={20}
+                  color={proofName ? colors.success : colors.primaryDark}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.uploadLabel}>
+                    {proofName ? 'Comprobante adjunto' : 'Adjuntar comprobante'}
+                  </Text>
+                  <Text style={s.uploadHint} numberOfLines={1}>
+                    {proofName ?? 'Imagen o PDF · queda pendiente de validación'}
+                  </Text>
+                </View>
+                {proofName ? (
+                  <Text style={s.uploadReplace}>Cambiar</Text>
+                ) : (
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={colors.primaryDark}
+                  />
+                )}
+              </Pressable>
+            ) : null}
+
+            {method && method.kind !== 'gateway' ? (
+              <View style={s.payHint}>
+                <Ionicons
+                  name="time-outline"
+                  size={13}
+                  color={colors.textMuted}
+                />
+                <Text style={s.payHintText}>
+                  El supervisor validará tu pago en las próximas horas.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={s.planBox}>
+            <Ionicons name="hourglass" size={18} color={colors.success} />
+            <Text style={s.planBoxText}>
+              Esta reserva utilizará horas disponibles de tu plan.
+            </Text>
+          </View>
+        )}
+
+        {/* Reglas */}
         <KnowCard
           rules={POLICY_COPY.bookingSummary}
           style={{ marginTop: spacing.lg }}
         />
-
-        {hoursLeft === 0 && (
-          <View style={s.noticeBox}>
-            <Ionicons name="information-circle" size={18} color={colors.warning} />
-            <Text style={s.noticeText}>
-              No tienes horas en paquete activo. Se creará una orden pendiente
-              de pago.
-            </Text>
-          </View>
-        )}
 
         {error !== '' && (
           <View style={s.errorBox}>
@@ -211,7 +369,6 @@ export default function BookingSummary() {
           </View>
         )}
 
-        {/* Ver políticas */}
         <Pressable
           onPress={openPolicies}
           style={({ pressed }) => [s.policyBtn, pressed && { opacity: 0.9 }]}
@@ -243,17 +400,15 @@ export default function BookingSummary() {
 
         <Pressable
           onPress={onConfirm}
-          disabled={confirmDisabled}
+          disabled={!canConfirm}
           style={({ pressed }) => [
             s.primaryBtn,
-            confirmDisabled && { opacity: 0.5 },
-            pressed && !confirmDisabled && { opacity: 0.9 },
+            !canConfirm && { opacity: 0.5 },
+            pressed && canConfirm && { opacity: 0.9 },
           ]}
         >
           <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-          <Text style={s.primaryText}>
-            {hoursLeft > 0 ? 'Confirmar reserva' : 'Crear orden y reservar'}
-          </Text>
+          <Text style={s.primaryText}>{primaryLabel}</Text>
         </Pressable>
 
         <Pressable onPress={onChangeSchedule} style={s.secondaryBtn}>
@@ -261,6 +416,48 @@ export default function BookingSummary() {
         </Pressable>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Componentes internos
+// ══════════════════════════════════════════════════════════════════════════
+
+function PaymentOptionRow({
+  option,
+  selected,
+  onPress,
+}: {
+  option: PaymentMethodOption;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.payOption,
+        selected && s.payOptionOn,
+        pressed && { opacity: 0.9 },
+      ]}
+    >
+      <View style={[s.payIcon, selected && s.payIconOn]}>
+        <Ionicons
+          name={option.icon as any}
+          size={18}
+          color={selected ? colors.textOnPrimary : colors.primaryDark}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.payOptionLabel}>{option.label}</Text>
+        <Text style={s.payOptionDesc} numberOfLines={2}>
+          {option.description}
+        </Text>
+      </View>
+      <View style={[s.radio, selected && s.radioOn]}>
+        {selected ? <View style={s.radioDot} /> : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -325,7 +522,7 @@ function InfoLine({
 function StepDots({ current }: { current: number }) {
   return (
     <View style={s.dotsRow}>
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1, 2].map((i) => (
         <View
           key={i}
           style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
@@ -418,31 +615,153 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  rulesTitle: { ...typography.h3, fontSize: 16 },
-  ruleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  ruleText: {
-    flex: 1,
-    ...typography.body,
-    color: colors.text,
-    lineHeight: 20,
-    fontSize: 14,
+  // ─── Método de pago ───────────────────────────────────────────────
+  paySection: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    ...shadow.sm,
   },
-
-  noticeBox: {
+  payTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  paySubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  payOption: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.warningSoft,
+    alignItems: 'center',
+    gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
-    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
-  noticeText: {
-    color: colors.warning,
-    fontWeight: '600',
+  payOptionOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  payIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payIconOn: {
+    backgroundColor: colors.primary,
+  },
+  payOptionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  payOptionDesc: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  emptyPay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+  },
+  emptyPayText: { flex: 1, fontSize: 12, color: colors.textSubtle },
+
+  uploadBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  uploadBoxDone: {
+    borderStyle: 'solid',
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  uploadLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  uploadHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  uploadReplace: {
     fontSize: 13,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    textDecorationLine: 'underline',
+  },
+
+  payHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+  },
+  payHintText: {
     flex: 1,
-    lineHeight: 18,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+
+  planBox: {
+    marginTop: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  planBoxText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.success,
   },
 
   errorBox: {

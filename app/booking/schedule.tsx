@@ -111,13 +111,13 @@ export default function BookingSchedule() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 3 de 4</Text>
+          <Text style={typography.caption}>Paso 2 de 3</Text>
           <Text style={typography.h2}>Fecha y hora</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-        <StepDots current={2} />
+        <StepDots current={1} />
 
         <View style={s.contextRow}>
           <View style={s.pill}>
@@ -136,8 +136,14 @@ export default function BookingSchedule() {
           <View style={s.autoHint}>
             <Ionicons name="sparkles" size={14} color={colors.primaryDark} />
             <Text style={s.autoHintText}>
-              Verás el profesor asignado en el resumen.
+              Wordlish asignará el mejor profesor disponible.
             </Text>
+            <Pressable
+              onPress={() => router.push('/booking/teacher' as any)}
+              hitSlop={8}
+            >
+              <Text style={s.autoHintLink}>Cambiar</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -199,7 +205,7 @@ export default function BookingSchedule() {
 function StepDots({ current }: { current: number }) {
   return (
     <View style={s.dotsRow}>
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1, 2].map((i) => (
         <View
           key={i}
           style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
@@ -241,6 +247,7 @@ const s = StyleSheet.create({
     borderRadius: radius.md, marginTop: spacing.md,
   },
   autoHintText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600', flex: 1 },
+  autoHintLink: { color: colors.primaryDark, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
 
   dateChip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
