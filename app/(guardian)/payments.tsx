@@ -1,22 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius } from '@/constants/theme';
-import { getGroupPaymentStatus } from '@/constants/policies';
 import {
   guardianPaymentsHistory,
-  guardianGroupPayments,
   PAYMENT_STATUS,
 } from '@/services/mockData';
 
 // ============================================================================
-// Mi plan · acudiente. Fase 3: dos columnas en desktop.
-// Izquierda: pagos pendientes por estudiante.
-// Derecha: historial como tabla compacta.
-// Móvil/tablet: pila vertical original.
+// Mi plan · acudiente. Wordlish es prepago: no hay pagos pendientes ni
+// vencimientos. La pantalla muestra únicamente historial de movimientos.
 // ============================================================================
 
 const TONE_MAP = {
@@ -33,58 +29,12 @@ export default function GuardianMyPlan() {
   const openDetail = (id: string) =>
     router.push(`/payments/${id}?kind=guardianPayment` as any);
 
-  const pendingGroup = guardianGroupPayments.filter((g) => !g.paid);
-
-  const PendingBlock = pendingGroup.length > 0 ? (
-    <View style={{ gap: spacing.md }}>
-      {pendingGroup.map((gp) => {
-        const st = getGroupPaymentStatus(gp.daysLate, gp.paid);
-        const tone = TONE_MAP[st.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
-        const total = gp.cycleAmount + st.fee;
-        return (
-          <View key={gp.courseId + gp.studentId} style={styles.nextCard}>
-            <Text style={styles.nextLabel}>Próximo pago</Text>
-            <Text style={styles.nextConcept} numberOfLines={1}>{gp.courseName}</Text>
-            <View style={styles.nextMetaRow}>
-              <View style={styles.nextMetaItem}>
-                <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                <Text style={styles.nextMetaText}>{gp.studentName}</Text>
-              </View>
-              <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-                <Text style={[styles.badgeText, { color: tone.fg }]}>{st.label}</Text>
-              </View>
-            </View>
-            <View style={styles.nextMetaRow}>
-              <View style={styles.nextMetaItem}>
-                <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                <Text style={styles.nextMetaText}>Vence {gp.paymentDueDate}</Text>
-              </View>
-            </View>
-            <Text style={styles.nextAmount}>${total}</Text>
-            <View style={styles.nextActions}>
-              <Pressable
-                onPress={() => Alert.alert('Pagar ahora', 'Se abrirá la pasarela de pago.')}
-                style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.9 }]}
-              >
-                <Text style={styles.payBtnText}>Pagar ahora</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => Alert.alert('Ya envié mi comprobante', 'Confirmaremos el pago en menos de 24 horas.')}
-                style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
-              >
-                <Text style={styles.softBtnText}>Enviar comprobante</Text>
-              </Pressable>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  ) : (
+  const StatusBlock = (
     <View style={styles.emptyPayCard}>
-      <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+      <Ionicons name="hourglass" size={22} color={colors.primaryDark} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.emptyPayTitle}>Sin pagos pendientes</Text>
-        <Text style={styles.emptyPaySubtitle}>Todo al día para tus estudiantes.</Text>
+        <Text style={styles.emptyPayTitle}>Servicios prepago</Text>
+        <Text style={styles.emptyPaySubtitle}>Aquí verás los pagos ya realizados de tus estudiantes.</Text>
       </View>
     </View>
   );
@@ -171,12 +121,12 @@ export default function GuardianMyPlan() {
         <WebTwoColumn
           leftFlex={5}
           rightFlex={7}
-          left={PendingBlock}
+          left={StatusBlock}
           right={HistoryBlock}
         />
       ) : (
         <>
-          {PendingBlock}
+          {StatusBlock}
           <View style={{ height: spacing.lg }} />
           {HistoryBlock}
         </>

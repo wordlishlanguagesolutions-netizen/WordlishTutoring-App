@@ -10,14 +10,12 @@ import { useBookings } from '@/hooks/useBookings';
 import {
   currentStudent,
   studentAcademic,
-  studentGroupPayment,
   paymentsHistory,
   packagesHistory,
   topUpsHistory,
   PAYMENT_STATUS,
   PaymentStatus,
 } from '@/services/mockData';
-import { getGroupPaymentStatus } from '@/constants/policies';
 
 // ============================================================================
 // Reservas del estudiante · flujo unificado.
@@ -91,13 +89,8 @@ export default function StudentBookHub() {
     .slice(0, 6);
 
   const hoursLeft = studentAcademic.hoursAvailable;
-  const hasPending = !studentGroupPayment.paid;
-  const gpStatus = getGroupPaymentStatus(studentGroupPayment.daysLate, studentGroupPayment.paid);
-  const gpTone = TONE_MAP[gpStatus.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
-  const totalDue = studentGroupPayment.cycleAmount + gpStatus.fee;
 
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [receiptSent, setReceiptSent] = useState(false);
   const featuredPlan = useMemo(() => ACTIVE_PLANS.find((p) => p.featured), []);
   const otherPlans = useMemo(() => ACTIVE_PLANS.filter((p) => !p.featured), []);
   const movements = useMemo(unifiedMovements, []);
@@ -138,49 +131,6 @@ export default function StudentBookHub() {
         </View>
         <Text style={styles.planLabel}>disponibles en tu plan</Text>
       </View>
-
-      {hasPending ? (
-        <View style={styles.pendingRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.pendingLabel}>Pago pendiente</Text>
-            <Text style={styles.pendingConcept} numberOfLines={1}>
-              {studentGroupPayment.courseName}
-            </Text>
-            <View style={styles.pendingMeta}>
-              <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-              <Text style={styles.pendingMetaText}>Vence {studentGroupPayment.paymentDueDate}</Text>
-              <View style={[styles.badge, { backgroundColor: gpTone.bg }]}>
-                <Text style={[styles.badgeText, { color: gpTone.fg }]}>{gpStatus.label}</Text>
-              </View>
-            </View>
-          </View>
-          <Text style={styles.pendingAmount}>${totalDue}</Text>
-        </View>
-      ) : null}
-
-      {hasPending && !receiptSent ? (
-        <View style={styles.actionsRow}>
-          <Pressable
-            onPress={() => Alert.alert('Pagar ahora', 'Se abrirá la pasarela de pago.')}
-            style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Text style={styles.payBtnText}>Pagar ahora</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setReceiptSent(true)}
-            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Text style={styles.softBtnText}>Enviar comprobante</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {receiptSent ? (
-        <View style={styles.receiptSent}>
-          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-          <Text style={styles.receiptSentText}>Comprobante enviado · validando</Text>
-        </View>
-      ) : null}
 
       <Pressable
         onPress={() => setCatalogOpen((v) => !v)}

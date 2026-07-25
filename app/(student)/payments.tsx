@@ -1,17 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { getGroupPaymentStatus } from '@/constants/policies';
 import {
   paymentsHistory,
   packagesHistory,
   topUpsHistory,
   PAYMENT_STATUS,
-  studentGroupPayment,
   studentAcademic,
   PaymentStatus,
 } from '@/services/mockData';
@@ -128,16 +126,7 @@ export default function StudentMyPlan() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
 
-  const [receiptSent, setReceiptSent] = useState<boolean>(false);
-  const [catalogOpen, setCatalogOpen] = useState<boolean>(false);
-
-  const hasPending = !studentGroupPayment.paid;
-  const gpStatus = getGroupPaymentStatus(
-    studentGroupPayment.daysLate,
-    studentGroupPayment.paid,
-  );
-  const gpTone = TONE_MAP[gpStatus.tone] ?? TONE_MAP.info;
-  const totalDue = studentGroupPayment.cycleAmount + gpStatus.fee;
+  const [catalogOpen, setCatalogOpen] = React.useState<boolean>(false);
 
   const remainingHours = studentAcademic.hoursAvailable;
   const showLowHoursNudge = remainingHours <= 1;
@@ -265,56 +254,14 @@ export default function StudentMyPlan() {
     </View>
   ) : null;
 
-  const PendingCard = hasPending ? (
-    <View style={styles.nextCard}>
-      <Text style={styles.nextLabel}>Próximo pago</Text>
-      <Text style={styles.nextConcept} numberOfLines={1}>
-        {studentGroupPayment.courseName}
-      </Text>
-
-      <View style={styles.nextMetaRow}>
-        <View style={styles.nextMetaItem}>
-          <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-          <Text style={styles.nextMetaText}>Vence {studentGroupPayment.paymentDueDate}</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: gpTone.bg }]}>
-          <Text style={[styles.badgeText, { color: gpTone.fg }]}>{gpStatus.label}</Text>
-        </View>
-      </View>
-
-      <Text style={styles.nextAmount}>${totalDue}</Text>
-
-      {receiptSent ? (
-        <View style={styles.receiptSent}>
-          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.receiptTitle}>Comprobante enviado</Text>
-            <Text style={styles.receiptSubtitle}>Estamos verificando tu pago.</Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.nextActions}>
-          <Pressable
-            onPress={() => Alert.alert('Pagar ahora', 'Se abrirá la pasarela de pago.')}
-            style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Text style={styles.payBtnText}>Pagar ahora</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setReceiptSent(true)}
-            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Text style={styles.softBtnText}>Enviar comprobante</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-  ) : (
+  const PlanStatusCard = (
     <View style={styles.emptyPayCard}>
-      <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+      <Ionicons name="hourglass" size={22} color={colors.primaryDark} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.emptyPayTitle}>Sin pagos pendientes</Text>
-        <Text style={styles.emptyPaySubtitle}>Tu plan está al día.</Text>
+        <Text style={styles.emptyPayTitle}>
+          {remainingHours} {remainingHours === 1 ? 'hora' : 'horas'} disponibles
+        </Text>
+        <Text style={styles.emptyPaySubtitle}>Wordlish es prepago: paga y usa cuando quieras.</Text>
       </View>
     </View>
   );
@@ -416,7 +363,7 @@ export default function StudentMyPlan() {
           rightFlex={7}
           left={
             <View style={{ gap: spacing.md }}>
-              {PendingCard}
+              {PlanStatusCard}
               {NudgeCard}
             </View>
           }
@@ -424,7 +371,7 @@ export default function StudentMyPlan() {
         />
       ) : (
         <>
-          {PendingCard}
+          {PlanStatusCard}
           {NudgeCard}
           {HistoryBlock}
         </>

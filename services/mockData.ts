@@ -138,13 +138,13 @@ export const latestPayment = {
 export const paymentsHistory = [
   { id: 'p1', concept: 'Paquete 8 horas · Lucía', amount: 110, date: '01 Jul 2026', status: 'paid' as PaymentStatus, method: 'Tarjeta' },
   { id: 'p2', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun 2026', status: 'paid' as PaymentStatus, method: 'Yappy' },
-  { id: 'p3', concept: 'Recarga 2 horas', amount: 30, date: '10 Jun 2026', status: 'pending' as PaymentStatus, method: 'Cuanto' },
+  { id: 'p3', concept: 'Recarga 2 horas', amount: 30, date: '10 Jun 2026', status: 'paid' as PaymentStatus, method: 'Cuanto' },
 ];
 
 export const guardianPaymentsHistory = [
   { id: 'p1', concept: 'Paquete 8 horas · Lucía', amount: 110, date: '01 Jul', status: 'paid' as PaymentStatus, method: 'Tarjeta' },
   { id: 'p2', concept: 'Paquete 8 horas · Pablo', amount: 110, date: '01 Jul', status: 'paid' as PaymentStatus, method: 'Yappy' },
-  { id: 'p3', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun', status: 'pending' as PaymentStatus, method: 'Cuanto' },
+  { id: 'p3', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun', status: 'paid' as PaymentStatus, method: 'Cuanto' },
 ];
 
 // ============= REPORTES =============
@@ -344,7 +344,7 @@ export const linkedStudents = [
     nextSubject: 'Inglés básico',
     nextTeacher: 'Prof. María Luna',
     nextTeacherAvatar: 'https://i.pravatar.cc/150?img=48',
-    paymentStatus: 'pending' as PaymentStatus,
+    paymentStatus: 'paid' as PaymentStatus,
     activeServices: ['Tutoría individual', 'Curso grupal'] as string[],
     planTier: 'essentials' as TeacherTier,
     nextTeacherOnline: false,
@@ -647,7 +647,7 @@ export const topUpsHistory: Array<{
   id: string; hours: number; price: number; date: string;
   method: string; status: PaymentStatus;
 }> = [
-  { id: 'tu1', hours: 2, price: 30, date: '10 Jun 2026', method: 'Cuanto', status: 'pending' },
+  { id: 'tu1', hours: 2, price: 30, date: '10 Jun 2026', method: 'Cuanto', status: 'paid' },
   { id: 'tu2', hours: 4, price: 55, date: '20 May 2026', method: 'Yappy', status: 'paid' },
 ];
 
@@ -769,10 +769,9 @@ export const studentGroupPayment: GroupCoursePayment = {
   cycleAmount: 55,
   paymentDueDate: '15 Ago 2026',
   daysLate: 0,
-  paid: false,
+  paid: true,
 };
 
-export const guardianGroupPayments: GroupCoursePayment[] = [
-  { courseId: 'gc1', courseName: 'Inglés · Básico grupal', studentId: 's1', studentName: 'Lucía', cycleAmount: 55, paymentDueDate: '15 Ago 2026', daysLate: 0, paid: false },
-  { courseId: 'gc2', courseName: 'Inglés · Conversación grupal', studentId: 's2', studentName: 'Pablo', cycleAmount: 45, paymentDueDate: '10 Jul 2026', daysLate: 2, paid: false },
-];
+// Wordlish es 100% prepago: no hay ciclos con vencimiento por curso.
+// Este arreglo se conserva vacío por compatibilidad con vistas antiguas.
+export const guardianGroupPayments: GroupCoursePayment[] = [];

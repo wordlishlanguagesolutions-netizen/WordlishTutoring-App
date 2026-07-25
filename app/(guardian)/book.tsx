@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { Screen, Header, Avatar, WebTwoColumn } from '@/components/ui';
@@ -9,18 +9,15 @@ import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { useBookings } from '@/hooks/useBookings';
 import {
   linkedStudents,
-  guardianGroupPayments,
   guardianPaymentsHistory,
   PAYMENT_STATUS,
 } from '@/services/mockData';
-import { getGroupPaymentStatus } from '@/constants/policies';
 
 // ============================================================================
 // Reservas del acudiente · flujo unificado.
 //
-// Igual que en el estudiante: reservar y pagar viven en una sola pantalla.
-// Bloques: CTA reservar → estudiantes vinculados → pagos pendientes por
-// estudiante → próximas clases → historial.
+// Wordlish es 100% prepago: no existen ciclos ni pagos con vencimiento.
+// Bloques: CTA reservar → estudiantes vinculados → próximas clases → historial.
 // ============================================================================
 
 const TONE_MAP = {
@@ -44,14 +41,7 @@ export default function GuardianBookHub() {
     .sort((a, b) => (a.date + a.time > b.date + b.time ? 1 : -1))
     .slice(0, 6);
 
-  const pending = useMemo(() => guardianGroupPayments.filter((g) => !g.paid), []);
-  const history = useMemo(() => guardianPaymentsHistory.slice(0, 6), []);
-
-  const [receiptSentIds, setReceiptSentIds] = useState<Set<string>>(new Set());
-  const markSent = (id: string) => {
-    setReceiptSentIds((prev) => new Set(prev).add(id));
-  };
-
+  const history = guardianPaymentsHistory.slice(0, 6);
   const openDetail = (id: string) => router.push(`/payments/${id}?kind=guardianPayment` as any);
 
   // ═════════════ Bloques ═════════════
@@ -96,64 +86,6 @@ export default function GuardianBookHub() {
         </View>
       ))}
     </ScrollView>
-  );
-
-  const PendingBlock = pending.length > 0 ? (
-    <View style={{ gap: spacing.sm }}>
-      <Text style={styles.sectionLabel}>Pagos pendientes</Text>
-      {pending.map((gp) => {
-        const st = getGroupPaymentStatus(gp.daysLate, gp.paid);
-        const tone = TONE_MAP[st.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
-        const total = gp.cycleAmount + st.fee;
-        const key = gp.courseId + gp.studentId;
-        const sent = receiptSentIds.has(key);
-        return (
-          <View key={key} style={styles.pendingCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pendingConcept} numberOfLines={1}>{gp.courseName}</Text>
-                <View style={styles.pendingMeta}>
-                  <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                  <Text style={styles.pendingMetaText}>{gp.studentName}</Text>
-                  <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                  <Text style={styles.pendingMetaText}>Vence {gp.paymentDueDate}</Text>
-                </View>
-                <View style={[styles.badge, { backgroundColor: tone.bg, marginTop: 6 }]}>
-                  <Text style={[styles.badgeText, { color: tone.fg }]}>{st.label}</Text>
-                </View>
-              </View>
-              <Text style={styles.pendingAmount}>${total}</Text>
-            </View>
-            {sent ? (
-              <View style={styles.receiptSent}>
-                <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                <Text style={styles.receiptSentText}>Comprobante enviado · validando</Text>
-              </View>
-            ) : (
-              <View style={styles.actionsRow}>
-                <Pressable
-                  onPress={() => Alert.alert('Pagar ahora', 'Se abrirá la pasarela de pago.')}
-                  style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.9 }]}
-                >
-                  <Text style={styles.payBtnText}>Pagar ahora</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => markSent(key)}
-                  style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.9 }]}
-                >
-                  <Text style={styles.softBtnText}>Enviar comprobante</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        );
-      })}
-    </View>
-  ) : (
-    <View style={styles.emptyPay}>
-      <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-      <Text style={styles.emptyPayText}>Sin pagos pendientes</Text>
-    </View>
   );
 
   const UpcomingBlock = (
@@ -260,7 +192,6 @@ export default function GuardianBookHub() {
             <View style={{ gap: spacing.md }}>
               {ReserveCTA}
               {StudentsStrip}
-              {PendingBlock}
             </View>
           }
           right={
@@ -275,8 +206,6 @@ export default function GuardianBookHub() {
           {ReserveCTA}
           <View style={{ height: spacing.md }} />
           {StudentsStrip}
-          <View style={{ height: spacing.md }} />
-          {PendingBlock}
           <View style={{ height: spacing.md }} />
           {UpcomingBlock}
           {HistoryBlock}
