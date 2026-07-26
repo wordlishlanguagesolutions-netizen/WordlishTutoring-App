@@ -12,13 +12,33 @@ import {
   hasStudentConflict,
   hasTeacherConflict,
 } from '@/services/bookingService';
-import {
-  bookingsRepo,
-  classRecordsRepo,
-  packagesRepo,
-} from '@/repositories';
 import { createNotification } from '@/services/notificationService';
 import { getZoomUrl } from '@/services/zoomService';
+import {
+  bookingsRepo,
+  getBookings,
+  hydrateBookings,
+  subscribeBookings,
+} from '@/services/bookingsService';
+import {
+  getStudentById,
+  hydrateStudents,
+  subscribeStudents,
+} from '@/services/studentsService';
+import {
+  getGuardianById,
+  hydrateGuardians,
+} from '@/services/guardiansService';
+import {
+  packagesRepo,
+  getPackages,
+  hydratePackages,
+  subscribePackages,
+} from '@/services/packagesService';
+import {
+  classRecordsRepo,
+  hydrateClassRecords,
+} from '@/services/classRecordsService';
 import { mockDb } from '@/services/mockDb';
 
 const HOLD_MS = 5 * 60 * 1000; // 5 minutos
@@ -61,46 +81,81 @@ export const BookingsContext = createContext<BookingsContextType | undefined>(
   undefined,
 );
 
-// Derivar horas restantes desde packagesRepo (fuente única)
-function computeRemainingHours(): Record<string, number> {
-  const map: Record<string, number> = {};
-  mockDb.students.forEach((s) => {
-    map[s.id] = packagesRepo.remainingHoursFor(s.id);
-  });
-  return map;
-}
-
-// Mapa studentId → userId (para notificaciones)
+// Lookups con fallback: Cloud primero (studentsService/guardiansService),
+// mockDb como respaldo temporal solo para módulos aún no migrados
+// (users/staff se resuelven vía userId; students y guardians ya son Cloud).
 function studentToUserId(studentId: string): string {
+  const cloudStudent = getStudentById(studentId);
+  if (cloudStudent?.userId) return cloudStudent.userId;
   const s = mockDb.students.find((x) => x.id === studentId);
   return s?.userId ?? `u-${studentId}`;
 }
 function guardianToUserId(guardianId: string | null): string | null {
   if (!guardianId) return null;
+  const cloudGuardian = getGuardianById(guardianId);
+  if (cloudGuardian?.userId) return cloudGuardian.userId;
   const g = mockDb.guardians.find((x) => x.id === guardianId);
   return g?.userId ?? null;
 }
+function studentGuardianId(studentId: string): string | null {
+  const cloudStudent = getStudentById(studentId);
+  if (cloudStudent) return cloudStudent.guardianId ?? null;
+  const s = mockDb.students.find((x) => x.id === studentId);
+  return s?.guardianId ?? null;
+}
+
+// Horas restantes: derivadas directamente del cache Cloud de packages.
+// Sin dependencia de mockDb.students (fallback #8 eliminado).
+function computeRemainingHours(): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const p of getPackages()) {
+    if (!p.active) continue;
+    map[p.studentId] = (map[p.studentId] ?? 0) + p.remainingHours;
+  }
+  return map;
+}
 
 export function BookingsProvider({ children }: { children: ReactNode }) {
-  const [bookings, setBookings] = useState<Booking[]>(() =>
-    bookingsRepo.listAll(),
-  );
+  const [bookings, setBookings] = useState<Booking[]>(() => getBookings());
   const [holds, setHolds] = useState<Hold[]>([]);
   const [remainingHours, setRemainingHours] = useState<Record<string, number>>(
     computeRemainingHours(),
   );
 
-  const syncBookings = useCallback(() => {
-    setBookings(bookingsRepo.listAll());
-    setRemainingHours(computeRemainingHours());
+  // Hidratación Cloud + suscripción reactiva al cache del service.
+  useEffect(() => {
+    hydrateBookings().catch(() => undefined);
+    hydrateStudents().catch(() => undefined);
+    hydrateGuardians().catch(() => undefined);
+    hydratePackages().catch(() => undefined);
+    hydrateClassRecords().catch(() => undefined);
+    const unsubBookings = subscribeBookings(() => {
+      setBookings(getBookings());
+    });
+    const unsubStudents = subscribeStudents(() => {
+      setRemainingHours(computeRemainingHours());
+    });
+    const unsubPackages = subscribePackages(() => {
+      setRemainingHours(computeRemainingHours());
+    });
+    return () => {
+      unsubBookings();
+      unsubStudents();
+      unsubPackages();
+    };
   }, []);
 
-  // Limpieza periódica de holds expirados
+  // Limpieza periódica de holds expirados.
   useEffect(() => {
     const iv = setInterval(() => {
       setHolds((prev) => prev.filter((h) => h.expiresAt > Date.now()));
     }, 30000);
     return () => clearInterval(iv);
+  }, []);
+
+  const syncCache = useCallback(() => {
+    setBookings(getBookings());
+    setRemainingHours(computeRemainingHours());
   }, []);
 
   const createHold = useCallback(
@@ -150,14 +205,14 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Consumo de horas contra el cache Cloud de packages (packagesService).
       const hasHours = packagesRepo.remainingHoursFor(args.studentId) > 0;
       const consumed = hasHours ? packagesRepo.consumeHour(args.studentId) : false;
 
-      const student = mockDb.students.find((s) => s.id === args.studentId);
-      const guardianId = student?.guardianId ?? null;
+      const guardianId = studentGuardianId(args.studentId);
       const nowIso = new Date().toISOString();
 
-      // 1. Insertar booking en el repositorio
+      // 1. Insertar booking (cache + fire-and-forget Cloud vía service).
       const inserted = bookingsRepo.insert({
         studentId: args.studentId,
         studentName: args.studentName,
@@ -173,20 +228,19 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         durationMin: 60,
         status: (consumed ? 'confirmed' : 'pending_payment') as BookingStatus,
         // Enlace único fijo de Wordlish desde app_settings.zoom.official_link.
-        // No se genera URL aleatoria. Cuando se implemente Zoom OAuth por
-        // clase, `zoomService.getZoomUrlForBooking()` respetará este campo
-        // si el provider está en 'oauth'.
         zoomUrl: getZoomUrl(),
         hourConsumed: consumed,
-        packageId: consumed ? `pkg-${args.studentId}` : null,
+        packageId: null,
         classRecordId: null,
         guardianId,
-        createdBy: guardianId ? guardianToUserId(guardianId) ?? '' : studentToUserId(args.studentId),
+        createdBy: guardianId
+          ? guardianToUserId(guardianId) ?? ''
+          : studentToUserId(args.studentId),
         createdAt: nowIso,
         updatedAt: nowIso,
       });
 
-      // 2. Crear el expediente único de clase (ClassRecord)
+      // 2. ClassRecord Cloud (classRecordsService).
       const cr = classRecordsRepo.createFromBooking({
         id: inserted.id,
         studentId: inserted.studentId,
@@ -199,7 +253,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       });
       bookingsRepo.update(inserted.id, { classRecordId: cr.id });
 
-      // 3. Emitir notificaciones (arquitectura lista para push/whatsapp)
+      // 3. Notificaciones (arquitectura lista para push/whatsapp).
       const studentUserId = studentToUserId(args.studentId);
       const guardianUserId = guardianToUserId(guardianId);
 
@@ -223,10 +277,13 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       }
 
       if (holdId) releaseHold(holdId);
-      syncBookings();
-      return { booking: bookingsRepo.findById(inserted.id) as Booking, requiresPayment: !consumed };
+      syncCache();
+      return {
+        booking: bookingsRepo.findById(inserted.id) as Booking,
+        requiresPayment: !consumed,
+      };
     },
-    [releaseHold, syncBookings],
+    [releaseHold, syncCache],
   );
 
   const cancelBooking = useCallback(
@@ -261,9 +318,9 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
           refId: id,
         });
       }
-      syncBookings();
+      syncCache();
     },
-    [syncBookings],
+    [syncCache],
   );
 
   const rescheduleBooking = useCallback(
@@ -295,10 +352,10 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         refType: 'booking',
         refId: id,
       });
-      syncBookings();
+      syncCache();
       return { ok: true };
     },
-    [syncBookings],
+    [syncCache],
   );
 
   const markPaid = useCallback(
@@ -320,9 +377,9 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         refType: 'booking',
         refId: id,
       });
-      syncBookings();
+      syncCache();
     },
-    [syncBookings],
+    [syncCache],
   );
 
   const value = useMemo<BookingsContextType>(
