@@ -49,6 +49,7 @@ export default function BookingNew() {
     isGuardian ? linkedStudents[0].id : currentStudent.id,
   );
   const [subjectsTick, setSubjectsTick] = useState<number>(getSubjectsVersion());
+  const [showRules, setShowRules] = useState<boolean>(false);
 
   // Hidratar catálogo de materias desde Cloud al montar (módulo #2 migrado)
   useEffect(() => {
@@ -152,10 +153,25 @@ export default function BookingNew() {
           </View>
         ) : null}
 
-        <KnowCard
-          rules={INDIVIDUAL_BOOKING_HINTS}
-          style={{ marginBottom: spacing.md }}
-        />
+        <Pressable
+          onPress={() => setShowRules((v) => !v)}
+          style={({ pressed }) => [s.rulesToggle, pressed && { opacity: 0.85 }]}
+        >
+          <Ionicons
+            name={showRules ? 'chevron-up' : 'help-circle-outline'}
+            size={14}
+            color={colors.primaryDark}
+          />
+          <Text style={s.rulesToggleText}>
+            {showRules ? 'Ocultar reglas' : 'Ver reglas'}
+          </Text>
+        </Pressable>
+        {showRules ? (
+          <KnowCard
+            rules={INDIVIDUAL_BOOKING_HINTS}
+            style={{ marginTop: spacing.sm, marginBottom: spacing.md }}
+          />
+        ) : null}
 
         <View style={s.subjectsGrid}>
           {subjectsList.map((subj) => {
@@ -271,5 +287,21 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
+  },
+  rulesToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    marginBottom: spacing.sm,
+  },
+  rulesToggleText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

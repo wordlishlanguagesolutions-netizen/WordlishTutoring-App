@@ -176,48 +176,6 @@ export default function SupervisorMonitor() {
         />
       </View>
 
-      {/* Mini alertas */}
-      <Text style={styles.section}>Estado ahora</Text>
-      <View style={styles.miniStats}>
-        <MiniStat
-          icon="camera-outline"
-          value={missingScreenshotCount}
-          label="Screenshot"
-          tone="danger"
-        />
-        <MiniStat
-          icon="videocam-off"
-          value={noCameraCount}
-          label="Sin cámara"
-          tone="warning"
-        />
-        <MiniStat
-          icon="time-outline"
-          value={teacherLateCount}
-          label="Prof. tarde"
-          tone="danger"
-        />
-        <MiniStat
-          icon="alert-circle"
-          value={technicalCount}
-          label="Técnico"
-          tone="danger"
-        />
-      </View>
-
-      {waitingScreenshotCount > 0 ? (
-        <View style={styles.waitingBox}>
-          <Ionicons name="hourglass-outline" size={16} color={colors.info} />
-          <Text style={styles.waitingText}>
-            {waitingScreenshotCount}{' '}
-            {waitingScreenshotCount === 1
-              ? 'clase esperando evidencia'
-              : 'clases esperando evidencia'}{' '}
-            (dentro del plazo de {POLICIES.screenshotGraceMin} min).
-          </Text>
-        </View>
-      ) : null}
-
       {/* Filtros */}
       <Text style={styles.section}>Filtros</Text>
       <ScrollView

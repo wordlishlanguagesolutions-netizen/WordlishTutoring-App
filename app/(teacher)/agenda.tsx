@@ -175,7 +175,7 @@ export default function AgendaScreen() {
             </View>
           )}
 
-          <Text style={styles.section}>Día</Text>
+          <Text style={styles.section}>Selecciona día y franjas</Text>
           <View style={styles.daysRow}>
             {DAYS.map((d) => {
               const active = selectedDay === d;
@@ -193,7 +193,7 @@ export default function AgendaScreen() {
             })}
           </View>
 
-          <Text style={styles.section}>Franjas horarias</Text>
+          <View style={{ height: spacing.md }} />
           <Card>
             <View style={styles.slotsGrid}>
               {SLOTS.map((s) => {
