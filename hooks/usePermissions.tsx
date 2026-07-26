@@ -7,28 +7,39 @@ import {
   hydrateUsers,
   subscribeUsers,
 } from '@/services/usersService';
+import {
+  getTeacherByUserId,
+  hydrateTeachers,
+  subscribeTeachers,
+} from '@/services/teachersService';
 
 /**
  * Hook central de permisos.
  * Devuelve el SecurityContext derivado del usuario autenticado y una función
  * `can(permission)` para chequeos declarativos.
  *
- * Notas de la migración #3 (Users/Profiles → Cloud):
- *   · Ya no leemos `mockDb.users` para resolver el id: usamos `usersService`
- *     (cache Cloud) o directamente el id del usuario autenticado.
- *   · Seguimos consultando `mockDb.guardians/teachers/students` porque esos
- *     módulos aún no están migrados. Se retirarán cuando cada uno complete
- *     su fase (#4, #5, #6 del tablero).
+ * Estado de migración por dominio:
+ *   · Users (#3):     ✅ Cloud (usersService).
+ *   · Teachers (#4):  ✅ Cloud (teachersService).
+ *   · Guardians (#6): ⏳ mockDb (pendiente).
+ *   · Students (#5):  ⏳ mockDb (pendiente).
+ *
+ * Cuando #5 y #6 migren, se retirará por completo el import de `mockDb`.
  */
 export function usePermissions() {
   const { user } = useAuth();
   const [, setTick] = useState(0);
 
-  // Hidrata usuarios desde Cloud una vez y re-renderiza cuando cambie el cache.
+  // Hidrata caches Cloud (idempotente) y re-renderiza cuando cambian.
   useEffect(() => {
     hydrateUsers().catch(() => undefined);
-    const unsub = subscribeUsers(() => setTick((n) => n + 1));
-    return unsub;
+    hydrateTeachers().catch(() => undefined);
+    const unsubUsers = subscribeUsers(() => setTick((n) => n + 1));
+    const unsubTeachers = subscribeTeachers(() => setTick((n) => n + 1));
+    return () => {
+      unsubUsers();
+      unsubTeachers();
+    };
   }, []);
 
   const ctx: SecurityContext | null = useMemo(() => {
@@ -41,14 +52,23 @@ export function usePermissions() {
 
     switch (user.role) {
       case 'guardian': {
+        // TODO(#6): migrar a guardiansService cuando el módulo esté listo.
         const g = mockDb.guardians.find((x) => x.userId === userId);
         return { userId, role: user.role, studentIds: g?.studentIds ?? [] };
       }
       case 'teacher': {
+        // Cloud primero (módulo #4 migrado). Fallback mock durante coexistencia
+        // porque los sub-módulos aún consumen el store mock para IDs de
+        // profesor. Se retirará el fallback al migrar Bookings/Payrolls.
+        const cloudTeacher = getTeacherByUserId(userId);
+        if (cloudTeacher) {
+          return { userId, role: user.role, teacherId: cloudTeacher.id };
+        }
         const t = mockDb.teachers.find((x) => x.userId === userId);
         return { userId, role: user.role, teacherId: t?.id };
       }
       case 'student': {
+        // TODO(#5): migrar a studentsService cuando el módulo esté listo.
         const s = mockDb.students.find((x) => x.userId === userId);
         return { userId, role: user.role, studentId: s?.id ?? 's1' };
       }
