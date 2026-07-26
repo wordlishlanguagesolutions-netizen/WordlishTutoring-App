@@ -12,7 +12,7 @@ import {
   ContactChannel,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
-import { openWhatsappTo } from '@/services/whatsappService';
+import { openWhatsapp } from '@/services/whatsappService';
 
 export default function StudentProfile() {
   const { logout } = useAuth();
@@ -239,13 +239,12 @@ function GuardianModal({ visible, onClose }: { visible: boolean; onClose: () => 
   const notReady = (channel: string) =>
     Alert.alert(channel, 'Integración pendiente. Se enviará por este medio en la próxima fase.');
 
-  // WhatsApp pasa por el servicio único (número desde app_settings solo
-  // para el asesor oficial; aquí usamos el teléfono del acudiente que
-  // viene de los datos del estudiante).
+  // WhatsApp pasa por el servicio único y siempre abre el número oficial
+  // de Wordlish configurado por el administrador en `app_settings`.
+  // No se usan teléfonos de prueba ni datos del acudiente para abrir WhatsApp.
   const handleWhatsApp = () => {
-    openWhatsappTo(
-      studentContact.guardianPhone,
-      `Hola ${studentContact.guardian.split(' ')[0]}, te contacto desde la app de Wordlish.`,
+    openWhatsapp(
+      `Hola, soy estudiante de Wordlish y necesito ayuda para contactar a mi acudiente (${studentContact.guardian}).`,
     );
   };
 

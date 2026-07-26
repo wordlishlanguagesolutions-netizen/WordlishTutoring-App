@@ -27,9 +27,8 @@ import {
   teacherTodayClasses,
   teacherActiveClass,
   teacherPendingReports,
-  studentContact,
 } from '@/services/mockData';
-import { openWhatsappTo } from '@/services/whatsappService';
+import { openWhatsapp } from '@/services/whatsappService';
 import { POLICIES } from '@/constants/policies';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookings } from '@/hooks/useBookings';
@@ -50,9 +49,10 @@ type FlowStep =
   | 'report_pending'
   | 'report_sent';
 
-// El teléfono del acudiente proviene de los datos del estudiante en
-// clase (perfil del guardian). No se declara ningún número aquí; toda
-// apertura de WhatsApp pasa por `openWhatsappTo()` del servicio único.
+// Toda apertura de WhatsApp pasa por `openWhatsapp()` del servicio único,
+// que resuelve el número oficial de Wordlish desde `app_settings` (única
+// fuente de verdad configurable por el administrador). No se declara ni
+// se importa ningún número en este archivo.
 const WAIT_SNOOZE_MS = 5 * 60_000;
 
 function fmtHm(ts: number): string {
@@ -147,9 +147,9 @@ export default function TeacherHome() {
 
   const handleWhatsApp = () => {
     const msg =
-      'Hola, te contactamos desde Wordlish. La clase ya inició y aún no vemos al estudiante conectado.';
-    logEvent(`WhatsApp al acudiente · ${fmtHm(Date.now())}`);
-    openWhatsappTo(studentContact.guardianPhone, msg);
+      `Hola, soy profesor de Wordlish. Necesito soporte para contactar al acudiente de ${live?.student ?? 'un estudiante'}: la clase ya inició y aún no vemos al estudiante conectado.`;
+    logEvent(`WhatsApp a Wordlish · ${fmtHm(Date.now())}`);
+    openWhatsapp(msg);
   };
 
   const handleEndClass = () => {
