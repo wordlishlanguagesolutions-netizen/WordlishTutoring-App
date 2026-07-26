@@ -1,6 +1,7 @@
 // Wordlish · Barrel de repositorios
 export { usersRepo } from './users';
-export { bookingsRepo } from './bookings';
+// Módulo #7 (Bookings) migrado: el facade sincrónico vive en el service.
+export { bookingsRepo } from '@/services/bookingsService';
 export { classRecordsRepo } from './classes';
 export { classEventsRepo } from './classEvents';
 export { reportsRepo } from './reports';
