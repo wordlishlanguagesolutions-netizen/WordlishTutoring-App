@@ -63,6 +63,7 @@ export default function BookingSummary() {
   const [policiesViewed, setPoliciesViewed] = useState<boolean>(
     policiesAck.hasViewed(draft.studentId),
   );
+  const [policiesAccepted, setPoliciesAccepted] = useState<boolean>(false);
 
   useEffect(() => {
     if (
@@ -128,16 +129,18 @@ export default function BookingSummary() {
     if (busy) return false;
     if (hold && remaining === 0) return false;
     if (!policiesViewed) return false;
+    if (!policiesAccepted) return false;
     if (requiresPayment) {
       if (!method) return false;
       if (method.requiresProof && !proofName) return false;
     }
     return true;
-  }, [busy, hold, remaining, policiesViewed, requiresPayment, method, proofName]);
+  }, [busy, hold, remaining, policiesViewed, policiesAccepted, requiresPayment, method, proofName]);
 
   const onConfirm = () => {
     if (!canConfirm) {
       if (!policiesViewed) setError('Revisa las políticas antes de confirmar.');
+      else if (!policiesAccepted) setError('Debes aceptar las políticas para continuar.');
       else if (requiresPayment && !method) setError('Elige un método de pago.');
       else if (requiresPayment && method?.requiresProof && !proofName)
         setError('Adjunta tu comprobante para continuar.');
@@ -374,29 +377,40 @@ export default function BookingSummary() {
           style={({ pressed }) => [s.policyBtn, pressed && { opacity: 0.9 }]}
         >
           <Ionicons
-            name="document-text-outline"
+            name={policiesViewed ? 'checkmark-circle' : 'document-text-outline'}
             size={18}
-            color={colors.primaryDark}
+            color={policiesViewed ? colors.success : colors.primaryDark}
           />
-          <Text style={s.policyBtnText}>Ver políticas</Text>
+          <Text style={s.policyBtnText}>
+            {policiesViewed ? 'Políticas revisadas · Ver de nuevo' : 'Ver políticas'}
+          </Text>
           <Ionicons name="chevron-forward" size={16} color={colors.primaryDark} />
         </Pressable>
 
-        {policiesViewed ? (
-          <View style={s.policyStatus}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-            <Text style={[s.policyStatusText, { color: colors.success }]}>
-              Políticas revisadas
-            </Text>
+        <Pressable
+          onPress={() => {
+            if (!policiesViewed) {
+              setError('Primero revisa las políticas.');
+              return;
+            }
+            setPoliciesAccepted((v) => !v);
+            setError('');
+          }}
+          style={({ pressed }) => [
+            s.acceptRow,
+            !policiesViewed && { opacity: 0.6 },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <View style={[s.checkbox, policiesAccepted && s.checkboxOn]}>
+            {policiesAccepted ? (
+              <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
+            ) : null}
           </View>
-        ) : (
-          <View style={s.policyStatus}>
-            <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
-            <Text style={[s.policyStatusText, { color: colors.warning }]}>
-              Revisa las políticas antes de confirmar
-            </Text>
-          </View>
-        )}
+          <Text style={s.acceptText}>
+            He leído y acepto las políticas de Wordlish.
+          </Text>
+        </Pressable>
 
         <Pressable
           onPress={onConfirm}
@@ -792,6 +806,38 @@ const s = StyleSheet.create({
     color: colors.primaryDark,
     fontWeight: '700',
     fontSize: 15,
+  },
+  acceptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  checkboxOn: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  acceptText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
   policyStatus: {
     flexDirection: 'row',

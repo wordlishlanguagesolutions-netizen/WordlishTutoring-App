@@ -242,16 +242,6 @@ function AdminDashboardDesktop() {
                   />
                 </Card>
 
-                <Card elevated>
-                  <PanelHead
-                    icon="stats-chart-outline"
-                    title="Actividad semanal"
-                    subtitle="Clases impartidas por día"
-                    tone="info"
-                    countLabel={`${weeklyActivity.reduce((s, d) => s + d.value, 0)} clases`}
-                  />
-                  <WeeklyActivityChart data={weeklyActivity} />
-                </Card>
               </View>
 
               {/* Col 2 · Próximo & operación */}
@@ -304,16 +294,6 @@ function AdminDashboardDesktop() {
                   </View>
                 </Card>
 
-                <Card elevated>
-                  <PanelHead
-                    icon="trending-up-outline"
-                    title="Progreso del mes"
-                    subtitle="Meta operativa · Julio"
-                    tone="primary"
-                    countLabel={`${Math.round((monthlyProgress.delivered / monthlyProgress.target) * 100)}%`}
-                  />
-                  <MonthlyProgressBlock data={monthlyProgress} />
-                </Card>
               </View>
 
               {/* Col 3 · Alertas a la derecha */}
@@ -348,20 +328,6 @@ function AdminDashboardDesktop() {
                   </View>
                 </Card>
 
-                <Card elevated>
-                  <PanelHead
-                    icon="flag-outline"
-                    title="Próximos eventos"
-                    subtitle="Fechas clave de la operación"
-                    tone="primary"
-                    countLabel={`${upcomingEvents.length}`}
-                  />
-                  <View style={{ gap: spacing.md }}>
-                    {upcomingEvents.map((e) => (
-                      <EventRow key={e.id} event={e} />
-                    ))}
-                  </View>
-                </Card>
               </View>
             </View>
 
