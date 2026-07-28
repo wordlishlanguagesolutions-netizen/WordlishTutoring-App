@@ -14,7 +14,6 @@ import { Avatar } from '@/components/ui';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { linkedStudents, currentGuardian, PAYMENT_STATUS } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
-import { openZoom, getZoomUrl } from '@/services/zoomService';
 import { publicClassStatus, type InternalClassStage } from '@/constants/designPhilosophy';
 
 // ============================================================================
@@ -71,15 +70,9 @@ export default function GuardianHome() {
   const stage = deriveStage(active);
   const publicStatus = publicClassStatus(stage);
 
-  const showLiveButton =
-    stage === 'in_progress' ||
-    stage === 'attendance_confirmed' ||
-    stage === 'teacher_online' ||
-    stage === 'starting_soon';
-
-  // Abre el enlace oficial de Zoom desde services/zoomService (única
-  // fuente de verdad, leída de public.app_settings.zoom.official_link).
-  const handleEnter = () => openZoom(getZoomUrl());
+  // El acudiente no ingresa a la clase de Zoom en ningún estado. Solo
+  // percibe el resultado visible (Regla 3: tranquilidad, no operación).
+  // Ver la evidencia de la clase se hace desde Reportes en la barra inferior.
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
@@ -193,30 +186,8 @@ export default function GuardianHome() {
             </View>
           </View>
 
-          {/* Una sola acción principal: aparece únicamente cuando la clase
-              está a menos de 15 min o en curso. Regla 6 + Regla 8. */}
-          {showLiveButton ? (
-            <Pressable
-              onPress={handleEnter}
-              style={({ pressed }) => [
-                styles.enterBtn,
-                (stage === 'in_progress' || stage === 'attendance_confirmed') &&
-                  styles.enterBtnLive,
-                pressed && { opacity: 0.92 },
-              ]}
-            >
-              {stage === 'in_progress' || stage === 'attendance_confirmed' ? (
-                <View style={styles.liveDot} />
-              ) : (
-                <Ionicons name="videocam" size={16} color={colors.textOnPrimary} />
-              )}
-              <Text style={styles.enterText}>
-                {stage === 'in_progress' || stage === 'attendance_confirmed'
-                  ? 'Ver clase en vivo'
-                  : 'Abrir clase'}
-              </Text>
-            </Pressable>
-          ) : null}
+          {/* El acudiente no tiene botón para entrar a la clase. Solo ve
+              el estado público (resultado) en la línea inferior. */}
 
           {/* Mensaje inferior discreto · resultados, no procesos.
               Silenciamos por completo cuando no hay nada relevante (Regla 8). */}
