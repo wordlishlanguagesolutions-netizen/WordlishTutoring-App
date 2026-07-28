@@ -89,12 +89,12 @@ export default function TeacherHome() {
   const [classEnded, setClassEnded] = useState(false);
   const [reportSent, setReportSent] = useState(false);
   const [incidents, setIncidents] = useState<Set<Incident>>(new Set());
-  const [eventLog, setEventLog] = useState<Array<{ label: string; ts: number }>>([]);
   const [attendanceSnoozeUntil, setAttendanceSnoozeUntil] = useState<number>(0);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
 
-  const logEvent = (label: string) =>
-    setEventLog((prev) => [{ label, ts: Date.now() }, ...prev]);
+  // eventLog eliminado: la interfaz refleja el estado con los botones
+  // visibles; no aporta valor mostrar el log crudo al profesor.
+  const logEvent = (_label: string) => {};
 
   const step: FlowStep = useMemo(() => {
     if (reportSent) return 'report_sent';
@@ -206,7 +206,7 @@ export default function TeacherHome() {
     live ? c.subject !== live.subject : true,
   );
 
-  const anyIncident = incidents.size > 0;
+
 
   // ==================== Bloques ====================
   const HeaderBlock = (
@@ -290,8 +290,6 @@ export default function TeacherHome() {
         </View>
       </View>
 
-      <Text style={styles.stepText}>{stepLabel}</Text>
-
       {step !== 'report_sent' && step !== 'report_pending' && step !== 'ended' ? (
         <View style={{ marginTop: spacing.sm }}>
           <ZoomButton variant="secondary" label="Volver a Zoom" />
@@ -349,22 +347,13 @@ export default function TeacherHome() {
       ) : null}
 
       {step === 'report_pending' ? (
-        <>
-          <Pressable
-            onPress={handleGoToReport}
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
-            <Text style={styles.primaryBtnText}>Completar reporte</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleReportSent}
-            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Ionicons name="paper-plane" size={14} color={colors.primaryDark} />
-            <Text style={styles.softBtnText}>Marcar como enviado</Text>
-          </Pressable>
-        </>
+        <Pressable
+          onPress={handleGoToReport}
+          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
+          <Text style={styles.primaryBtnText}>Completar reporte</Text>
+        </Pressable>
       ) : null}
 
       {step === 'report_sent' ? (
@@ -413,26 +402,6 @@ export default function TeacherHome() {
       ) : null}
 
       {step === 'in_progress' || step === 'screenshot_pending' ? (
-        <View style={styles.statusRow}>
-          {anyIncident ? (
-            <View style={styles.incidentChipsWrap}>
-              {Array.from(incidents).map((inc) => (
-                <View key={inc} style={styles.activeIncidentChip}>
-                  <Ionicons name="warning" size={11} color={colors.warning} />
-                  <Text style={styles.activeIncidentText}>{incidentLabel(inc)}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.normalRow}>
-              <View style={styles.normalDot} />
-              <Text style={styles.normalText}>Todo normal</Text>
-            </View>
-          )}
-        </View>
-      ) : null}
-
-      {step === 'in_progress' || step === 'screenshot_pending' ? (
         <View style={styles.exceptionsGrid}>
           <ExceptionBtn
             icon="videocam-off"
@@ -461,25 +430,6 @@ export default function TeacherHome() {
         </View>
       ) : null}
 
-      {step !== 'report_sent' ? (
-        <Pressable
-          onPress={handleWhatsApp}
-          style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.9 }]}
-        >
-          <Ionicons name="chatbubble" size={14} color={colors.success} />
-          <Text style={styles.waBtnText}>WhatsApp</Text>
-        </Pressable>
-      ) : null}
-
-      {eventLog.length > 0 ? (
-        <View style={styles.historyBox}>
-          {eventLog.slice(0, 3).map((e, i) => (
-            <Text key={i} style={styles.historyLine} numberOfLines={1}>
-              · {e.label}
-            </Text>
-          ))}
-        </View>
-      ) : null}
     </View>
   ) : null;
 

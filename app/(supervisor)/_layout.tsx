@@ -9,7 +9,6 @@ import { useResponsive } from '@/hooks/useResponsive';
 
 const SUPERVISOR_NAV: SidebarItem[] = [
   { label: 'Monitor', icon: 'pulse', route: '/(supervisor)' },
-  { label: 'Alertas', icon: 'warning', route: '/(supervisor)/alerts' },
   { label: 'Historial', icon: 'time', route: '/(supervisor)/history' },
 ];
 
@@ -34,13 +33,6 @@ export default function SupervisorLayout() {
             options={{
               title: 'Monitor',
               tabBarIcon: ({ color, size }) => <Ionicons name="pulse" size={size} color={color} />,
-            }}
-          />
-          <Tabs.Screen
-            name="alerts"
-            options={{
-              title: 'Alertas',
-              tabBarIcon: ({ color, size }) => <Ionicons name="warning" size={size} color={color} />,
             }}
           />
           <Tabs.Screen
