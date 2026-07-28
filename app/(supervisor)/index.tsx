@@ -12,7 +12,7 @@ import {
 } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { liveClasses, supervisorStats } from '@/services/mockData';
-import { POLICIES, getScreenshotStatus } from '@/constants/policies';
+import { getScreenshotStatus } from '@/constants/policies';
 
 type Filter = 'all' | 'live' | 'alerts';
 
@@ -120,21 +120,6 @@ export default function SupervisorMonitor() {
   );
 
   const alertsCount = enriched.filter((c) => c.display.critical).length;
-  const missingScreenshotCount = enriched.filter(
-    (c) => c.display.key === 'no_screenshot',
-  ).length;
-  const waitingScreenshotCount = enriched.filter(
-    (c) => c.display.key === 'waiting_screenshot',
-  ).length;
-  const noCameraCount = enriched.filter(
-    (c) => c.display.key === 'no_camera',
-  ).length;
-  const teacherLateCount = enriched.filter(
-    (c) => c.display.key === 'teacher_late',
-  ).length;
-  const technicalCount = enriched.filter(
-    (c) => c.display.key === 'technical',
-  ).length;
 
   const filtered = useMemo(() => {
     if (filter === 'live') return enriched.filter((c) => !c.display.critical);
@@ -249,14 +234,10 @@ export default function SupervisorMonitor() {
 
               {isCritical ? (
                 <View style={styles.incidentBox}>
-                  <IncidentRow label="Profesor" value={c.teacher} />
-                  <IncidentRow label="Estudiante" value={c.student} />
-                  <IncidentRow label="Materia" value={c.subject} />
-                  <IncidentRow label="Hora de inicio" value={c.time} />
-                  <IncidentRow
-                    label="Minutos transcurridos"
-                    value={`${c.minutesElapsed} min`}
-                  />
+                  <Ionicons name="alert-circle" size={14} color={colors.danger} />
+                  <Text style={styles.incidentText}>
+                    {c.display.label} · {c.minutesElapsed} min transcurridos
+                  </Text>
                 </View>
               ) : null}
 
@@ -292,41 +273,6 @@ export default function SupervisorMonitor() {
       <Text style={styles.section}>Soporte</Text>
       <SupportRow role="supervisor" screen="Monitor" />
     </Screen>
-  );
-}
-
-function IncidentRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.incidentRow}>
-      <Text style={styles.incidentLabel}>{label}</Text>
-      <Text style={styles.incidentValue}>{value}</Text>
-    </View>
-  );
-}
-
-function MiniStat({
-  icon,
-  value,
-  label,
-  tone,
-}: {
-  icon: string;
-  value: number;
-  label: string;
-  tone: 'warning' | 'danger';
-}) {
-  const t =
-    tone === 'warning'
-      ? { bg: colors.warningSoft, fg: colors.warning }
-      : { bg: colors.dangerSoft, fg: colors.danger };
-  return (
-    <View style={styles.mini}>
-      <View style={[styles.miniIcon, { backgroundColor: t.bg }]}>
-        <Ionicons name={icon as any} size={16} color={t.fg} />
-      </View>
-      <Text style={styles.miniValue}>{value}</Text>
-      <Text style={styles.miniLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -376,41 +322,6 @@ const styles = StyleSheet.create({
     ...typography.h3,
     marginTop: spacing.lg,
     marginBottom: spacing.md,
-  },
-  miniStats: { flexDirection: 'row', gap: spacing.sm },
-  mini: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'flex-start',
-  },
-  miniIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  miniValue: { fontSize: 20, fontWeight: '700', color: colors.text },
-  miniLabel: { fontSize: 11, color: colors.textSubtle, fontWeight: '600' },
-  waitingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.infoSoft,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginTop: spacing.md,
-  },
-  waitingText: {
-    color: colors.info,
-    fontSize: 12,
-    fontWeight: '600',
-    flex: 1,
   },
   filterRow: { gap: spacing.sm, paddingRight: spacing.lg },
   filterChip: {
@@ -469,26 +380,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.dangerSoft,
-    gap: 2,
-  },
-  incidentRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 3,
+    gap: spacing.sm,
   },
-  incidentLabel: {
-    color: colors.textSubtle,
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  incidentValue: {
-    color: colors.text,
-    fontSize: 12,
+  incidentText: {
+    color: colors.danger,
+    fontSize: 13,
     fontWeight: '700',
     flex: 1,
-    textAlign: 'right',
   },
 });
