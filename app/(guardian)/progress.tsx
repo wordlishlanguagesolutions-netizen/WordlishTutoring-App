@@ -9,10 +9,7 @@ import { colors, spacing, typography, radius } from '@/constants/theme';
 import {
   linkedStudents,
   reportsHistory,
-  getAllReportMaterials,
 } from '@/services/mockData';
-
-type Tab = 'reports' | 'materials';
 
 const KIND_ICON: Record<string, string> = {
   PDF: 'document-text',
@@ -31,18 +28,16 @@ export default function GuardianProgress() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const [activeId, setActiveId] = useState<string>(linkedStudents[0].id);
-  const [tab, setTab] = useState<Tab>('reports');
   const [selectedId, setSelectedId] = useState<string>(
     () => reportsHistory[0]?.id ?? '',
   );
-  const materials = useMemo(() => getAllReportMaterials(), []);
   const selectedReport = useMemo(
     () => reportsHistory.find((r) => r.id === selectedId) ?? reportsHistory[0],
     [selectedId],
   );
 
-  const HeaderControls = (
-    <>
+  const HeaderControls =
+    linkedStudents.length > 1 ? (
       <View style={styles.pickerRow}>
         {linkedStudents.map((s) => {
           const isActive = s.id === activeId;
@@ -60,81 +55,43 @@ export default function GuardianProgress() {
           );
         })}
       </View>
-      <View style={styles.tabsRow}>
-        <TabChip label="Reportes" active={tab === 'reports'} onPress={() => setTab('reports')} />
-        <TabChip label="Materiales" active={tab === 'materials'} onPress={() => setTab('materials')} />
-      </View>
-    </>
-  );
+    ) : null;
 
   if (!isDesktop) {
     return (
       <Screen>
         <Header title="Reportes" subtitle="De tus estudiantes" />
         {HeaderControls}
-        {tab === 'reports' ? (
-          <View style={{ gap: spacing.md }}>
-            {reportsHistory.map((r) => (
-              <Pressable
-                key={r.id}
-                onPress={() => router.push(`/reports/${r.id}` as any)}
-                style={({ pressed }) => [pressed && { opacity: 0.9 }]}
-              >
-                <Card>
-                  <View style={styles.reportHead}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={typography.h3} numberOfLines={1}>{r.topic}</Text>
-                      <Text style={styles.reportMeta}>
-                        {r.teacher} · {r.date}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                  </View>
-                  {r.screenshotUrl ? (
-                    <Image
-                      source={{ uri: r.screenshotUrl }}
-                      style={styles.thumbImg}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                  ) : null}
-                  <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
-                </Card>
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={{ gap: spacing.md }}>
-            {materials.length === 0 ? (
+        <View style={{ gap: spacing.md }}>
+          {reportsHistory.map((r) => (
+            <Pressable
+              key={r.id}
+              onPress={() => router.push(`/reports/${r.id}` as any)}
+              style={({ pressed }) => [pressed && { opacity: 0.9 }]}
+            >
               <Card>
-                <Text style={typography.caption}>Aún no hay materiales publicados por los profesores.</Text>
+                <View style={styles.reportHead}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={typography.h3} numberOfLines={1}>{r.topic}</Text>
+                    <Text style={styles.reportMeta}>
+                      {r.teacher} · {r.date}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </View>
+                {r.screenshotUrl ? (
+                  <Image
+                    source={{ uri: r.screenshotUrl }}
+                    style={styles.thumbImg}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ) : null}
+                <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
               </Card>
-            ) : (
-              materials.map((m, i) => (
-                <Pressable
-                  key={`${m.reportId}-${i}`}
-                  onPress={() => router.push(`/reports/${m.reportId}` as any)}
-                >
-                  <Card>
-                    <View style={styles.materialRow}>
-                      <View style={styles.iconWrap}>
-                        <Ionicons name={(KIND_ICON[m.kind] ?? 'document-text') as any} size={20} color={colors.primaryDark} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={typography.bodyStrong}>{m.title}</Text>
-                        <Text style={typography.caption}>{m.reportTopic} · {m.reportDate}</Text>
-                        <Text style={styles.materialMeta}>
-                          {m.kind}{m.size ? ` · ${m.size}` : ''} · {m.reportTeacher}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                    </View>
-                  </Card>
-                </Pressable>
-              ))
-            )}
-          </View>
-        )}
+            </Pressable>
+          ))}
+        </View>
       </Screen>
     );
   }
@@ -142,54 +99,33 @@ export default function GuardianProgress() {
   // Desktop master-detail
   const ListBlock = (
     <View style={styles.listPanel}>
-      {tab === 'reports' ? (
-        reportsHistory.map((r) => {
-          const active = r.id === selectedId;
-          return (
-            <Pressable
-              key={r.id}
-              onPress={() => setSelectedId(r.id)}
-              style={({ pressed }) => [
-                styles.listItem,
-                active && styles.listItemActive,
-                pressed && !active && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.listItemTitle, active && { color: colors.primaryDark }]}
-                  numberOfLines={1}
-                >
-                  {r.topic}
-                </Text>
-                <Text style={styles.listItemMeta} numberOfLines={1}>
-                  {r.teacher} · {r.date}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={active ? colors.primaryDark : colors.textMuted} />
-            </Pressable>
-          );
-        })
-      ) : (
-        materials.map((m, i) => (
+      {reportsHistory.map((r) => {
+        const active = r.id === selectedId;
+        return (
           <Pressable
-            key={`${m.reportId}-${i}`}
-            onPress={() => setSelectedId(m.reportId)}
+            key={r.id}
+            onPress={() => setSelectedId(r.id)}
             style={({ pressed }) => [
               styles.listItem,
-              pressed && { backgroundColor: colors.surfaceAlt },
+              active && styles.listItemActive,
+              pressed && !active && { backgroundColor: colors.surfaceAlt },
             ]}
           >
-            <View style={styles.iconWrapSm}>
-              <Ionicons name={(KIND_ICON[m.kind] ?? 'document-text') as any} size={14} color={colors.primaryDark} />
-            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.listItemTitle} numberOfLines={1}>{m.title}</Text>
-              <Text style={styles.listItemMeta} numberOfLines={1}>{m.reportTopic} · {m.reportDate}</Text>
+              <Text
+                style={[styles.listItemTitle, active && { color: colors.primaryDark }]}
+                numberOfLines={1}
+              >
+                {r.topic}
+              </Text>
+              <Text style={styles.listItemMeta} numberOfLines={1}>
+                {r.teacher} · {r.date}
+              </Text>
             </View>
+            <Ionicons name="chevron-forward" size={14} color={active ? colors.primaryDark : colors.textMuted} />
           </Pressable>
-        ))
-      )}
+        );
+      })}
     </View>
   );
 
@@ -260,14 +196,6 @@ export default function GuardianProgress() {
         right={DetailBlock}
       />
     </Screen>
-  );
-}
-
-function TabChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-    </Pressable>
   );
 }
 
