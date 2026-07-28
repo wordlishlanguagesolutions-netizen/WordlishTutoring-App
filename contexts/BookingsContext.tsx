@@ -55,10 +55,17 @@ interface CreateBookingArgs {
   time: string;
 }
 
+export interface PaymentProof {
+  name: string;
+  at: number;
+  status: 'submitted' | 'reviewing' | 'approved';
+}
+
 export interface BookingsContextType {
   bookings: Booking[];
   holds: Hold[];
   remainingHours: Record<string, number>;
+  paymentProofs: Record<string, PaymentProof>;
   createHold: (teacherId: string, date: string, time: string) => Hold;
   releaseHold: (id: string) => void;
   createBooking: (
@@ -72,6 +79,7 @@ export interface BookingsContextType {
     newTime: string,
   ) => { ok: boolean; error?: string };
   markPaid: (id: string) => void;
+  submitPaymentProof: (bookingId: string, fileName: string) => void;
   getById: (id: string) => Booking | undefined;
   getForStudent: (studentId: string) => Booking[];
   getForTeacher: (teacherId: string) => Booking[];
@@ -121,6 +129,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   const [remainingHours, setRemainingHours] = useState<Record<string, number>>(
     computeRemainingHours(),
   );
+  const [paymentProofs, setPaymentProofs] = useState<Record<string, PaymentProof>>({});
 
   // Hidratación Cloud + suscripción reactiva al cache del service.
   useEffect(() => {
@@ -358,6 +367,43 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     [syncCache],
   );
 
+  const submitPaymentProof = useCallback(
+    (bookingId: string, fileName: string) => {
+      const b = bookingsRepo.findById(bookingId);
+      if (!b) return;
+      const at = Date.now();
+      setPaymentProofs((prev) => ({
+        ...prev,
+        [bookingId]: { name: fileName, at, status: 'reviewing' },
+      }));
+      // Notificaciones internas: admin + supervisor pueden abrir la reserva
+      // directamente desde el aviso. Preparado para futura integracion con
+      // WhatsApp API sin cambiar el consumidor.
+      const meta = `${b.studentName} · ${b.subject} · ${b.date} ${b.time}`;
+      createNotification({
+        userId: 'u-admin',
+        type: 'payment_pending',
+        title: 'Comprobante recibido',
+        message: `${meta} · Revisar en reservas`,
+        refType: 'booking',
+        refId: bookingId,
+        actionRoute: `/booking/${bookingId}`,
+        actionLabel: 'Revisar pago',
+      });
+      createNotification({
+        userId: 'u-sup',
+        type: 'payment_pending',
+        title: 'Comprobante recibido',
+        message: `${meta} · Revisar en reservas`,
+        refType: 'booking',
+        refId: bookingId,
+        actionRoute: `/booking/${bookingId}`,
+        actionLabel: 'Revisar pago',
+      });
+    },
+    [],
+  );
+
   const markPaid = useCallback(
     (id: string) => {
       const b = bookingsRepo.findById(id);
@@ -377,6 +423,11 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         refType: 'booking',
         refId: id,
       });
+      setPaymentProofs((prev) => {
+        const existing = prev[id];
+        if (!existing) return prev;
+        return { ...prev, [id]: { ...existing, status: 'approved' } };
+      });
       syncCache();
     },
     [syncCache],
@@ -387,12 +438,14 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       bookings,
       holds,
       remainingHours,
+      paymentProofs,
       createHold,
       releaseHold,
       createBooking,
       cancelBooking,
       rescheduleBooking,
       markPaid,
+      submitPaymentProof,
       getById: (id) => bookingsRepo.findById(id),
       getForStudent: (sid) => bookingsRepo.listForStudent(sid),
       getForTeacher: (tid) => bookingsRepo.listForTeacher(tid),
@@ -401,12 +454,14 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       bookings,
       holds,
       remainingHours,
+      paymentProofs,
       createHold,
       releaseHold,
       createBooking,
       cancelBooking,
       rescheduleBooking,
       markPaid,
+      submitPaymentProof,
     ],
   );
 

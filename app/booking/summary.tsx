@@ -19,10 +19,7 @@ import { useBookings } from '@/hooks/useBookings';
 import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
-import {
-  getActivePaymentMethods,
-  type PaymentMethodOption,
-} from '@/services/paymentConfig';
+
 
 // ============================================================================
 // Reserva · Paso 3 de 3: resumen + método de pago inline.
@@ -48,12 +45,6 @@ export default function BookingSummary() {
   const hold = holds.find((h) => h.id === draft.holdId);
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
   const requiresPayment = hoursLeft === 0;
-
-  const paymentMethods = useMemo(() => getActivePaymentMethods(), []);
-  const [methodId, setMethodId] = useState<string | null>(
-    paymentMethods[0]?.id ?? null,
-  );
-  const [proofName, setProofName] = useState<string | null>(null);
 
   const [remaining, setRemaining] = useState<number>(() =>
     hold ? Math.max(0, Math.floor((hold.expiresAt - Date.now()) / 1000)) : 0,
@@ -106,44 +97,18 @@ export default function BookingSummary() {
     router.push(`/class/policies?studentId=${draft.studentId}` as any);
   };
 
-  const method = paymentMethods.find((m) => m.id === methodId) ?? null;
-
-  const handleUploadProof = () => {
-    // La carga real de imagen/PDF se implementará con expo-document-picker
-    // cuando conectemos el bucket `payment-receipts`. Por ahora simulamos
-    // la selección para mantener el flujo unificado.
-    Alert.alert('Comprobante', 'Selecciona un archivo', [
-      {
-        text: 'Imagen',
-        onPress: () => setProofName('comprobante.jpg'),
-      },
-      {
-        text: 'PDF',
-        onPress: () => setProofName('comprobante.pdf'),
-      },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
-  };
-
   const canConfirm = useMemo(() => {
     if (busy) return false;
     if (hold && remaining === 0) return false;
     if (!policiesViewed) return false;
     if (!policiesAccepted) return false;
-    if (requiresPayment) {
-      if (!method) return false;
-      if (method.requiresProof && !proofName) return false;
-    }
     return true;
-  }, [busy, hold, remaining, policiesViewed, policiesAccepted, requiresPayment, method, proofName]);
+  }, [busy, hold, remaining, policiesViewed, policiesAccepted]);
 
   const onConfirm = () => {
     if (!canConfirm) {
       if (!policiesViewed) setError('Revisa las políticas antes de confirmar.');
       else if (!policiesAccepted) setError('Debes aceptar las políticas para continuar.');
-      else if (requiresPayment && !method) setError('Elige un método de pago.');
-      else if (requiresPayment && method?.requiresProof && !proofName)
-        setError('Adjunta tu comprobante para continuar.');
       return;
     }
     setBusy(true);
@@ -175,13 +140,7 @@ export default function BookingSummary() {
 
   const holdExpired = hold ? remaining === 0 : false;
 
-  const primaryLabel = requiresPayment
-    ? method?.kind === 'gateway'
-      ? 'Pagar y confirmar'
-      : method?.requiresProof && proofName
-      ? 'Enviar y confirmar'
-      : 'Confirmar reserva'
-    : 'Confirmar reserva';
+  const primaryLabel = 'Confirmar reserva';
 
   return (
     <SafeAreaView
@@ -268,87 +227,14 @@ export default function BookingSummary() {
           />
         </View>
 
-        {/* ═════════════ Método de pago (inline) ═════════════ */}
         {requiresPayment ? (
-          <View style={s.paySection}>
-            <Text style={s.payTitle}>Método de pago</Text>
-            <Text style={s.paySubtitle}>
-              Elige cómo quieres pagar esta reserva.
+          <View style={s.pendingBox}>
+            <Ionicons name="card-outline" size={18} color={colors.warning} />
+            <Text style={s.pendingText}>
+              Sin horas disponibles. Al confirmar, la reserva queda con estado
+              "Pago pendiente" y en el siguiente paso podrás pagar o subir tu
+              comprobante.
             </Text>
-
-            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-              {paymentMethods.map((m) => (
-                <PaymentOptionRow
-                  key={m.id}
-                  option={m}
-                  selected={methodId === m.id}
-                  onPress={() => {
-                    setMethodId(m.id);
-                    setError('');
-                    if (!m.requiresProof) setProofName(null);
-                  }}
-                />
-              ))}
-              {paymentMethods.length === 0 ? (
-                <View style={s.emptyPay}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={16}
-                    color={colors.textMuted}
-                  />
-                  <Text style={s.emptyPayText}>
-                    No hay métodos de pago activos. Contacta al administrador.
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {method?.requiresProof && !method.whatsappOnly ? (
-              <Pressable
-                onPress={handleUploadProof}
-                style={({ pressed }) => [
-                  s.uploadBox,
-                  proofName ? s.uploadBoxDone : null,
-                  pressed && { opacity: 0.9 },
-                ]}
-              >
-                <Ionicons
-                  name={proofName ? 'checkmark-circle' : 'cloud-upload-outline'}
-                  size={20}
-                  color={proofName ? colors.success : colors.primaryDark}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.uploadLabel}>
-                    {proofName ? 'Comprobante adjunto' : 'Adjuntar comprobante'}
-                  </Text>
-                  <Text style={s.uploadHint} numberOfLines={1}>
-                    {proofName ?? 'Imagen o PDF · queda pendiente de validación'}
-                  </Text>
-                </View>
-                {proofName ? (
-                  <Text style={s.uploadReplace}>Cambiar</Text>
-                ) : (
-                  <Ionicons
-                    name="chevron-forward"
-                    size={16}
-                    color={colors.primaryDark}
-                  />
-                )}
-              </Pressable>
-            ) : null}
-
-            {method && method.kind !== 'gateway' ? (
-              <View style={s.payHint}>
-                <Ionicons
-                  name="time-outline"
-                  size={13}
-                  color={colors.textMuted}
-                />
-                <Text style={s.payHintText}>
-                  El supervisor validará tu pago en las próximas horas.
-                </Text>
-              </View>
-            ) : null}
           </View>
         ) : (
           <View style={s.planBox}>
@@ -436,44 +322,6 @@ export default function BookingSummary() {
 // ══════════════════════════════════════════════════════════════════════════
 // Componentes internos
 // ══════════════════════════════════════════════════════════════════════════
-
-function PaymentOptionRow({
-  option,
-  selected,
-  onPress,
-}: {
-  option: PaymentMethodOption;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        s.payOption,
-        selected && s.payOptionOn,
-        pressed && { opacity: 0.9 },
-      ]}
-    >
-      <View style={[s.payIcon, selected && s.payIconOn]}>
-        <Ionicons
-          name={option.icon as any}
-          size={18}
-          color={selected ? colors.textOnPrimary : colors.primaryDark}
-        />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.payOptionLabel}>{option.label}</Text>
-        <Text style={s.payOptionDesc} numberOfLines={2}>
-          {option.description}
-        </Text>
-      </View>
-      <View style={[s.radio, selected && s.radioOn]}>
-        {selected ? <View style={s.radioDot} /> : null}
-      </View>
-    </Pressable>
-  );
-}
 
 function Row({ avatar, name, role }: { avatar: string; name: string; role: string }) {
   return (
@@ -776,6 +624,24 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.success,
+  },
+  pendingBox: {
+    marginTop: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  pendingText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.warning,
+    lineHeight: 18,
   },
 
   errorBox: {

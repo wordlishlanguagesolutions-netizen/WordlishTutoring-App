@@ -27,6 +27,10 @@ const DEFAULTS: Record<string, unknown> = {
   // Pagos
   'payment.methods_enabled': ['card', 'yappy', 'ach', 'proof', 'whatsapp'],
   'payment.whatsapp_proof_enabled': true,
+  // Enlace externo de checkout (pasarela configurable por el admin).
+  // Vacio => el boton 'Pagar ahora' avisa que el admin aun no lo configuro.
+  'payment.checkout_url': '',
+  'payment.price_per_hour_usd': 18,
   // Reservas
   'booking.hold_ttl_minutes': 5,
   'booking.cancellation_hours_before': 12,
