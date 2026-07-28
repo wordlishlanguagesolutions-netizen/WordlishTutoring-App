@@ -20,41 +20,31 @@ import {
   reportsHistory,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
-import { publicClassStatus, type InternalClassStage } from '@/constants/designPhilosophy';
+import { contactAdvisor } from '@/services/supportService';
 
 // ============================================================================
-// Home del acudiente · Filosofía Wordlish · v1.1
+// Home del acudiente · Filosofía Wordlish · v2.0
 // ----------------------------------------------------------------------------
-// Reglas aplicadas:
-//   3. El acudiente sólo percibe tranquilidad.
-//   4. Traducimos procesos → resultados (nunca "Material pendiente").
-//   5. Sin duplicados: "Reservar" y "Reportes" ya viven en la barra inferior.
-//   6. Una sola acción principal por pantalla ("Ver clase" cuando aplica).
-//   8. Solo mostramos excepciones. Si todo está bien, no mostramos nada.
-//  11. Fondo blanco, bordes finos, morado únicamente para la acción principal.
-//  12. Regla de los 3 segundos: identidad + selector + estado de la clase.
+// Toda la experiencia vive en esta pantalla:
+//   · Una sola tarjeta principal con la clase actual/próxima/finalizada.
+//   · Si hay screenshot del profesor, es el elemento visual dominante.
+//   · Debajo: chip de estado, materia, profesor, fecha/hora.
+//   · Debajo: bitácora unificada (resumen + tarea + material) de esa clase.
+//   · Info secundaria discreta: horas, pago, soporte.
+// Sin duplicados, sin pestañas paralelas, una sola acción por pantalla.
 // ============================================================================
 
 type LinkedStudent = typeof linkedStudents[number];
 const IMMINENT_MIN = 15;
 const CLASS_DURATION_MIN = 60;
 
-// Traduce el estado interno del backend en un stage público.
-// El acudiente nunca ve "material pendiente" ni "screenshot pendiente":
-// solo resultados como "Clase en curso", "Asistencia confirmada", etc.
-function deriveStage(s: LinkedStudent): InternalClassStage {
-  const startsInMin = s.nextStartsInMin;
-  if (startsInMin > IMMINENT_MIN) return 'scheduled';
-  if (startsInMin > 0 && s.nextTeacherOnline) return 'teacher_online';
-  if (startsInMin > 0) return 'starting_soon';
-  if (Math.abs(startsInMin) < CLASS_DURATION_MIN) {
-    // La clase ya comenzó. Si el profesor ya subió screenshot, mostramos
-    // "Asistencia confirmada"; si no, mostramos "Clase en curso" (nunca
-    // exponemos que falta el screenshot).
-    return s.nextMaterialStatus === 'received'
-      ? 'attendance_confirmed'
-      : 'in_progress';
-  }
+type Stage = 'scheduled' | 'starting_soon' | 'in_progress' | 'ended';
+
+function deriveStage(s: LinkedStudent): Stage {
+  const m = s.nextStartsInMin;
+  if (m > IMMINENT_MIN) return 'scheduled';
+  if (m > 0) return 'starting_soon';
+  if (Math.abs(m) < CLASS_DURATION_MIN) return 'in_progress';
   return 'ended';
 }
 
@@ -63,7 +53,6 @@ export default function GuardianHome() {
   const { logout } = useAuth();
   const [activeId, setActiveId] = useState<string>(linkedStudents[0].id);
 
-  // Refresco pasivo cada 30 s para que el estado avance sin intervención.
   const [, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 30_000);
@@ -74,17 +63,36 @@ export default function GuardianHome() {
     linkedStudents.find((s) => s.id === activeId) ?? linkedStudents[0];
   const payStatus = PAYMENT_STATUS[active.paymentStatus];
   const stage = deriveStage(active);
-  const publicStatus = publicClassStatus(stage);
 
-  // Estados que transforman la tarjeta de proxima clase en bitacora.
-  const isLive = stage === 'in_progress' || stage === 'attendance_confirmed';
+  const isLive = stage === 'in_progress';
   const isEnded = stage === 'ended';
-  const lastReport = reportsHistory[0];
-  const liveScreenshot = isLive ? lastReport?.screenshotUrl : null;
 
-  // El acudiente no ingresa a la clase de Zoom en ningún estado. Solo
-  // percibe el resultado visible (Regla 3: tranquilidad, no operación).
-  // Ver la evidencia de la clase se hace desde Reportes en la barra inferior.
+  // La bitácora se toma del último reporte del estudiante. Cuando la clase
+  // está en curso o finalizada, si existe screenshot y resumen, se muestran
+  // aquí mismo como parte de la tarjeta principal (sin salir de Home).
+  const lastReport = reportsHistory[0];
+  const heroReport = isLive || isEnded ? lastReport : null;
+  const heroScreenshot = heroReport?.screenshotUrl ?? null;
+
+  const status = isEnded
+    ? { label: 'Finalizada', dot: colors.textMuted, tint: colors.surfaceAlt, fg: colors.textSubtle }
+    : isLive
+    ? { label: 'Clase en curso', dot: colors.success, tint: colors.successSoft, fg: colors.success }
+    : { label: 'Próxima clase', dot: colors.primary, tint: colors.primarySoft, fg: colors.primaryDark };
+
+  const subject = heroReport ? heroReport.topic : active.nextSubject;
+  const teacher = (heroReport ? heroReport.teacher : active.nextTeacher).replace(
+    /^Prof\.?\s*/,
+    'Profesor ',
+  );
+  const dateLabel = heroReport ? heroReport.date : active.next;
+
+  const resourceCount =
+    (heroReport?.materials?.length ?? 0) + (heroReport?.attachments?.length ?? 0);
+
+  const openDetail = heroReport
+    ? () => router.push(`/reports/${heroReport.id}` as any)
+    : undefined;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
@@ -93,7 +101,7 @@ export default function GuardianHome() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* ============ Identidad ============ */}
+        {/* Identidad */}
         <View style={styles.top}>
           <Avatar
             name={currentGuardian.name}
@@ -109,14 +117,14 @@ export default function GuardianHome() {
           <Pressable
             onPress={logout}
             hitSlop={10}
-            style={styles.logoutBtn}
+            style={styles.iconBtn}
             accessibilityLabel="Salir"
           >
             <Ionicons name="log-out-outline" size={18} color={colors.primaryDark} />
           </Pressable>
         </View>
 
-        {/* ============ Selector de estudiante · discreto ============ */}
+        {/* Selector de estudiantes (solo si hay más de uno) */}
         {linkedStudents.length > 1 ? (
           <ScrollView
             horizontal
@@ -148,8 +156,74 @@ export default function GuardianHome() {
           </ScrollView>
         ) : null}
 
-        {/* Chips discretos · saldo + estado de pago */}
-        <View style={styles.chipsRow}>
+        {/* Tarjeta principal unificada · toda la vida de la clase */}
+        <Pressable
+          onPress={openDetail}
+          disabled={!openDetail}
+          style={({ pressed }) => [
+            styles.classCard,
+            pressed && openDetail ? { opacity: 0.97 } : null,
+          ]}
+        >
+          {heroScreenshot ? (
+            <Image
+              source={{ uri: heroScreenshot }}
+              style={styles.hero}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : null}
+
+          <View style={styles.cardBody}>
+            <View style={[styles.statusChip, { backgroundColor: status.tint }]}>
+              <View style={[styles.statusDot, { backgroundColor: status.dot }]} />
+              <Text style={[styles.statusText, { color: status.fg }]}>
+                {status.label}
+              </Text>
+            </View>
+
+            <Text style={styles.subject} numberOfLines={1}>{subject}</Text>
+            <Text style={styles.teacher} numberOfLines={1}>{teacher}</Text>
+
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={14} color={colors.primaryDark} />
+              <Text style={styles.metaText}>{dateLabel}</Text>
+            </View>
+
+            {heroReport ? (
+              <View style={styles.bitacora}>
+                <Text style={styles.summary} numberOfLines={3}>
+                  {heroReport.progress}
+                </Text>
+                {(heroReport.homework || resourceCount > 0) ? (
+                  <View style={styles.tagsRow}>
+                    {heroReport.homework ? (
+                      <View style={styles.tag}>
+                        <Ionicons name="book-outline" size={11} color={colors.primaryDark} />
+                        <Text style={styles.tagText}>Tarea</Text>
+                      </View>
+                    ) : null}
+                    {resourceCount > 0 ? (
+                      <View style={styles.tag}>
+                        <Ionicons name="library-outline" size={11} color={colors.primaryDark} />
+                        <Text style={styles.tagText}>
+                          {resourceCount} {resourceCount === 1 ? 'material' : 'materiales'}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+                <View style={styles.openRow}>
+                  <Text style={styles.openText}>Ver bitácora completa</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </Pressable>
+
+        {/* Info secundaria · discreta */}
+        <View style={styles.secondaryRow}>
           <View style={styles.badge}>
             <Ionicons name="hourglass-outline" size={12} color={colors.primaryDark} />
             <Text style={styles.badgeText}>{active.remaining} h disponibles</Text>
@@ -168,118 +242,14 @@ export default function GuardianHome() {
           </View>
         </View>
 
-        {/* Tarjeta unica de clase · se transforma segun el estado:
-            programada -> asignatura + profesor + fecha
-            en curso   -> Clase en curso + screenshot en vivo
-            finalizada -> bitacora: screenshot + resumen + tarea/material */}
-        <Text style={styles.section}>
-          {isEnded ? 'Ultima clase' : 'Proxima clase'}
-        </Text>
-        <View style={styles.classCard}>
-          <View style={styles.classHeader}>
-            <View style={styles.subjectIcon}>
-              <Ionicons name="book-outline" size={18} color={colors.primaryDark} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.classSubject} numberOfLines={1}>
-                {isEnded && lastReport ? lastReport.topic : active.nextSubject}
-              </Text>
-              <Text style={styles.classTeacher} numberOfLines={1}>
-                {(isEnded && lastReport ? lastReport.teacher : active.nextTeacher).replace(/^Prof\.?\s*/, 'Profesor ')}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <Ionicons name="calendar-outline" size={14} color={colors.primaryDark} />
-              <Text style={styles.metaText}>
-                {isEnded && lastReport ? lastReport.date : active.next}
-              </Text>
-            </View>
-            {isLive ? (
-              <View style={styles.liveTag}>
-                <View style={styles.liveDotSm} />
-                <Text style={styles.liveTagText}>Clase en curso</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {isLive && liveScreenshot ? (
-            <Image
-              source={{ uri: liveScreenshot }}
-              style={styles.screenshot}
-              contentFit="cover"
-              transition={200}
-            />
-          ) : null}
-
-          {isEnded && lastReport ? (
-            <Pressable
-              onPress={() => router.push(`/reports/${lastReport.id}` as any)}
-              style={({ pressed }) => [styles.recap, pressed && { opacity: 0.95 }]}
-            >
-              {lastReport.screenshotUrl ? (
-                <Image
-                  source={{ uri: lastReport.screenshotUrl }}
-                  style={styles.screenshot}
-                  contentFit="cover"
-                  transition={200}
-                />
-              ) : null}
-              <Text style={styles.recapText} numberOfLines={3}>
-                {lastReport.progress}
-              </Text>
-              <View style={styles.recapChipsRow}>
-                {lastReport.homework ? (
-                  <View style={styles.recapChip}>
-                    <Ionicons name="book-outline" size={11} color={colors.primaryDark} />
-                    <Text style={styles.recapChipText}>Tarea</Text>
-                  </View>
-                ) : null}
-                {(lastReport.materials?.length ?? 0) + (lastReport.attachments?.length ?? 0) > 0 ? (
-                  <View style={styles.recapChip}>
-                    <Ionicons name="library-outline" size={11} color={colors.primaryDark} />
-                    <Text style={styles.recapChipText}>Material</Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.openRow}>
-                <Text style={styles.openText}>Ver bitacora completa</Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
-              </View>
-            </Pressable>
-          ) : null}
-
-          {!isLive && !isEnded && publicStatus ? (
-            <View style={styles.hintRow}>
-              <Ionicons
-                name={publicStatus.icon as any}
-                size={13}
-                color={
-                  publicStatus.tone === 'success'
-                    ? colors.success
-                    : colors.textMuted
-                }
-              />
-              <Text
-                style={[
-                  styles.hintText,
-                  publicStatus.tone === 'success' && { color: colors.success },
-                ]}
-                numberOfLines={1}
-              >
-                {publicStatus.label}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/*
-          Se eliminan intencionalmente los botones "Reservar clase" y
-          "Ver mis reservas": ambas funciones ya viven en la barra
-          inferior. Regla 5: sin duplicados.
-        */}
+        <Pressable
+          onPress={() => contactAdvisor('guardian', { screen: 'guardian-home' })}
+          style={({ pressed }) => [styles.supportBtn, pressed && { opacity: 0.9 }]}
+          accessibilityLabel="Contactar soporte"
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryDark} />
+          <Text style={styles.supportText}>Contactar soporte</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -288,12 +258,11 @@ export default function GuardianHome() {
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
 
-  // Identidad
   top: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   hello: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
   name: {
@@ -302,7 +271,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.3,
   },
-  logoutBtn: {
+  iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -311,7 +280,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Selector de estudiantes · chips discretos
   pickerRow: { gap: 8, paddingRight: spacing.lg },
   chip: {
     flexDirection: 'row',
@@ -332,8 +300,88 @@ const styles = StyleSheet.create({
     maxWidth: 120,
   },
 
-  // Chips discretos
-  chipsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  // Tarjeta unica
+  classCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadow.sm,
+  },
+  hero: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: colors.surfaceAlt,
+  },
+  cardBody: { padding: spacing.lg, gap: spacing.sm },
+  statusChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    marginBottom: 2,
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+  subject: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  teacher: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: -2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  metaText: { color: colors.textSubtle, fontSize: 14, fontWeight: '600' },
+
+  // Bitacora dentro de la tarjeta
+  bitacora: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  summary: { color: colors.textSubtle, fontSize: 14, lineHeight: 20 },
+  tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  tagText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
+  openRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  openText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
+
+  // Info secundaria
+  secondaryRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: spacing.lg,
+  },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -348,113 +396,16 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '700', color: colors.textSubtle },
   badgeDot: { width: 6, height: 6, borderRadius: 3 },
 
-  // Sección
-  section: {
-    ...typography.h3,
-    fontSize: 17,
-    marginTop: spacing.xxl,
-    marginBottom: spacing.md,
-  },
-
-  // Tarjeta próxima clase · blanca, borde fino, sombra ligera
-  classCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    ...shadow.sm,
-  },
-  classHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  subjectIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  classSubject: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  classTeacher: {
-    color: colors.textMuted,
-    fontSize: 15,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: spacing.xl,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  metaItem: {
+  supportBtn: {
+    marginTop: spacing.md,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  metaText: { color: colors.textSubtle, fontSize: 15, fontWeight: '600' },
-  liveTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.successSoft,
-    marginLeft: 'auto',
-  },
-  liveDotSm: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.success },
-  liveTagText: { color: colors.success, fontSize: 11, fontWeight: '700' },
-  screenshot: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    marginTop: spacing.md,
-  },
-  recap: { marginTop: spacing.sm, gap: spacing.md },
-  recapText: { color: colors.textSubtle, fontSize: 14, lineHeight: 20 },
-  recapChipsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  recapChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
     borderRadius: radius.pill,
     backgroundColor: colors.primarySoft,
   },
-  recapChipText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
-  openRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  openText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
-
-  // Hint inferior · texto discreto
-  hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: spacing.md,
-  },
-  hintText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  supportText: { color: colors.primaryDark, fontSize: 13, fontWeight: '700' },
 });
