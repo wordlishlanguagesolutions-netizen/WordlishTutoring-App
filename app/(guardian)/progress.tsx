@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { Screen, Header, Card, Avatar, KnowCard, WebTwoColumn } from '@/components/ui';
@@ -85,6 +86,23 @@ export default function GuardianProgress() {
                     <Text style={typography.caption}>{r.date}</Text>
                   </View>
                   <Text style={typography.caption}>{r.teacher}</Text>
+                  {r.screenshotUrl ? (
+                    <Pressable
+                      onPress={() => router.push(`/reports/${r.id}` as any)}
+                      style={({ pressed }) => [styles.thumbWrap, pressed && { opacity: 0.9 }]}
+                    >
+                      <Image
+                        source={{ uri: r.screenshotUrl }}
+                        style={styles.thumbImg}
+                        contentFit="cover"
+                        transition={200}
+                      />
+                      <View style={styles.thumbBadge}>
+                        <Ionicons name="camera" size={11} color={colors.textOnPrimary} />
+                        <Text style={styles.thumbBadgeText}>Evidencia de la clase</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
                   <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
                   {materialCount > 0 ? (
                     <View style={styles.materialHint}>
@@ -321,6 +339,20 @@ const styles = StyleSheet.create({
   viewReportText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
 
   materialRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  thumbWrap: {
+    position: 'relative', marginTop: spacing.sm, marginBottom: spacing.sm,
+    borderRadius: radius.md, overflow: 'hidden',
+    backgroundColor: colors.surfaceAlt,
+  },
+  thumbImg: { width: '100%', aspectRatio: 16 / 9 },
+  thumbBadge: {
+    position: 'absolute', top: spacing.sm, left: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  thumbBadgeText: { color: colors.textOnPrimary, fontSize: 10, fontWeight: '700' },
   materialRowSmall: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm,
