@@ -173,6 +173,8 @@ export interface ReportItem {
   homework?: string;
   materials?: ReportFile[];
   attachments?: ReportFile[];
+  screenshotUrl?: string;
+  screenshotCapturedAt?: string;
 }
 
 export const reportsHistory: ReportItem[] = [
@@ -184,6 +186,8 @@ export const reportsHistory: ReportItem[] = [
       { title: 'Cambridge Grammar Reference', kind: 'Link' },
     ],
     attachments: [{ title: 'Ejercicios de práctica', kind: 'PDF', size: '600 KB' }],
+    screenshotUrl: 'https://images.unsplash.com/photo-1588072432836-e10032774350?w=800',
+    screenshotCapturedAt: '10 Jul · 10:05 AM',
   },
   {
     id: 'r2',
@@ -193,6 +197,8 @@ export const reportsHistory: ReportItem[] = [
     progress: 'Necesita repasar. Buen esfuerzo, pero es importante practicar el vocabulario nuevo diariamente.',
     homework: 'Lista de verbos irregulares.',
     attachments: [{ title: 'Lista vocabulary A1-A2', kind: 'PDF', size: '400 KB' }],
+    screenshotUrl: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800',
+    screenshotCapturedAt: '08 Jul · 15:04 PM',
   },
   {
     id: 'r3',
@@ -201,6 +207,8 @@ export const reportsHistory: ReportItem[] = [
     topic: 'Colors and shapes',
     progress: 'Excelente participación durante toda la clase. Muy activa en las dinámicas y en el uso del vocabulario nuevo.',
     homework: 'Dibujo con etiquetas de colores.',
+    screenshotUrl: 'https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=800',
+    screenshotCapturedAt: '05 Jul · 10:03 AM',
   },
 ];
 
