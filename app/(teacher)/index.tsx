@@ -91,11 +91,6 @@ export default function TeacherHome() {
   const [incidents, setIncidents] = useState<Set<Incident>>(new Set());
   const [attendanceSnoozeUntil, setAttendanceSnoozeUntil] = useState<number>(0);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
-  const [showMore, setShowMore] = useState(false);
-
-  // Cuando cambia el paso del flujo (screenshot -> in_progress -> ended ...)
-  // colapsamos automaticamente 'Mas opciones' para no dejar excepciones
-  // visibles fuera del momento en que el profesor las necesita.
 
   // eventLog eliminado: la interfaz refleja el estado con los botones
   // visibles; no aporta valor mostrar el log crudo al profesor.
@@ -108,12 +103,6 @@ export default function TeacherHome() {
     if (screenshotAt !== null) return 'in_progress';
     return 'screenshot_pending';
   }, [reportSent, classEnded, incidents, screenshotAt]);
-
-  // Auto-colapsa 'Mas opciones' cuando cambia el paso del flujo,
-  // asi no quedan excepciones abiertas fuera del momento adecuado.
-  useEffect(() => {
-    setShowMore(false);
-  }, [step]);
 
   const showAttendanceAlert =
     step === 'in_progress' &&
@@ -403,49 +392,32 @@ export default function TeacherHome() {
       ) : null}
 
       {step === 'in_progress' ? (
-        <>
-          <Pressable
-            onPress={() => setShowMore((v) => !v)}
-            style={({ pressed }) => [styles.moreToggle, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.moreToggleText}>
-              {showMore ? 'Ocultar opciones' : 'Más opciones'}
-            </Text>
-            <Ionicons
-              name={showMore ? 'chevron-up' : 'chevron-down'}
-              size={13}
-              color={colors.primaryDark}
-            />
-          </Pressable>
-          {showMore ? (
-            <View style={styles.exceptionsGrid}>
-              <ExceptionBtn
-                icon="videocam-off"
-                label="Estudiante sin cámara"
-                active={incidents.has('no_camera')}
-                onPress={() => toggleIncident('no_camera', 'Estudiante sin cámara')}
-              />
-              <ExceptionBtn
-                icon="time"
-                label="Llegó tarde"
-                active={incidents.has('late')}
-                onPress={() => toggleIncident('late', 'Estudiante llegó tarde')}
-              />
-              <ExceptionBtn
-                icon="person-remove"
-                label="No asistió"
-                active={incidents.has('no_show')}
-                onPress={handleNoShow}
-              />
-              <ExceptionBtn
-                icon="warning"
-                label="Problema técnico"
-                active={incidents.has('technical')}
-                onPress={() => toggleIncident('technical', 'Problema técnico')}
-              />
-            </View>
-          ) : null}
-        </>
+        <View style={styles.exceptionsGrid}>
+          <ExceptionBtn
+            icon="videocam-off"
+            label="Estudiante sin cámara"
+            active={incidents.has('no_camera')}
+            onPress={() => toggleIncident('no_camera', 'Estudiante sin cámara')}
+          />
+          <ExceptionBtn
+            icon="time"
+            label="Llegó tarde"
+            active={incidents.has('late')}
+            onPress={() => toggleIncident('late', 'Estudiante llegó tarde')}
+          />
+          <ExceptionBtn
+            icon="person-remove"
+            label="No asistió"
+            active={incidents.has('no_show')}
+            onPress={handleNoShow}
+          />
+          <ExceptionBtn
+            icon="warning"
+            label="Problema técnico"
+            active={incidents.has('technical')}
+            onPress={() => toggleIncident('technical', 'Problema técnico')}
+          />
+        </View>
       ) : null}
 
     </View>
