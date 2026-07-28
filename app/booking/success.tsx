@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   StatusBar,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,10 +26,12 @@ import { getSetting } from '@/services/appSettingsService';
 // Reserva · Paso final (post-confirmacion).
 //
 // Flujo 1 (con paquete): "Reserva confirmada" + horas descontadas + restantes.
-// Flujo 2 (sin horas): "Reserva confirmada · Pago pendiente" con dos acciones
-//   claras: Pagar ahora (checkout externo configurable) y Subir comprobante.
-//   Al subir el comprobante, se notifica automaticamente a admin y supervisor
-//   y la vista cambia a "Comprobante enviado · Pago en revision".
+//   No se muestran opciones de pago.
+// Flujo 2 (sin horas): "Pago pendiente" con tres canales oficiales:
+//   - Yappy (numero configurable)
+//   - Transferencia ACH (cuenta configurable)
+//   - Tarjeta de credito via link Cuanto (payment.checkout_url)
+//   + boton "Subir comprobante" que envia notificaciones a admin/supervisor.
 // ============================================================================
 
 export default function BookingSuccess() {
@@ -41,6 +45,7 @@ export default function BookingSuccess() {
   } = useBookings();
   const { user } = useAuth();
   const { reset } = useDraftBooking();
+  const [copied, setCopied] = useState<string>('');
 
   useEffect(() => {
     reset();
@@ -74,6 +79,9 @@ export default function BookingSuccess() {
   const remaining = remainingHours[b.studentId] ?? 0;
   const price = getSetting<number>('payment.price_per_hour_usd', 18);
   const checkoutUrl = getSetting<string>('payment.checkout_url', '');
+  const beneficiary = getSetting<string>('payment.beneficiary_name', 'Maristella Florian');
+  const yappyNumber = getSetting<string>('payment.yappy_number', '+507 6216-4495');
+  const achAccount = getSetting<string>('payment.ach_account', '04-72-99-558451-2');
 
   const role = (user as any)?.role ?? 'student';
   const homeRoute = () => {
@@ -91,7 +99,17 @@ export default function BookingSuccess() {
     }
   };
 
-  const handlePayNow = () => {
+  const copy = async (value: string, label: string) => {
+    try {
+      await Clipboard.setStringAsync(value);
+    } catch {
+      // no-op: en web sin permisos u otras plataformas ignoramos silenciosamente
+    }
+    setCopied(label);
+    setTimeout(() => setCopied(''), 1500);
+  };
+
+  const handleCardPay = () => {
     if (!checkoutUrl) {
       Alert.alert(
         'Enlace de pago no configurado',
@@ -160,7 +178,8 @@ export default function BookingSuccess() {
           </Text>
         ) : (
           <Text style={s.subtitle}>
-            Estado: Pago pendiente · Valor a pagar ${price.toFixed(2)}
+            Sin horas disponibles · Valor a pagar ${price.toFixed(2)}.
+            Elige un método a continuación.
           </Text>
         )}
 
@@ -193,20 +212,54 @@ export default function BookingSuccess() {
           </View>
         </View>
 
-        {/* Bloque de pago · solo cuando esta pendiente y sin comprobante */}
+        {/* Metodos de pago · solo cuando esta pendiente y sin comprobante */}
         {pending && !proof ? (
           <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+            <Text style={s.sectionTitle}>Métodos de pago</Text>
+            <Text style={s.sectionHint}>
+              Todos los pagos manuales van a nombre de {beneficiary}.
+            </Text>
+
+            <PayMethod
+              icon="phone-portrait"
+              label="Yappy"
+              value={yappyNumber}
+              hint={beneficiary}
+              onCopy={() => copy(yappyNumber, 'Yappy')}
+              copied={copied === 'Yappy'}
+            />
+
+            <PayMethod
+              icon="business"
+              label="Transferencia ACH"
+              value={achAccount}
+              hint={beneficiary}
+              onCopy={() => copy(achAccount, 'ACH')}
+              copied={copied === 'ACH'}
+            />
+
             <Pressable
-              onPress={handlePayNow}
-              style={({ pressed }) => [s.primaryBtn, pressed && { opacity: 0.9 }]}
+              onPress={handleCardPay}
+              style={({ pressed }) => [s.cardMethod, pressed && { opacity: 0.9 }]}
             >
-              <Ionicons name="card" size={18} color={colors.textOnPrimary} />
-              <Text style={s.primaryText}>Pagar ahora</Text>
+              <View style={s.cardMethodIcon}>
+                <Ionicons name="card" size={18} color={colors.textOnPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardMethodLabel}>Tarjeta de crédito</Text>
+                <Text style={s.cardMethodHint}>
+                  Pagar en línea con Cuanto (Visa · Mastercard · Amex)
+                </Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.textOnPrimary} />
             </Pressable>
+
+            <View style={s.divider} />
+
             <Pressable
               onPress={handleUpload}
               style={({ pressed }) => [
-                s.secondaryBtn,
+                s.uploadBtn,
                 pressed && { opacity: 0.9 },
               ]}
             >
@@ -215,7 +268,7 @@ export default function BookingSuccess() {
                 size={18}
                 color={colors.primaryDark}
               />
-              <Text style={s.secondaryText}>Subir comprobante</Text>
+              <Text style={s.uploadText}>Ya pagué · Subir comprobante</Text>
             </Pressable>
           </View>
         ) : null}
@@ -261,6 +314,45 @@ export default function BookingSuccess() {
   );
 }
 
+function PayMethod({
+  icon,
+  label,
+  value,
+  hint,
+  onCopy,
+  copied,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  hint: string;
+  onCopy: () => void;
+  copied: boolean;
+}) {
+  return (
+    <View style={s.method}>
+      <View style={s.methodIcon}>
+        <Ionicons name={icon as any} size={18} color={colors.primaryDark} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.methodLabel}>{label}</Text>
+        <Text style={s.methodValue}>{value}</Text>
+        <Text style={s.methodHint}>{hint}</Text>
+      </View>
+      <Pressable onPress={onCopy} hitSlop={8} style={s.copyBtn}>
+        <Ionicons
+          name={copied ? 'checkmark' : 'copy-outline'}
+          size={14}
+          color={copied ? colors.success : colors.primaryDark}
+        />
+        <Text style={[s.copyText, copied && { color: colors.success }]}>
+          {copied ? 'Copiado' : 'Copiar'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   iconWrap: { alignItems: 'center', marginTop: spacing.xl },
   bigIcon: {
@@ -296,6 +388,113 @@ const s = StyleSheet.create({
   datetime: { ...typography.caption },
   person: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 
+  sectionTitle: {
+    ...typography.h3,
+    marginTop: spacing.md,
+  },
+  sectionHint: {
+    ...typography.caption,
+    marginBottom: spacing.xs,
+  },
+  method: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  methodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSubtle,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  methodValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  methodHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  copyText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+
+  cardMethod: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  cardMethodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardMethodLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textOnPrimary,
+  },
+  cardMethodHint: {
+    fontSize: 12,
+    color: colors.primarySoft,
+    marginTop: 2,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.sm,
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+  },
+  uploadText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -315,7 +514,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     paddingVertical: 14,
     borderRadius: radius.md,
-    marginTop: spacing.sm,
+    marginTop: spacing.lg,
   },
   secondaryText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   textBtn: { alignItems: 'center', paddingVertical: spacing.md, marginTop: spacing.sm },

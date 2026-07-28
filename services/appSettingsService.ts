@@ -29,8 +29,14 @@ const DEFAULTS: Record<string, unknown> = {
   'payment.whatsapp_proof_enabled': true,
   // Enlace externo de checkout (pasarela configurable por el admin).
   // Vacio => el boton 'Pagar ahora' avisa que el admin aun no lo configuro.
-  'payment.checkout_url': '',
+  'payment.checkout_url':
+    'https://cuanto.app/wordlish.language.solutions/eyJ1c2VyVG9rZW4iOiI2ZDQzMjM4ZS1jOTYwLTQxN2EtODBmOC0wMjg3NTdiZThkOWIiLCJpbmRleCI6ImRldl9yYW1vbiIsInF1ZXJ5SWQiOiI3NjQ0ZTRkYTUwMjMzNjAwZDBmYzA0NGNjMTFlMWVjNiIsInVzZXJuYW1lIjoid29yZGxpc2gubGFuZ3VhZ2Uuc29sdXRpb25zIn0=?utm_source=mercadito&utm_campaign=merchant_list',
   'payment.price_per_hour_usd': 18,
+  // Beneficiario y datos oficiales para pagos manuales.
+  'payment.beneficiary_name': 'Maristella Florian',
+  'payment.yappy_number': '+507 6216-4495',
+  'payment.ach_bank': 'Cuenta ACH',
+  'payment.ach_account': '04-72-99-558451-2',
   // Reservas
   'booking.hold_ttl_minutes': 5,
   'booking.cancellation_hours_before': 12,

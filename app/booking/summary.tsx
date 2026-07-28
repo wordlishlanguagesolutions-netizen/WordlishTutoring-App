@@ -7,7 +7,10 @@ import {
   ScrollView,
   StatusBar,
   Alert,
+  Linking,
+  Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,6 +22,7 @@ import { useBookings } from '@/hooks/useBookings';
 import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
+import { getSetting } from '@/services/appSettingsService';
 
 
 // ============================================================================
@@ -35,8 +39,6 @@ import { POLICY_COPY } from '@/constants/policies';
 // y proveer credenciales — la UI no cambia.
 // ============================================================================
 
-const PRICE_PER_HOUR = 18; // USD, dato mock para mostrar precio cuando no hay plan
-
 export default function BookingSummary() {
   const router = useRouter();
   const { draft, setHoldId, reset } = useDraftBooking();
@@ -45,6 +47,35 @@ export default function BookingSummary() {
   const hold = holds.find((h) => h.id === draft.holdId);
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
   const requiresPayment = hoursLeft === 0;
+  const PRICE_PER_HOUR = getSetting<number>('payment.price_per_hour_usd', 18);
+  const beneficiary = getSetting<string>('payment.beneficiary_name', 'Maristella Florian');
+  const yappyNumber = getSetting<string>('payment.yappy_number', '+507 6216-4495');
+  const achAccount = getSetting<string>('payment.ach_account', '04-72-99-558451-2');
+  const checkoutUrl = getSetting<string>('payment.checkout_url', '');
+  const [copied, setCopied] = useState<string>('');
+
+  const copy = async (value: string, label: string) => {
+    try {
+      await Clipboard.setStringAsync(value);
+    } catch {
+      /* no-op */
+    }
+    setCopied(label);
+    setTimeout(() => setCopied(''), 1500);
+  };
+
+  const handleCardPay = () => {
+    if (!checkoutUrl) {
+      Alert.alert(
+        'Enlace de pago no configurado',
+        'El administrador aún no habilitó la pasarela. Envía tu comprobante o contacta soporte.',
+      );
+      return;
+    }
+    Linking.openURL(checkoutUrl).catch(() =>
+      Alert.alert('Error', 'No se pudo abrir el enlace de pago.'),
+    );
+  };
 
   const [remaining, setRemaining] = useState<number>(() =>
     hold ? Math.max(0, Math.floor((hold.expiresAt - Date.now()) / 1000)) : 0,
@@ -228,19 +259,88 @@ export default function BookingSummary() {
         </View>
 
         {requiresPayment ? (
-          <View style={s.pendingBox}>
-            <Ionicons name="card-outline" size={18} color={colors.warning} />
-            <Text style={s.pendingText}>
-              Sin horas disponibles. Al confirmar, la reserva queda con estado
-              "Pago pendiente" y en el siguiente paso podrás pagar o subir tu
-              comprobante.
+          <>
+            <View style={s.pendingBox}>
+              <Ionicons name="card-outline" size={18} color={colors.warning} />
+              <Text style={s.pendingText}>
+                Sin horas disponibles. Debes pagar ${PRICE_PER_HOUR.toFixed(2)} para
+                confirmar esta clase. Elige un método a continuación.
+              </Text>
+            </View>
+
+            <Text style={s.payTitleInline}>Métodos de pago</Text>
+            <Text style={s.payHintInline}>
+              Todos los pagos manuales van a nombre de {beneficiary}.
             </Text>
-          </View>
+
+            <View style={s.method}>
+              <View style={s.methodIcon}>
+                <Ionicons name="phone-portrait" size={18} color={colors.primaryDark} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.methodLabel}>Yappy</Text>
+                <Text style={s.methodValue}>{yappyNumber}</Text>
+                <Text style={s.methodHint}>{beneficiary}</Text>
+              </View>
+              <Pressable onPress={() => copy(yappyNumber, 'Yappy')} hitSlop={8} style={s.copyBtn}>
+                <Ionicons
+                  name={copied === 'Yappy' ? 'checkmark' : 'copy-outline'}
+                  size={14}
+                  color={copied === 'Yappy' ? colors.success : colors.primaryDark}
+                />
+                <Text style={[s.copyText, copied === 'Yappy' && { color: colors.success }]}>
+                  {copied === 'Yappy' ? 'Copiado' : 'Copiar'}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={s.method}>
+              <View style={s.methodIcon}>
+                <Ionicons name="business" size={18} color={colors.primaryDark} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.methodLabel}>Transferencia ACH</Text>
+                <Text style={s.methodValue}>{achAccount}</Text>
+                <Text style={s.methodHint}>{beneficiary}</Text>
+              </View>
+              <Pressable onPress={() => copy(achAccount, 'ACH')} hitSlop={8} style={s.copyBtn}>
+                <Ionicons
+                  name={copied === 'ACH' ? 'checkmark' : 'copy-outline'}
+                  size={14}
+                  color={copied === 'ACH' ? colors.success : colors.primaryDark}
+                />
+                <Text style={[s.copyText, copied === 'ACH' && { color: colors.success }]}>
+                  {copied === 'ACH' ? 'Copiado' : 'Copiar'}
+                </Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={handleCardPay}
+              style={({ pressed }) => [s.cardMethod, pressed && { opacity: 0.9 }]}
+            >
+              <View style={s.cardMethodIcon}>
+                <Ionicons name="card" size={18} color={colors.textOnPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardMethodLabel}>Tarjeta de crédito</Text>
+                <Text style={s.cardMethodHint}>
+                  Pagar en línea con Cuanto (Visa · Mastercard · Amex)
+                </Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.textOnPrimary} />
+            </Pressable>
+
+            <Text style={s.payFooterHint}>
+              Al confirmar, la reserva queda como "Pago pendiente". Luego podrás
+              subir tu comprobante desde la pantalla siguiente.
+            </Text>
+          </>
         ) : (
           <View style={s.planBox}>
             <Ionicons name="hourglass" size={18} color={colors.success} />
             <Text style={s.planBoxText}>
-              Esta reserva utilizará horas disponibles de tu plan.
+              Se descontará 1 hora de tu plan · Te quedan {hoursLeft} h disponibles.
             </Text>
           </View>
         )}
@@ -642,6 +742,99 @@ const s = StyleSheet.create({
     fontWeight: '600',
     color: colors.warning,
     lineHeight: 18,
+  },
+  payTitleInline: {
+    ...typography.h3,
+    marginTop: spacing.lg,
+  },
+  payHintInline: {
+    ...typography.caption,
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  method: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+  },
+  methodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSubtle,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  methodValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  methodHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  copyText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+  cardMethod: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    marginTop: spacing.sm,
+  },
+  cardMethodIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardMethodLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textOnPrimary,
+  },
+  cardMethodHint: {
+    fontSize: 12,
+    color: colors.primarySoft,
+    marginTop: 2,
+  },
+  payFooterHint: {
+    ...typography.caption,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
 
   errorBox: {
