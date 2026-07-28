@@ -179,23 +179,23 @@ export default function BookingSuccess() {
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
+      <View style={s.topHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.stepLabel}>Paso 4 de 4</Text>
+          <Text style={s.stepTitle}>
+            {confirmed ? 'Confirmación' : showReview ? 'Pago en revisión' : 'Elige cómo pagar'}
+          </Text>
+        </View>
+      </View>
+
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
-        {showPayStep ? (
-          <View style={s.stepHeader}>
-            <Text style={s.stepLabel}>Paso 4 de 4</Text>
-            <Text style={s.stepTitle}>Elige cómo pagar</Text>
-            <View style={s.dotsRow}>
-              {[0, 1, 2, 3].map((i) => (
-                <View
-                  key={i}
-                  style={[s.dot, i === 3 && s.dotActive, i < 3 && s.dotDone]}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
+        <View style={s.dotsRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={[s.dot, i === 3 && s.dotActive, i < 3 && s.dotDone]} />
+          ))}
+        </View>
 
         <View style={s.iconWrap}>
           <View style={[s.bigIcon, { backgroundColor: headerBg }]}>
@@ -746,6 +746,14 @@ const s = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   stepHeader: {
     marginBottom: spacing.md,
     gap: 4,
@@ -761,11 +769,12 @@ const s = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
+    marginTop: 2,
   },
   dotsRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
   dot: {
     flex: 1,

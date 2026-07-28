@@ -187,8 +187,8 @@ export default function BookingSummary() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 3 de 4</Text>
-          <Text style={typography.h2}>Resumen</Text>
+          <Text style={s.stepLabel}>Paso 3 de 4</Text>
+          <Text style={s.stepTitle}>Resumen</Text>
         </View>
       </View>
 
@@ -437,6 +437,19 @@ const s = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  stepTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
   },
   iconBtn: {
     width: 42,
