@@ -27,7 +27,7 @@ const TEACHER_NAV: SidebarItem[] = [
 
 function TeacherTabs() {
   const insets = useSafeAreaInsets();
-  const { weekPublished, pendingReports } = useTeacherNotifications();
+  const { weekPublished, pendingTotal } = useTeacherNotifications();
   const { isDesktop } = useResponsive();
 
   const badgeStyle = {
@@ -39,7 +39,8 @@ function TeacherTabs() {
     lineHeight: 16,
   } as const;
 
-  const pendingTotal = pendingReports; // Suma real se hace en la pantalla; aquí solo señal visual mínima.
+  // pendingTotal incluye reportes pendientes + screenshot vencido (>=10 min sin evidencia).
+  // El detalle se calcula en TeacherNotificationsContext.
 
   return (
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>

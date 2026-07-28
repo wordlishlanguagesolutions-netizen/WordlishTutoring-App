@@ -57,7 +57,13 @@ export default function PendientesScreen() {
   const router = useRouter();
   const { ctx } = usePermissions();
   const { bookings } = useBookings();
-  const { pendingReports, markReportSent } = useTeacherNotifications();
+  const {
+    pendingReports,
+    markReportSent,
+    screenshotOverdue,
+    screenshotEscalated,
+    reportEscalated,
+  } = useTeacherNotifications();
 
   const teacherId = ctx?.teacherId ?? 't1';
   const [filter, setFilter] = useState<Filter>('all');
@@ -65,7 +71,11 @@ export default function PendientesScreen() {
   const [screenshotSent, setScreenshotSent] = useState(false);
 
   const live = teacherActiveClass;
-  const showScreenshot = !!live && !live.hasScreenshot && !screenshotSent;
+  // Un screenshot solo se convierte en pendiente formal cuando han pasado
+  // 10 min sin evidencia (screenshotOverdue). Antes de ese umbral el flujo
+  // vive en el Home como accion en curso, no como pendiente.
+  const showScreenshot =
+    !!live && !live.hasScreenshot && !screenshotSent && screenshotOverdue;
 
   const all = useMemo<PendingItem[]>(() => {
     const list: PendingItem[] = [];
@@ -190,6 +200,16 @@ export default function PendientesScreen() {
             : `${counts.all} acción${counts.all === 1 ? '' : 'es'} por resolver`
         }
       />
+
+      {screenshotEscalated || reportEscalated ? (
+        <View style={styles.escalationBox}>
+          <Ionicons name="alert-circle" size={16} color={colors.danger} />
+          <Text style={styles.escalationText}>
+            Alerta enviada al supervisor por{' '}
+            {screenshotEscalated ? 'screenshot vencido' : 'reporte vencido'}.
+          </Text>
+        </View>
+      ) : null}
 
       {/* Filtros por tipo · sin "Materiales" */}
       <View style={styles.filters}>
@@ -441,5 +461,22 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontSize: 13,
     fontWeight: '600',
+  },
+  escalationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    marginBottom: spacing.md,
+  },
+  escalationText: {
+    flex: 1,
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
