@@ -135,18 +135,16 @@ export default function StudentBookHub() {
       </View>
 
       <Pressable
-        onPress={() => setCatalogOpen((v) => !v)}
+        onPress={() => router.push('/booking/pay' as any)}
         style={({ pressed }) => [styles.catalogToggle, pressed && { opacity: 0.85 }]}
         hitSlop={6}
       >
         <Ionicons
-          name={catalogOpen ? 'chevron-up' : 'add-circle-outline'}
+          name="card-outline"
           size={16}
           color={colors.primaryDark}
         />
-        <Text style={styles.catalogToggleText}>
-          {catalogOpen ? 'Cerrar catálogo' : 'Adquirir plan o recarga'}
-        </Text>
+        <Text style={styles.catalogToggleText}>Adquirir plan o recarga</Text>
       </Pressable>
 
       {catalogOpen ? (
