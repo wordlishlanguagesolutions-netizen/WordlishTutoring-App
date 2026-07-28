@@ -3,10 +3,9 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
-import { Screen, Header, Card, Avatar, KnowCard, WebTwoColumn } from '@/components/ui';
+import { Screen, Header, Card, Avatar, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius } from '@/constants/theme';
-import { POLICY_COPY } from '@/constants/policies';
 import {
   linkedStudents,
   reportsHistory,
@@ -44,7 +43,6 @@ export default function GuardianProgress() {
 
   const HeaderControls = (
     <>
-      <KnowCard rules={POLICY_COPY.reports} style={{ marginBottom: spacing.lg }} />
       <View style={styles.pickerRow}>
         {linkedStudents.map((s) => {
           const isActive = s.id === activeId;
@@ -76,52 +74,34 @@ export default function GuardianProgress() {
         {HeaderControls}
         {tab === 'reports' ? (
           <View style={{ gap: spacing.md }}>
-            {reportsHistory.map((r) => {
-              const materialCount =
-                (r.materials?.length ?? 0) + (r.attachments?.length ?? 0);
-              return (
-                <Card key={r.id}>
-                  <View style={styles.rowBetween}>
-                    <Text style={typography.h3}>{r.topic}</Text>
-                    <Text style={typography.caption}>{r.date}</Text>
-                  </View>
-                  <Text style={typography.caption}>{r.teacher}</Text>
-                  {r.screenshotUrl ? (
-                    <Pressable
-                      onPress={() => router.push(`/reports/${r.id}` as any)}
-                      style={({ pressed }) => [styles.thumbWrap, pressed && { opacity: 0.9 }]}
-                    >
-                      <Image
-                        source={{ uri: r.screenshotUrl }}
-                        style={styles.thumbImg}
-                        contentFit="cover"
-                        transition={200}
-                      />
-                      <View style={styles.thumbBadge}>
-                        <Ionicons name="camera" size={11} color={colors.textOnPrimary} />
-                        <Text style={styles.thumbBadgeText}>Evidencia de la clase</Text>
-                      </View>
-                    </Pressable>
-                  ) : null}
-                  <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
-                  {materialCount > 0 ? (
-                    <View style={styles.materialHint}>
-                      <Ionicons name="library-outline" size={12} color={colors.primaryDark} />
-                      <Text style={styles.materialHintText}>
-                        Incluye {materialCount} archivo{materialCount === 1 ? '' : 's'}
+            {reportsHistory.map((r) => (
+              <Pressable
+                key={r.id}
+                onPress={() => router.push(`/reports/${r.id}` as any)}
+                style={({ pressed }) => [pressed && { opacity: 0.9 }]}
+              >
+                <Card>
+                  <View style={styles.reportHead}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={typography.h3} numberOfLines={1}>{r.topic}</Text>
+                      <Text style={styles.reportMeta}>
+                        {r.teacher} · {r.date}
                       </Text>
                     </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </View>
+                  {r.screenshotUrl ? (
+                    <Image
+                      source={{ uri: r.screenshotUrl }}
+                      style={styles.thumbImg}
+                      contentFit="cover"
+                      transition={200}
+                    />
                   ) : null}
-                  <Pressable
-                    onPress={() => router.push(`/reports/${r.id}` as any)}
-                    style={({ pressed }) => [styles.viewReportBtn, pressed && { opacity: 0.9 }]}
-                  >
-                    <Text style={styles.viewReportText}>Ver reporte completo</Text>
-                    <Ionicons name="chevron-forward" size={16} color={colors.primaryDark} />
-                  </Pressable>
+                  <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
                 </Card>
-              );
-            })}
+              </Pressable>
+            ))}
           </View>
         ) : (
           <View style={{ gap: spacing.md }}>
@@ -316,43 +296,22 @@ const styles = StyleSheet.create({
   chipText: { fontWeight: '600', fontSize: 13, color: colors.textSubtle },
   chipTextActive: { color: colors.textOnPrimary },
 
-  rowBetween: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline',
+  reportHead: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  reportMeta: {
+    color: colors.textSubtle, fontSize: 12, marginTop: 2, fontWeight: '500',
   },
   reportProgress: {
     color: colors.textSubtle, fontSize: 13,
-    marginTop: spacing.sm, marginBottom: spacing.md, lineHeight: 18,
+    marginTop: spacing.sm, lineHeight: 18,
   },
-  materialHint: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: radius.pill, marginBottom: spacing.md,
-  },
-  materialHintText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
-  viewReportBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.sm, backgroundColor: colors.primarySoft,
-    paddingVertical: 12, borderRadius: radius.md,
-  },
-  viewReportText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
-
   materialRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  thumbWrap: {
-    position: 'relative', marginTop: spacing.sm, marginBottom: spacing.sm,
-    borderRadius: radius.md, overflow: 'hidden',
-    backgroundColor: colors.surfaceAlt,
+  thumbImg: {
+    width: '100%', aspectRatio: 16 / 9,
+    borderRadius: radius.md, backgroundColor: colors.surfaceAlt,
   },
-  thumbImg: { width: '100%', aspectRatio: 16 / 9 },
-  thumbBadge: {
-    position: 'absolute', top: spacing.sm, left: spacing.sm,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
-  thumbBadgeText: { color: colors.textOnPrimary, fontSize: 10, fontWeight: '700' },
   materialRowSmall: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm,
