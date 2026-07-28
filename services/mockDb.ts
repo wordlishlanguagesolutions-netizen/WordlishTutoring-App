@@ -127,6 +127,10 @@ const seedBookings: Booking[] = INITIAL_BOOKINGS.map((b) => ({
   createdBy: b.studentId === 's1' ? 'u-s1' : 'u-g1',
 }));
 
+// Nota: dejamos el paquete de Lucia (s1) con 0 horas para que al reservar
+// se dispare el Flujo 2 (pago pendiente) y sea posible ver el Paso 4
+// con los metodos de pago oficiales. Cambiar a >0 cuando se conecte
+// el flujo real de compra de paquetes.
 const seedPackages: HourPackage[] = [
   {
     id: 'pkg-s1',
@@ -134,7 +138,7 @@ const seedPackages: HourPackage[] = [
     guardianId: 'g1',
     name: packageInfo.name,
     totalHours: packageInfo.total,
-    remainingHours: packageInfo.remaining,
+    remainingHours: 0,
     purchasedAt: nowIso,
     expiresAt: dateUtils.addDays(45),
     paymentId: null,
