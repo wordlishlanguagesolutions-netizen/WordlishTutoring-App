@@ -50,6 +50,7 @@ export default function BookingNew() {
   );
   const [subjectsTick, setSubjectsTick] = useState<number>(getSubjectsVersion());
   const [showRules, setShowRules] = useState<boolean>(false);
+  const [chooseTeacher, setChooseTeacher] = useState<boolean>(false);
 
   // Hidratar catálogo de materias desde Cloud al montar (módulo #2 migrado)
   useEffect(() => {
@@ -84,8 +85,13 @@ export default function BookingNew() {
   };
 
   // Materia → auto-asignación → horario. Un solo flujo.
+  // Si el estudiante activó 'Elegir profesor', va antes al selector de profe.
   const pickSubject = (subj: string) => {
     setSubject(subj);
+    if (chooseTeacher) {
+      router.push('/booking/teacher' as any);
+      return;
+    }
     setTeacher('any', 'Auto-asignación', '');
     router.push('/booking/schedule' as any);
   };
@@ -195,6 +201,32 @@ export default function BookingNew() {
             );
           })}
         </View>
+
+        <View style={s.teacherToggleRow}>
+          <Pressable
+            onPress={() => setChooseTeacher((v) => !v)}
+            hitSlop={8}
+            style={({ pressed }) => [
+              s.teacherToggle,
+              chooseTeacher && s.teacherToggleOn,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons
+              name={chooseTeacher ? 'checkbox' : 'square-outline'}
+              size={14}
+              color={chooseTeacher ? colors.primary : colors.textMuted}
+            />
+            <Text
+              style={[
+                s.teacherToggleText,
+                chooseTeacher && { color: colors.primaryDark },
+              ]}
+            >
+              Quiero elegir mi profesor
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -301,6 +333,30 @@ const s = StyleSheet.create({
   },
   rulesToggleText: {
     color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  teacherToggleRow: {
+    marginTop: spacing.lg,
+    alignItems: 'center',
+  },
+  teacherToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  teacherToggleOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  teacherToggleText: {
+    color: colors.textSubtle,
     fontWeight: '700',
     fontSize: 12,
   },
