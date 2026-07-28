@@ -38,13 +38,17 @@ type LinkedStudent = typeof linkedStudents[number];
 const IMMINENT_MIN = 15;
 const CLASS_DURATION_MIN = 60;
 
-type Stage = 'scheduled' | 'starting_soon' | 'in_progress' | 'ended';
+type Stage = 'scheduled' | 'in_progress' | 'ended';
 
+// Reglas:
+//   m > 15                   → 'scheduled' (todavia no inicia, sin screenshot)
+//   -CLASS_DURATION_MIN..15  → 'in_progress' (durante la sesion, el profesor
+//                              ya tomo screenshot al iniciar)
+//   m <= -CLASS_DURATION_MIN → 'ended' (clase terminada, se ve reporte)
 function deriveStage(s: LinkedStudent): Stage {
   const m = s.nextStartsInMin;
   if (m > IMMINENT_MIN) return 'scheduled';
-  if (m > 0) return 'starting_soon';
-  if (Math.abs(m) < CLASS_DURATION_MIN) return 'in_progress';
+  if (m > -CLASS_DURATION_MIN) return 'in_progress';
   return 'ended';
 }
 
@@ -67,12 +71,16 @@ export default function GuardianHome() {
   const isLive = stage === 'in_progress';
   const isEnded = stage === 'ended';
 
-  // La bitácora se toma del último reporte del estudiante. Cuando la clase
-  // está en curso o finalizada, si existe screenshot y resumen, se muestran
-  // aquí mismo como parte de la tarjeta principal (sin salir de Home).
+  // La bitácora se toma del último reporte del estudiante. Aparece siempre
+  // que exista un screenshot de la clase (in_progress o ended); si la clase
+  // todavia no inicia (scheduled), no se muestra screenshot ni bitácora.
   const lastReport = reportsHistory[0];
-  const heroReport = isLive || isEnded ? lastReport : null;
+  const hasEvidence = (isLive || isEnded) && Boolean(lastReport?.screenshotUrl);
+  const heroReport = hasEvidence ? lastReport : null;
   const heroScreenshot = heroReport?.screenshotUrl ?? null;
+  const materials = heroReport
+    ? [...(heroReport.materials ?? []), ...(heroReport.attachments ?? [])]
+    : [];
 
   const status = isEnded
     ? { label: 'Finalizada', dot: colors.textMuted, tint: colors.surfaceAlt, fg: colors.textSubtle }
@@ -86,9 +94,6 @@ export default function GuardianHome() {
     'Profesor ',
   );
   const dateLabel = heroReport ? heroReport.date : active.next;
-
-  const resourceCount =
-    (heroReport?.materials?.length ?? 0) + (heroReport?.attachments?.length ?? 0);
 
   const openDetail = heroReport
     ? () => router.push(`/reports/${heroReport.id}` as any)
@@ -192,27 +197,50 @@ export default function GuardianHome() {
 
             {heroReport ? (
               <View style={styles.bitacora}>
-                <Text style={styles.summary} numberOfLines={3}>
-                  {heroReport.progress}
-                </Text>
-                {(heroReport.homework || resourceCount > 0) ? (
-                  <View style={styles.tagsRow}>
-                    {heroReport.homework ? (
-                      <View style={styles.tag}>
-                        <Ionicons name="book-outline" size={11} color={colors.primaryDark} />
-                        <Text style={styles.tagText}>Tarea</Text>
-                      </View>
-                    ) : null}
-                    {resourceCount > 0 ? (
-                      <View style={styles.tag}>
-                        <Ionicons name="library-outline" size={11} color={colors.primaryDark} />
-                        <Text style={styles.tagText}>
-                          {resourceCount} {resourceCount === 1 ? 'material' : 'materiales'}
-                        </Text>
-                      </View>
-                    ) : null}
+                {/* Resumen del profesor */}
+                <View style={styles.blockGroup}>
+                  <Text style={styles.blockLabel}>Resumen del profesor</Text>
+                  <Text style={styles.blockBody}>{heroReport.progress}</Text>
+                </View>
+
+                {/* Tarea */}
+                {heroReport.homework ? (
+                  <View style={styles.blockGroup}>
+                    <Text style={styles.blockLabel}>Tarea</Text>
+                    <Text style={styles.blockBody}>{heroReport.homework}</Text>
                   </View>
                 ) : null}
+
+                {/* Material de la clase */}
+                {materials.length > 0 ? (
+                  <View style={styles.blockGroup}>
+                    <Text style={styles.blockLabel}>
+                      Material de la clase
+                    </Text>
+                    <View style={{ gap: 6 }}>
+                      {materials.map((m, i) => (
+                        <View key={i} style={styles.materialRow}>
+                          <View style={styles.materialIcon}>
+                            <Ionicons
+                              name="document-text-outline"
+                              size={12}
+                              color={colors.primaryDark}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.materialTitle} numberOfLines={1}>
+                              {m.title}
+                            </Text>
+                            <Text style={styles.materialMeta}>
+                              {m.kind}{m.size ? ` · ${m.size}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
                 <View style={styles.openRow}>
                   <Text style={styles.openText}>Ver bitácora completa</Text>
                   <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
@@ -353,20 +381,36 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
-  summary: { color: colors.textSubtle, fontSize: 14, lineHeight: 20 },
-  tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tag: {
+  blockGroup: { gap: 4 },
+  blockLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  blockBody: { color: colors.textSubtle, fontSize: 14, lineHeight: 20 },
+  materialRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
+    paddingVertical: 6,
   },
-  tagText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
+  materialIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  materialTitle: { fontSize: 13, fontWeight: '600', color: colors.text },
+  materialMeta: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
   openRow: {
     flexDirection: 'row',
     alignItems: 'center',
