@@ -7,12 +7,18 @@ import {
   ScrollView,
   StatusBar,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { linkedStudents, currentGuardian, PAYMENT_STATUS } from '@/services/mockData';
+import {
+  linkedStudents,
+  currentGuardian,
+  PAYMENT_STATUS,
+  reportsHistory,
+} from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
 import { publicClassStatus, type InternalClassStage } from '@/constants/designPhilosophy';
 
@@ -69,6 +75,12 @@ export default function GuardianHome() {
   const payStatus = PAYMENT_STATUS[active.paymentStatus];
   const stage = deriveStage(active);
   const publicStatus = publicClassStatus(stage);
+
+  // Estados que transforman la tarjeta de proxima clase en bitacora.
+  const isLive = stage === 'in_progress' || stage === 'attendance_confirmed';
+  const isEnded = stage === 'ended';
+  const lastReport = reportsHistory[0];
+  const liveScreenshot = isLive ? lastReport?.screenshotUrl : null;
 
   // El acudiente no ingresa a la clase de Zoom en ningún estado. Solo
   // percibe el resultado visible (Regla 3: tranquilidad, no operación).
@@ -136,34 +148,33 @@ export default function GuardianHome() {
           </ScrollView>
         ) : null}
 
-        {/* ============ Estado compacto · saldo + pago ============ */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusItem}>
-            <Text style={styles.statusLabel}>Saldo</Text>
-            <Text style={styles.statusValue}>
-              {active.remaining} de {active.total} h
-            </Text>
+        {/* Chips discretos · saldo + estado de pago */}
+        <View style={styles.chipsRow}>
+          <View style={styles.badge}>
+            <Ionicons name="hourglass-outline" size={12} color={colors.primaryDark} />
+            <Text style={styles.badgeText}>{active.remaining} h disponibles</Text>
           </View>
-          <View style={styles.statusDivider} />
-          <View style={styles.statusItem}>
-            <Text style={styles.statusLabel}>Pago</Text>
-            <View style={styles.statusValueRow}>
-              <View
-                style={[
-                  styles.statusDot,
-                  {
-                    backgroundColor:
-                      payStatus.tone === 'success' ? colors.success : colors.warning,
-                  },
-                ]}
-              />
-              <Text style={styles.statusValue}>{payStatus.label}</Text>
-            </View>
+          <View style={styles.badge}>
+            <View
+              style={[
+                styles.badgeDot,
+                {
+                  backgroundColor:
+                    payStatus.tone === 'success' ? colors.success : colors.warning,
+                },
+              ]}
+            />
+            <Text style={styles.badgeText}>{payStatus.label}</Text>
           </View>
         </View>
 
-        {/* ============ Próxima clase · tarjeta blanca minimalista ============ */}
-        <Text style={styles.section}>Próxima clase</Text>
+        {/* Tarjeta unica de clase · se transforma segun el estado:
+            programada -> asignatura + profesor + fecha
+            en curso   -> Clase en curso + screenshot en vivo
+            finalizada -> bitacora: screenshot + resumen + tarea/material */}
+        <Text style={styles.section}>
+          {isEnded ? 'Ultima clase' : 'Proxima clase'}
+        </Text>
         <View style={styles.classCard}>
           <View style={styles.classHeader}>
             <View style={styles.subjectIcon}>
@@ -171,10 +182,10 @@ export default function GuardianHome() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.classSubject} numberOfLines={1}>
-                {active.nextSubject}
+                {isEnded && lastReport ? lastReport.topic : active.nextSubject}
               </Text>
               <Text style={styles.classTeacher} numberOfLines={1}>
-                {active.nextTeacher.replace(/^Prof\.?\s*/, 'Profesor ')}
+                {(isEnded && lastReport ? lastReport.teacher : active.nextTeacher).replace(/^Prof\.?\s*/, 'Profesor ')}
               </Text>
             </View>
           </View>
@@ -182,16 +193,65 @@ export default function GuardianHome() {
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
               <Ionicons name="calendar-outline" size={14} color={colors.primaryDark} />
-              <Text style={styles.metaText}>{active.next}</Text>
+              <Text style={styles.metaText}>
+                {isEnded && lastReport ? lastReport.date : active.next}
+              </Text>
             </View>
+            {isLive ? (
+              <View style={styles.liveTag}>
+                <View style={styles.liveDotSm} />
+                <Text style={styles.liveTagText}>Clase en curso</Text>
+              </View>
+            ) : null}
           </View>
 
-          {/* El acudiente no tiene botón para entrar a la clase. Solo ve
-              el estado público (resultado) en la línea inferior. */}
+          {isLive && liveScreenshot ? (
+            <Image
+              source={{ uri: liveScreenshot }}
+              style={styles.screenshot}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : null}
 
-          {/* Mensaje inferior discreto · resultados, no procesos.
-              Silenciamos por completo cuando no hay nada relevante (Regla 8). */}
-          {publicStatus ? (
+          {isEnded && lastReport ? (
+            <Pressable
+              onPress={() => router.push(`/reports/${lastReport.id}` as any)}
+              style={({ pressed }) => [styles.recap, pressed && { opacity: 0.95 }]}
+            >
+              {lastReport.screenshotUrl ? (
+                <Image
+                  source={{ uri: lastReport.screenshotUrl }}
+                  style={styles.screenshot}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : null}
+              <Text style={styles.recapText} numberOfLines={3}>
+                {lastReport.progress}
+              </Text>
+              <View style={styles.recapChipsRow}>
+                {lastReport.homework ? (
+                  <View style={styles.recapChip}>
+                    <Ionicons name="book-outline" size={11} color={colors.primaryDark} />
+                    <Text style={styles.recapChipText}>Tarea</Text>
+                  </View>
+                ) : null}
+                {(lastReport.materials?.length ?? 0) + (lastReport.attachments?.length ?? 0) > 0 ? (
+                  <View style={styles.recapChip}>
+                    <Ionicons name="library-outline" size={11} color={colors.primaryDark} />
+                    <Text style={styles.recapChipText}>Material</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.openRow}>
+                <Text style={styles.openText}>Ver bitacora completa</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
+              </View>
+            </Pressable>
+          ) : null}
+
+          {!isLive && !isEnded && publicStatus ? (
             <View style={styles.hintRow}>
               <Ionicons
                 name={publicStatus.icon as any}
@@ -272,35 +332,21 @@ const styles = StyleSheet.create({
     maxWidth: 120,
   },
 
-  // Estado compacto
-  statusRow: {
+  // Chips discretos
+  chipsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  badge: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
   },
-  statusItem: { flex: 1 },
-  statusDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  statusLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 4,
-  },
-  statusValue: { fontSize: 15, fontWeight: '700', color: colors.text },
-  statusValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  badgeText: { fontSize: 12, fontWeight: '700', color: colors.textSubtle },
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
 
   // Sección
   section: {
@@ -355,33 +401,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  metaText: {
-    color: colors.textSubtle,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-
-  // Botón principal · único elemento morado sólido
-  enterBtn: {
+  metaText: { color: colors.textSubtle, fontSize: 15, fontWeight: '600' },
+  liveTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.successSoft,
+    marginLeft: 'auto',
+  },
+  liveDotSm: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.success },
+  liveTagText: { color: colors.success, fontSize: 11, fontWeight: '700' },
+  screenshot: {
+    width: '100%',
+    aspectRatio: 16 / 9,
     borderRadius: radius.md,
-    marginTop: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    marginTop: spacing.md,
   },
-  enterBtnLive: { backgroundColor: colors.success },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.textOnPrimary,
+  recap: { marginTop: spacing.sm, gap: spacing.md },
+  recapText: { color: colors.textSubtle, fontSize: 14, lineHeight: 20 },
+  recapChipsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  recapChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
   },
-  enterText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 16 },
+  recapChipText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
+  openRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  openText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
 
-  // Hint inferior · texto discreto, sin recuadros
+  // Hint inferior · texto discreto
   hintRow: {
     flexDirection: 'row',
     alignItems: 'center',
