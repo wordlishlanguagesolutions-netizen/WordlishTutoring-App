@@ -16,6 +16,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { Avatar, ZoomButton, StatusBadge } from '@/components/ui';
+import { WizardHeader } from '@/components/booking';
 import { useBookings } from '@/hooks/useBookings';
 import { BOOKING_STATUS, dateUtils } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
@@ -179,24 +180,20 @@ export default function BookingSuccess() {
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <View style={s.topHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.stepLabel}>Paso 4 de 4</Text>
-          <Text style={s.stepTitle}>
-            {confirmed ? 'Confirmación' : showReview ? 'Pago en revisión' : 'Elige cómo pagar'}
-          </Text>
-        </View>
-      </View>
+      <WizardHeader
+        step={3}
+        title={
+          confirmed
+            ? 'Confirmación'
+            : showReview
+            ? 'Pago en revisión'
+            : 'Elige cómo pagar'
+        }
+      />
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
-        <View style={s.dotsRow}>
-          {[0, 1, 2, 3].map((i) => (
-            <View key={i} style={[s.dot, i === 3 && s.dotActive, i < 3 && s.dotDone]} />
-          ))}
-        </View>
-
         <View style={s.iconWrap}>
           <View style={[s.bigIcon, { backgroundColor: headerBg }]}>
             <Ionicons name={headerIcon as any} size={52} color={headerFg} />

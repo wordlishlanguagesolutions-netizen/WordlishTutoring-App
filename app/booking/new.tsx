@@ -25,6 +25,7 @@ import {
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useAuth } from '@/hooks/useAuth';
 import { KnowCard } from '@/components/ui';
+import { WizardHeader } from '@/components/booking';
 import { INDIVIDUAL_BOOKING_HINTS } from '@/constants/contextualPolicies';
 
 // ============================================================================
@@ -103,28 +104,20 @@ export default function BookingNew() {
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.iconBtn}>
-          <Ionicons name="chevron-back" size={20} color={colors.primaryDark} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={s.stepText}>Paso 1 de 4</Text>
-          <Text style={s.title}>Elige la materia</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push('/booking/mine' as any)}
-          hitSlop={10}
-          style={s.iconBtn}
-        >
-          <Ionicons name="list" size={18} color={colors.primaryDark} />
-        </Pressable>
-      </View>
-
-      <View style={s.stepBar}>
-        {[0, 1, 2, 3].map((i) => (
-          <View key={i} style={[s.dot, i === 0 && s.dotActive]} />
-        ))}
-      </View>
+      <WizardHeader
+        step={0}
+        title="Elige la materia"
+        onBack={() => router.back()}
+        rightSlot={
+          <Pressable
+            onPress={() => router.push('/booking/mine' as any)}
+            hitSlop={10}
+            style={s.iconBtn}
+          >
+            <Ionicons name="list" size={18} color={colors.primaryDark} />
+          </Pressable>
+        }
+      />
 
       <ScrollView contentContainerStyle={s.scroll}>
         {isGuardian ? (
@@ -233,14 +226,6 @@ export default function BookingNew() {
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
   iconBtn: {
     width: 36,
     height: 36,
@@ -249,22 +234,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  title: { fontSize: 20, fontWeight: '700', color: colors.text, marginTop: 2 },
-  stepBar: {
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  dot: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.primary },
   scroll: {
     padding: spacing.lg,
     paddingTop: spacing.sm,
