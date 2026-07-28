@@ -93,6 +93,10 @@ export default function TeacherHome() {
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [showMore, setShowMore] = useState(false);
 
+  // Cuando cambia el paso del flujo (screenshot -> in_progress -> ended ...)
+  // colapsamos automaticamente 'Mas opciones' para no dejar excepciones
+  // visibles fuera del momento en que el profesor las necesita.
+
   // eventLog eliminado: la interfaz refleja el estado con los botones
   // visibles; no aporta valor mostrar el log crudo al profesor.
   const logEvent = (_label: string) => {};
@@ -104,6 +108,12 @@ export default function TeacherHome() {
     if (screenshotAt !== null) return 'in_progress';
     return 'screenshot_pending';
   }, [reportSent, classEnded, incidents, screenshotAt]);
+
+  // Auto-colapsa 'Mas opciones' cuando cambia el paso del flujo,
+  // asi no quedan excepciones abiertas fuera del momento adecuado.
+  useEffect(() => {
+    setShowMore(false);
+  }, [step]);
 
   const showAttendanceAlert =
     step === 'in_progress' &&
@@ -392,7 +402,7 @@ export default function TeacherHome() {
         </View>
       ) : null}
 
-      {step === 'in_progress' || step === 'screenshot_pending' ? (
+      {step === 'in_progress' ? (
         <>
           <Pressable
             onPress={() => setShowMore((v) => !v)}
