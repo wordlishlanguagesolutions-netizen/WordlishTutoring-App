@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { Screen, Header, WebTwoColumn } from '@/components/ui';
@@ -97,11 +97,13 @@ export default function StudentBookHub() {
 
   const openDetail = (m: Movement) => router.push(`/payments/${m.id}?kind=${m.kind}` as any);
 
-  const choosePlan = (plan: PlanOffer) =>
-    Alert.alert(plan.name, `Confirmarás ${plan.hours} horas por $${plan.price}. Se abrirá la pasarela de pago.`);
-
-  const chooseTopUp = (t: (typeof ACTIVE_TOPUPS)[number]) =>
-    Alert.alert(`Recarga · ${t.hours} h`, `Total $${t.price}. Se abrirá la pasarela de pago.`);
+  // Wordlish tiene un único flujo de pago: dentro de la reserva. Los planes
+  // y recargas aquí son catálogo informativo. Al elegir uno, mandamos al
+  // usuario a reservar; si no le alcanzan las horas, el Paso 4 del wizard
+  // ofrece Yappy, ACH o Cuanto sin duplicar checkout.
+  const choosePlan = (_plan: PlanOffer) => router.push('/booking/type' as any);
+  const chooseTopUp = (_t: (typeof ACTIVE_TOPUPS)[number]) =>
+    router.push('/booking/type' as any);
 
   // ═════════════ Bloques ═════════════
   const ReserveCTA = (
@@ -167,7 +169,7 @@ export default function StudentBookHub() {
                 onPress={() => choosePlan(featuredPlan)}
                 style={({ pressed }) => [styles.chooseBtn, pressed && { opacity: 0.9 }]}
               >
-                <Text style={styles.chooseBtnText}>Elegir plan</Text>
+                <Text style={styles.chooseBtnText}>Reservar y pagar</Text>
               </Pressable>
             </View>
           ) : null}
@@ -183,7 +185,7 @@ export default function StudentBookHub() {
                 onPress={() => choosePlan(p)}
                 style={({ pressed }) => [styles.chooseBtnSm, pressed && { opacity: 0.9 }]}
               >
-                <Text style={styles.chooseBtnSmText}>Elegir</Text>
+                <Text style={styles.chooseBtnSmText}>Reservar</Text>
               </Pressable>
             </View>
           ))}
@@ -314,7 +316,7 @@ export default function StudentBookHub() {
     <Screen>
       <Header
         title="Reservas"
-        subtitle={`Te quedan ${hoursLeft} ${hoursLeft === 1 ? 'hora' : 'horas'} de estudio`}
+        subtitle={`Te quedan ${hoursLeft} ${hoursLeft === 1 ? 'hora' : 'horas'} de estudio · Pago dentro de la reserva`}
       />
 
       {isDesktop ? (

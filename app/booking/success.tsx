@@ -22,6 +22,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { getSetting } from '@/services/appSettingsService';
 
+type PayKey = 'yappy' | 'ach' | 'cuanto';
+
 // ============================================================================
 // Reserva · Paso final (post-confirmacion).
 //
@@ -46,6 +48,7 @@ export default function BookingSuccess() {
   const { user } = useAuth();
   const { reset } = useDraftBooking();
   const [copied, setCopied] = useState<string>('');
+  const [method, setMethod] = useState<PayKey | null>(null);
 
   useEffect(() => {
     reset();
@@ -136,6 +139,39 @@ export default function BookingSuccess() {
     ]);
   };
 
+  const showPayStep = pending && !proof;
+  const showReview = pending && !!proof;
+
+  const headerTitle = confirmed
+    ? 'Reserva confirmada'
+    : showReview
+    ? 'Pago en revisión'
+    : 'Elige cómo pagar';
+
+  const headerSubtitle = confirmed
+    ? `Se descontó 1 hora de tu paquete · Te quedan ${remaining} h disponibles.`
+    : showReview
+    ? 'Recibimos tu comprobante. Te avisaremos apenas el equipo Wordlish lo valide.'
+    : `Sin horas disponibles · Valor a pagar $${price.toFixed(2)}. Selecciona un método abajo.`;
+
+  const headerIcon = confirmed
+    ? 'checkmark-circle'
+    : showReview
+    ? 'time'
+    : 'card-outline';
+
+  const headerBg = confirmed
+    ? colors.successSoft
+    : showReview
+    ? colors.infoSoft
+    : colors.warningSoft;
+
+  const headerFg = confirmed
+    ? colors.success
+    : showReview
+    ? colors.info
+    : colors.warning;
+
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -146,10 +182,10 @@ export default function BookingSuccess() {
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
-        {pending ? (
+        {showPayStep ? (
           <View style={s.stepHeader}>
             <Text style={s.stepLabel}>Paso 4 de 4</Text>
-            <Text style={s.stepTitle}>Elige tu método de pago</Text>
+            <Text style={s.stepTitle}>Elige cómo pagar</Text>
             <View style={s.dotsRow}>
               {[0, 1, 2, 3].map((i) => (
                 <View
@@ -162,47 +198,19 @@ export default function BookingSuccess() {
         ) : null}
 
         <View style={s.iconWrap}>
-          <View
-            style={[
-              s.bigIcon,
-              {
-                backgroundColor: confirmed
-                  ? colors.successSoft
-                  : colors.warningSoft,
-              },
-            ]}
-          >
-            <Ionicons
-              name={confirmed ? 'checkmark-circle' : 'card-outline'}
-              size={56}
-              color={confirmed ? colors.success : colors.warning}
-            />
+          <View style={[s.bigIcon, { backgroundColor: headerBg }]}>
+            <Ionicons name={headerIcon as any} size={52} color={headerFg} />
           </View>
         </View>
 
-        <Text style={s.title}>Reserva confirmada</Text>
-
-        {confirmed ? (
-          <Text style={s.subtitle}>
-            Se descontó 1 hora de tu paquete. Te quedan {remaining} h disponibles.
-          </Text>
-        ) : proof ? (
-          <Text style={s.subtitle}>
-            Comprobante enviado · Pago en revisión. Te avisaremos cuando el
-            supervisor lo valide.
-          </Text>
-        ) : (
-          <Text style={s.subtitle}>
-            Sin horas disponibles · Valor a pagar ${price.toFixed(2)}.
-            Elige un método a continuación.
-          </Text>
-        )}
+        <Text style={s.title}>{headerTitle}</Text>
+        <Text style={s.subtitle}>{headerSubtitle}</Text>
 
         <View style={{ alignItems: 'center', marginTop: spacing.md }}>
           <StatusBadge
-            tone={proof && pending ? 'info' : st.tone}
-            label={proof && pending ? 'Pago en revisión' : st.label}
-            icon={proof && pending ? 'time-outline' : st.icon}
+            tone={showReview ? 'info' : st.tone}
+            label={showReview ? 'Pago en revisión' : st.label}
+            icon={showReview ? 'time-outline' : st.icon}
           />
         </View>
 
@@ -227,75 +235,149 @@ export default function BookingSuccess() {
           </View>
         </View>
 
-        {/* Metodos de pago · solo cuando esta pendiente y sin comprobante */}
-        {pending && !proof ? (
-          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-            <Text style={s.sectionTitle}>Métodos de pago</Text>
-            <Text style={s.sectionHint}>
-              Todos los pagos manuales van a nombre de {beneficiary}.
-            </Text>
-
-            <PayMethod
+        {/* Paso 4 · Métodos de pago con selección única */}
+        {showPayStep ? (
+          <View style={s.paySection}>
+            <PayRadio
+              active={method === 'yappy'}
               icon="phone-portrait"
               label="Yappy"
-              value={yappyNumber}
-              hint={beneficiary}
-              onCopy={() => copy(yappyNumber, 'Yappy')}
-              copied={copied === 'Yappy'}
+              hint="Transferencia móvil"
+              onPress={() => setMethod('yappy')}
             />
-
-            <PayMethod
+            <PayRadio
+              active={method === 'ach'}
               icon="business"
               label="Transferencia ACH"
-              value={achAccount}
-              hint={beneficiary}
-              onCopy={() => copy(achAccount, 'ACH')}
-              copied={copied === 'ACH'}
+              hint="Banco General"
+              onPress={() => setMethod('ach')}
+            />
+            <PayRadio
+              active={method === 'cuanto'}
+              icon="card"
+              label="Tarjeta con Cuanto"
+              hint="Visa · Mastercard · Amex"
+              onPress={() => setMethod('cuanto')}
             />
 
-            <Pressable
-              onPress={handleCardPay}
-              style={({ pressed }) => [s.cardMethod, pressed && { opacity: 0.9 }]}
-            >
-              <View style={s.cardMethodIcon}>
-                <Ionicons name="card" size={18} color={colors.textOnPrimary} />
+            {method === 'yappy' ? (
+              <View style={s.detail}>
+                <Text style={s.detailStep}>1 · Envía ${price.toFixed(2)} vía Yappy</Text>
+                <View style={s.copyRow}>
+                  <Text style={s.copyValue}>{yappyNumber}</Text>
+                  <Pressable
+                    onPress={() => copy(yappyNumber, 'Yappy')}
+                    hitSlop={8}
+                    style={s.copyBtn}
+                  >
+                    <Ionicons
+                      name={copied === 'Yappy' ? 'checkmark' : 'copy-outline'}
+                      size={14}
+                      color={copied === 'Yappy' ? colors.success : colors.primaryDark}
+                    />
+                    <Text
+                      style={[
+                        s.copyText,
+                        copied === 'Yappy' && { color: colors.success },
+                      ]}
+                    >
+                      {copied === 'Yappy' ? 'Copiado' : 'Copiar'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={s.detailBene}>Beneficiario: {beneficiary}</Text>
+                <Text style={s.detailStep}>2 · Sube tu comprobante</Text>
+                <Pressable
+                  onPress={handleUpload}
+                  style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={18}
+                    color={colors.primaryDark}
+                  />
+                  <Text style={s.uploadText}>Subir comprobante</Text>
+                </Pressable>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardMethodLabel}>Tarjeta de crédito</Text>
-                <Text style={s.cardMethodHint}>
-                  Pagar en línea con Cuanto (Visa · Mastercard · Amex)
+            ) : null}
+
+            {method === 'ach' ? (
+              <View style={s.detail}>
+                <Text style={s.detailStep}>1 · Transfiere ${price.toFixed(2)} por ACH</Text>
+                <View style={s.copyRow}>
+                  <Text style={s.copyValue}>{achAccount}</Text>
+                  <Pressable
+                    onPress={() => copy(achAccount, 'ACH')}
+                    hitSlop={8}
+                    style={s.copyBtn}
+                  >
+                    <Ionicons
+                      name={copied === 'ACH' ? 'checkmark' : 'copy-outline'}
+                      size={14}
+                      color={copied === 'ACH' ? colors.success : colors.primaryDark}
+                    />
+                    <Text
+                      style={[
+                        s.copyText,
+                        copied === 'ACH' && { color: colors.success },
+                      ]}
+                    >
+                      {copied === 'ACH' ? 'Copiado' : 'Copiar'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={s.detailBene}>Beneficiario: {beneficiary}</Text>
+                <Text style={s.detailStep}>2 · Sube tu comprobante</Text>
+                <Pressable
+                  onPress={handleUpload}
+                  style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={18}
+                    color={colors.primaryDark}
+                  />
+                  <Text style={s.uploadText}>Subir comprobante</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {method === 'cuanto' ? (
+              <View style={s.detail}>
+                <Text style={s.detailStep}>
+                  Pago en línea con Cuanto · confirmación inmediata.
                 </Text>
+                <Pressable
+                  onPress={handleCardPay}
+                  style={({ pressed }) => [s.cardBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Ionicons name="card" size={18} color={colors.textOnPrimary} />
+                  <Text style={s.cardBtnText}>Pagar con tarjeta</Text>
+                  <Ionicons
+                    name="open-outline"
+                    size={16}
+                    color={colors.textOnPrimary}
+                  />
+                </Pressable>
               </View>
-              <Ionicons name="open-outline" size={18} color={colors.textOnPrimary} />
-            </Pressable>
+            ) : null}
 
-            <View style={s.divider} />
-
-            <Pressable
-              onPress={handleUpload}
-              style={({ pressed }) => [
-                s.uploadBtn,
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <Ionicons
-                name="cloud-upload-outline"
-                size={18}
-                color={colors.primaryDark}
-              />
-              <Text style={s.uploadText}>Ya pagué · Subir comprobante</Text>
-            </Pressable>
+            {method === null ? (
+              <Text style={s.methodHintEmpty}>
+                Selecciona un método para ver las instrucciones.
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
-        {/* Bloque post-comprobante */}
-        {pending && proof ? (
+        {/* Comprobante enviado · pago en revisión */}
+        {showReview ? (
           <View style={s.proofBox}>
             <Ionicons name="checkmark-circle" size={18} color={colors.success} />
             <View style={{ flex: 1 }}>
               <Text style={s.proofTitle}>Comprobante enviado</Text>
               <Text style={s.proofHint}>
-                {proof.name} · en revisión por el equipo Wordlish
+                {proof!.name} · en revisión por el equipo Wordlish
               </Text>
             </View>
             <Pressable onPress={handleUpload} hitSlop={8}>
@@ -329,42 +411,43 @@ export default function BookingSuccess() {
   );
 }
 
-function PayMethod({
+function PayRadio({
+  active,
   icon,
   label,
-  value,
   hint,
-  onCopy,
-  copied,
+  onPress,
 }: {
+  active: boolean;
   icon: string;
   label: string;
-  value: string;
   hint: string;
-  onCopy: () => void;
-  copied: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={s.method}>
-      <View style={s.methodIcon}>
-        <Ionicons name={icon as any} size={18} color={colors.primaryDark} />
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.radioRow,
+        active && s.radioRowOn,
+        pressed && { opacity: 0.9 },
+      ]}
+    >
+      <View style={[s.methodIcon, active && { backgroundColor: colors.primary }]}>
+        <Ionicons
+          name={icon as any}
+          size={18}
+          color={active ? colors.textOnPrimary : colors.primaryDark}
+        />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.methodLabel}>{label}</Text>
-        <Text style={s.methodValue}>{value}</Text>
-        <Text style={s.methodHint}>{hint}</Text>
+        <Text style={s.radioLabel}>{label}</Text>
+        <Text style={s.radioHint}>{hint}</Text>
       </View>
-      <Pressable onPress={onCopy} hitSlop={8} style={s.copyBtn}>
-        <Ionicons
-          name={copied ? 'checkmark' : 'copy-outline'}
-          size={14}
-          color={copied ? colors.success : colors.primaryDark}
-        />
-        <Text style={[s.copyText, copied && { color: colors.success }]}>
-          {copied ? 'Copiado' : 'Copiar'}
-        </Text>
-      </Pressable>
-    </View>
+      <View style={[s.radio, active && s.radioOn]}>
+        {active ? <View style={s.radioDot} /> : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -410,6 +493,115 @@ const s = StyleSheet.create({
   sectionHint: {
     ...typography.caption,
     marginBottom: spacing.xs,
+  },
+  paySection: {
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.sm,
+  },
+  radioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  radioRowOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  radioLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  radioHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  radioOn: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  detail: {
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    gap: spacing.sm,
+  },
+  detailStep: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+  detailBene: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    fontWeight: '600',
+  },
+  copyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  copyValue: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  cardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+  },
+  cardBtnText: {
+    color: colors.textOnPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  methodHintEmpty: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+    fontStyle: 'italic',
   },
   method: {
     flexDirection: 'row',
