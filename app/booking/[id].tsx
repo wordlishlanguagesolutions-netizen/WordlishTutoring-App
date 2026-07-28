@@ -10,12 +10,14 @@ import {
   canCancel, canReschedule, getTeacherAvailableSlots, generateNextDays,
 } from '@/services/bookingService';
 import { useBookings } from '@/hooks/useBookings';
+import { useAuth } from '@/hooks/useAuth';
 import { getZoomUrlForBooking, getMeetingIdDisplay } from '@/services/zoomService';
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getById, cancelBooking, rescheduleBooking, markPaid, remainingHours, bookings, holds } = useBookings();
+  const { getById, cancelBooking, rescheduleBooking, markPaid, remainingHours, bookings, holds, paymentProofs } = useBookings();
+  const { user } = useAuth();
   const b = getById(id ?? '');
   const [rOpen, setROpen] = useState(false);
 
@@ -53,6 +55,30 @@ export default function BookingDetail() {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Pagar', onPress: () => markPaid(b!.id) },
     ]);
+  }
+
+  const role = (user as any)?.role ?? 'student';
+  const isReviewer = role === 'admin' || role === 'supervisor';
+  const proof = paymentProofs[b.id];
+  const canApprovePayment =
+    isReviewer && b.status === 'pending_payment' && !!proof && proof.status !== 'approved';
+
+  function handleApprovePayment() {
+    if (!b) return;
+    Alert.alert(
+      'Aprobar pago',
+      `Confirmas que recibiste el pago de ${b.studentName} por ${b.subject}? Se marcara la reserva como confirmada y se cerrara la revision.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Aprobar',
+          onPress: () => {
+            markPaid(b.id);
+            Alert.alert('Pago aprobado', 'La reserva quedo confirmada y el estudiante fue notificado.');
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -155,8 +181,30 @@ export default function BookingDetail() {
           <Info label="Hora consumida" value={b.hourConsumed ? 'Sí' : 'No'} last />
         </Card>
 
+        {canApprovePayment ? (
+          <View style={s.reviewCard}>
+            <View style={s.reviewHeader}>
+              <Ionicons name="receipt" size={18} color={colors.warning} />
+              <Text style={s.reviewTitle}>Comprobante en revisión</Text>
+            </View>
+            <Text style={s.reviewMeta}>
+              {proof!.name} · enviado {new Date(proof!.at).toLocaleString('es-PA')}
+            </Text>
+            <Text style={s.reviewHint}>
+              Verifica en Yappy o el banco antes de aprobar. Al aprobar, la reserva pasa a Confirmada y se notifica al estudiante.
+            </Text>
+            <Pressable
+              onPress={handleApprovePayment}
+              style={({ pressed }) => [s.approveBtn, pressed && { opacity: 0.9 }]}
+            >
+              <Ionicons name="checkmark-circle" size={18} color={colors.textOnPrimary} />
+              <Text style={s.approveText}>Aprobar pago</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
-          {b.status === 'pending_payment' && (
+          {b.status === 'pending_payment' && !isReviewer && (
             <Pressable onPress={handlePay} style={s.primaryBtn}>
               <Ionicons name="card" size={18} color={colors.textOnPrimary} />
               <Text style={s.primaryText}>Pagar (simulación)</Text>
@@ -361,4 +409,23 @@ const s = StyleSheet.create({
   },
   slotOn: { backgroundColor: colors.primary },
   slotText: { fontWeight: '700', color: colors.primaryDark },
+  reviewCard: {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    gap: spacing.sm,
+  },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  reviewTitle: { color: colors.warning, fontWeight: '700', fontSize: 15 },
+  reviewMeta: { color: colors.textSubtle, fontSize: 12, fontWeight: '600' },
+  reviewHint: { color: colors.textSubtle, fontSize: 12, lineHeight: 17 },
+  approveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    backgroundColor: colors.success, paddingVertical: 14, borderRadius: radius.md,
+    marginTop: spacing.sm,
+  },
+  approveText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 15 },
 });
