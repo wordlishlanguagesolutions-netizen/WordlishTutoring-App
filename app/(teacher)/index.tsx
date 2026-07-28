@@ -91,6 +91,7 @@ export default function TeacherHome() {
   const [incidents, setIncidents] = useState<Set<Incident>>(new Set());
   const [attendanceSnoozeUntil, setAttendanceSnoozeUntil] = useState<number>(0);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [showMore, setShowMore] = useState(false);
 
   // eventLog eliminado: la interfaz refleja el estado con los botones
   // visibles; no aporta valor mostrar el log crudo al profesor.
@@ -180,20 +181,10 @@ export default function TeacherHome() {
       ? 'warning'
       : 'primary';
 
-  const stepLabel: string = useMemo(() => {
-    switch (step) {
-      case 'screenshot_pending':
-        return 'Paso 1 · Sube el screenshot';
-      case 'in_progress':
-        return 'Paso 2 · Clase en progreso';
-      case 'ended':
-        return 'Paso 3 · Clase finalizada';
-      case 'report_pending':
-        return 'Paso 4 · Reporte pendiente';
-      case 'report_sent':
-        return 'Paso 5 · Reporte enviado';
-    }
-  }, [step]);
+  // Focus mode: durante clase en curso o previa, ocultamos todo lo secundario.
+  // Solo cuando el reporte esta enviado (o no hay clase activa) vuelven a
+  // aparecer acciones de hoy, Growth y proximas clases.
+  const focusMode = Boolean(live) && step !== 'report_sent';
 
   const pendingReports = teacherPendingReports.filter(
     (r) => !completed.has(`report-${r.id}`),
@@ -290,9 +281,9 @@ export default function TeacherHome() {
         </View>
       </View>
 
-      {step !== 'report_sent' && step !== 'report_pending' && step !== 'ended' ? (
+      {step === 'screenshot_pending' ? (
         <View style={{ marginTop: spacing.sm }}>
-          <ZoomButton variant="secondary" label="Volver a Zoom" />
+          <ZoomButton variant="secondary" label="Entrar a Zoom" />
         </View>
       ) : null}
 
@@ -402,32 +393,49 @@ export default function TeacherHome() {
       ) : null}
 
       {step === 'in_progress' || step === 'screenshot_pending' ? (
-        <View style={styles.exceptionsGrid}>
-          <ExceptionBtn
-            icon="videocam-off"
-            label="Estudiante sin cámara"
-            active={incidents.has('no_camera')}
-            onPress={() => toggleIncident('no_camera', 'Estudiante sin cámara')}
-          />
-          <ExceptionBtn
-            icon="time"
-            label="Llegó tarde"
-            active={incidents.has('late')}
-            onPress={() => toggleIncident('late', 'Estudiante llegó tarde')}
-          />
-          <ExceptionBtn
-            icon="person-remove"
-            label="No asistió"
-            active={incidents.has('no_show')}
-            onPress={handleNoShow}
-          />
-          <ExceptionBtn
-            icon="warning"
-            label="Problema técnico"
-            active={incidents.has('technical')}
-            onPress={() => toggleIncident('technical', 'Problema técnico')}
-          />
-        </View>
+        <>
+          <Pressable
+            onPress={() => setShowMore((v) => !v)}
+            style={({ pressed }) => [styles.moreToggle, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.moreToggleText}>
+              {showMore ? 'Ocultar opciones' : 'Más opciones'}
+            </Text>
+            <Ionicons
+              name={showMore ? 'chevron-up' : 'chevron-down'}
+              size={13}
+              color={colors.primaryDark}
+            />
+          </Pressable>
+          {showMore ? (
+            <View style={styles.exceptionsGrid}>
+              <ExceptionBtn
+                icon="videocam-off"
+                label="Estudiante sin cámara"
+                active={incidents.has('no_camera')}
+                onPress={() => toggleIncident('no_camera', 'Estudiante sin cámara')}
+              />
+              <ExceptionBtn
+                icon="time"
+                label="Llegó tarde"
+                active={incidents.has('late')}
+                onPress={() => toggleIncident('late', 'Estudiante llegó tarde')}
+              />
+              <ExceptionBtn
+                icon="person-remove"
+                label="No asistió"
+                active={incidents.has('no_show')}
+                onPress={handleNoShow}
+              />
+              <ExceptionBtn
+                icon="warning"
+                label="Problema técnico"
+                active={incidents.has('technical')}
+                onPress={() => toggleIncident('technical', 'Problema técnico')}
+              />
+            </View>
+          ) : null}
+        </>
       ) : null}
 
     </View>
@@ -526,38 +534,31 @@ export default function TeacherHome() {
               rightFlex={5}
               left={
                 <View style={{ gap: spacing.md }}>
-                  {AvailabilityStrip}
+                  {!focusMode ? AvailabilityStrip : null}
                   {LiveClassCard}
                 </View>
               }
               right={
                 <View style={{ gap: spacing.md }}>
-                  {ActionsBlock}
-                  {GrowthBlock}
-                  {UpcomingBlock}
+                  {!focusMode ? ActionsBlock : null}
+                  {!focusMode ? GrowthBlock : null}
+                  {!focusMode ? UpcomingBlock : null}
                 </View>
               }
             />
           ) : (
             <>
-              {AvailabilityStrip}
+              {!focusMode ? AvailabilityStrip : null}
               {LiveClassCard}
-              {ActionsBlock}
-              {GrowthBlock}
-              {UpcomingBlock}
+              {!focusMode ? ActionsBlock : null}
+              {!focusMode ? GrowthBlock : null}
+              {!focusMode ? UpcomingBlock : null}
             </>
           )}
         </PageContainer>
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-function incidentLabel(k: Incident): string {
-  if (k === 'no_camera') return 'Estudiante sin cámara';
-  if (k === 'late') return 'Llegó tarde';
-  if (k === 'no_show') return 'No asistió';
-  return 'Problema técnico';
 }
 
 function ExceptionBtn({
@@ -626,36 +627,21 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
   livePillText: { fontSize: 12, fontWeight: '700', color: colors.success },
-  stepText: {
-    fontSize: 13, fontWeight: '700', color: colors.textMuted,
-    marginTop: spacing.md, textTransform: 'uppercase', letterSpacing: 0.4,
-  },
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.primary, paddingVertical: 14, borderRadius: radius.md, marginTop: spacing.sm,
   },
   primaryBtnText: { color: colors.textOnPrimary, fontSize: 16, fontWeight: '700' },
-  softBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.primarySoft, paddingVertical: 10, borderRadius: radius.md, marginTop: 8,
-  },
-  softBtnText: { color: colors.primaryDark, fontSize: 14, fontWeight: '700' },
   ssStatus: { fontSize: 14, color: colors.primaryDark, fontWeight: '600', textAlign: 'center', marginTop: 6 },
   ssDone: { fontSize: 14, color: colors.success, fontWeight: '600', marginTop: spacing.sm, textAlign: 'center' },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
   doneText: { fontSize: 14, color: colors.success, fontWeight: '600', flex: 1 },
-  statusRow: { marginTop: spacing.md },
-  normalRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  normalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  normalText: { fontSize: 14, color: colors.textSubtle, fontWeight: '600' },
-  incidentChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  activeIncidentChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: radius.pill, backgroundColor: colors.warningSoft,
+  moreToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 10, marginTop: spacing.sm,
   },
-  activeIncidentText: { fontSize: 13, fontWeight: '700', color: colors.warning },
-  exceptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  moreToggleText: { fontSize: 13, fontWeight: '700', color: colors.primaryDark },
+  exceptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   exceptionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: spacing.md, paddingVertical: 8,
@@ -664,12 +650,6 @@ const styles = StyleSheet.create({
   },
   exceptionBtnActive: { backgroundColor: colors.warning, borderColor: colors.warning },
   exceptionText: { fontSize: 13, fontWeight: '700', color: colors.textSubtle },
-  waBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 10, borderRadius: radius.md,
-    marginTop: spacing.sm, backgroundColor: colors.successSoft,
-  },
-  waBtnText: { color: colors.success, fontSize: 14, fontWeight: '700' },
   alertBox: {
     marginTop: spacing.md, padding: spacing.md,
     borderRadius: radius.md, backgroundColor: colors.warningSoft,
@@ -679,11 +659,6 @@ const styles = StyleSheet.create({
   alertRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   alertBtn: { flex: 1, minWidth: 90, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
   alertBtnText: { color: colors.textOnPrimary, fontSize: 13, fontWeight: '700' },
-  historyBox: {
-    marginTop: spacing.md, paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: 2,
-  },
-  historyLine: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
   section: { ...typography.h3, fontSize: 17, marginTop: spacing.lg, marginBottom: spacing.sm },
   actionCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
