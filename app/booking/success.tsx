@@ -146,6 +146,21 @@ export default function BookingSuccess() {
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
+        {pending ? (
+          <View style={s.stepHeader}>
+            <Text style={s.stepLabel}>Paso 4 de 4</Text>
+            <Text style={s.stepTitle}>Elige tu método de pago</Text>
+            <View style={s.dotsRow}>
+              {[0, 1, 2, 3].map((i) => (
+                <View
+                  key={i}
+                  style={[s.dot, i === 3 && s.dotActive, i < 3 && s.dotDone]}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         <View style={s.iconWrap}>
           <View
             style={[
@@ -539,4 +554,33 @@ const s = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
+  stepHeader: {
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  stepTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  dot: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+  dotActive: { backgroundColor: colors.primary },
+  dotDone: { backgroundColor: colors.primaryDark },
 });

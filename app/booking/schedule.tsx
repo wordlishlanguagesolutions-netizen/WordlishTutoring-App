@@ -111,7 +111,7 @@ export default function BookingSchedule() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 2 de 3</Text>
+          <Text style={typography.caption}>Paso 2 de 4</Text>
           <Text style={typography.h2}>Fecha y hora</Text>
         </View>
       </View>
@@ -205,7 +205,7 @@ export default function BookingSchedule() {
 function StepDots({ current }: { current: number }) {
   return (
     <View style={s.dotsRow}>
-      {[0, 1, 2].map((i) => (
+      {[0, 1, 2, 3].map((i) => (
         <View
           key={i}
           style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}

@@ -171,7 +171,9 @@ export default function BookingSummary() {
 
   const holdExpired = hold ? remaining === 0 : false;
 
-  const primaryLabel = 'Confirmar reserva';
+  const primaryLabel = requiresPayment
+    ? 'Continuar al pago'
+    : 'Confirmar reserva';
 
   return (
     <SafeAreaView
@@ -185,7 +187,7 @@ export default function BookingSummary() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 3 de 3</Text>
+          <Text style={typography.caption}>Paso 3 de 4</Text>
           <Text style={typography.h2}>Resumen</Text>
         </View>
       </View>
@@ -259,88 +261,18 @@ export default function BookingSummary() {
         </View>
 
         {requiresPayment ? (
-          <>
-            <View style={s.pendingBox}>
-              <Ionicons name="card-outline" size={18} color={colors.warning} />
-              <Text style={s.pendingText}>
-                Sin horas disponibles. Debes pagar ${PRICE_PER_HOUR.toFixed(2)} para
-                confirmar esta clase. Elige un método a continuación.
-              </Text>
-            </View>
-
-            <Text style={s.payTitleInline}>Métodos de pago</Text>
-            <Text style={s.payHintInline}>
-              Todos los pagos manuales van a nombre de {beneficiary}.
+          <View style={s.pendingBox}>
+            <Ionicons name="card-outline" size={18} color={colors.warning} />
+            <Text style={s.pendingText}>
+              Sin horas disponibles. Al continuar veras los metodos de pago
+              oficiales (Yappy, ACH y tarjeta) en el Paso 4.
             </Text>
-
-            <View style={s.method}>
-              <View style={s.methodIcon}>
-                <Ionicons name="phone-portrait" size={18} color={colors.primaryDark} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.methodLabel}>Yappy</Text>
-                <Text style={s.methodValue}>{yappyNumber}</Text>
-                <Text style={s.methodHint}>{beneficiary}</Text>
-              </View>
-              <Pressable onPress={() => copy(yappyNumber, 'Yappy')} hitSlop={8} style={s.copyBtn}>
-                <Ionicons
-                  name={copied === 'Yappy' ? 'checkmark' : 'copy-outline'}
-                  size={14}
-                  color={copied === 'Yappy' ? colors.success : colors.primaryDark}
-                />
-                <Text style={[s.copyText, copied === 'Yappy' && { color: colors.success }]}>
-                  {copied === 'Yappy' ? 'Copiado' : 'Copiar'}
-                </Text>
-              </Pressable>
-            </View>
-
-            <View style={s.method}>
-              <View style={s.methodIcon}>
-                <Ionicons name="business" size={18} color={colors.primaryDark} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.methodLabel}>Transferencia ACH</Text>
-                <Text style={s.methodValue}>{achAccount}</Text>
-                <Text style={s.methodHint}>{beneficiary}</Text>
-              </View>
-              <Pressable onPress={() => copy(achAccount, 'ACH')} hitSlop={8} style={s.copyBtn}>
-                <Ionicons
-                  name={copied === 'ACH' ? 'checkmark' : 'copy-outline'}
-                  size={14}
-                  color={copied === 'ACH' ? colors.success : colors.primaryDark}
-                />
-                <Text style={[s.copyText, copied === 'ACH' && { color: colors.success }]}>
-                  {copied === 'ACH' ? 'Copiado' : 'Copiar'}
-                </Text>
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={handleCardPay}
-              style={({ pressed }) => [s.cardMethod, pressed && { opacity: 0.9 }]}
-            >
-              <View style={s.cardMethodIcon}>
-                <Ionicons name="card" size={18} color={colors.textOnPrimary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardMethodLabel}>Tarjeta de crédito</Text>
-                <Text style={s.cardMethodHint}>
-                  Pagar en línea con Cuanto (Visa · Mastercard · Amex)
-                </Text>
-              </View>
-              <Ionicons name="open-outline" size={18} color={colors.textOnPrimary} />
-            </Pressable>
-
-            <Text style={s.payFooterHint}>
-              Al confirmar, la reserva queda como "Pago pendiente". Luego podrás
-              subir tu comprobante desde la pantalla siguiente.
-            </Text>
-          </>
+          </View>
         ) : (
           <View style={s.planBox}>
             <Ionicons name="hourglass" size={18} color={colors.success} />
             <Text style={s.planBoxText}>
-              Se descontará 1 hora de tu plan · Te quedan {hoursLeft} h disponibles.
+              Se descontara 1 hora de tu plan · Te quedan {hoursLeft} h disponibles.
             </Text>
           </View>
         )}
@@ -407,7 +339,11 @@ export default function BookingSummary() {
             pressed && canConfirm && { opacity: 0.9 },
           ]}
         >
-          <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+          <Ionicons
+            name={requiresPayment ? 'arrow-forward' : 'checkmark-circle'}
+            size={20}
+            color={colors.textOnPrimary}
+          />
           <Text style={s.primaryText}>{primaryLabel}</Text>
         </Pressable>
 
@@ -484,7 +420,7 @@ function InfoLine({
 function StepDots({ current }: { current: number }) {
   return (
     <View style={s.dotsRow}>
-      {[0, 1, 2].map((i) => (
+      {[0, 1, 2, 3].map((i) => (
         <View
           key={i}
           style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
