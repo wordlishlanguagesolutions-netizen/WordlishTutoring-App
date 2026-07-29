@@ -31,6 +31,7 @@ export default function LoginScreen() {
   const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [showPass, setShowPass] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
@@ -157,6 +158,18 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
+              {/* Registro publico · disponible para estudiantes/acudientes */}
+              <View style={styles.signupBlock}>
+                <Text style={styles.signupLead}>¿No tienes cuenta?</Text>
+                <Pressable
+                  onPress={() => router.push('/signup' as any)}
+                  hitSlop={10}
+                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.signupLink}>Crear cuenta</Text>
+                </Pressable>
+              </View>
+
               {/* Soporte al final · discreto, tipográfico, sin FAB ni burbujas */}
               <View style={styles.supportBlock}>
                 <Text style={styles.supportLead}>¿Necesitas ayuda?</Text>
@@ -229,11 +242,29 @@ export default function LoginScreen() {
                     }}
                     placeholder="Contraseña"
                     placeholderTextColor={colors.textMuted}
-                    secureTextEntry
+                    secureTextEntry={!showPass}
                     autoCapitalize="none"
                     style={styles.input}
                   />
+                  <Pressable onPress={() => setShowPass(!showPass)} hitSlop={10}>
+                    <Ionicons
+                      name={showPass ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={colors.textSubtle}
+                    />
+                  </Pressable>
                 </View>
+
+                <Pressable
+                  onPress={() => router.push('/forgot-password' as any)}
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    styles.forgotLinkWrap,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={styles.forgotLink}>¿Olvidaste tu contraseña?</Text>
+                </Pressable>
 
                 {error ? (
                   <View style={styles.errorRow}>
@@ -256,6 +287,17 @@ export default function LoginScreen() {
                   </Text>
                   <Ionicons name="arrow-forward" size={18} color={colors.textOnPrimary} />
                 </Pressable>
+
+                {accountType === 'student_guardian' ? (
+                  <Pressable
+                    onPress={() => router.push('/signup' as any)}
+                    hitSlop={10}
+                    style={styles.signupInlineRow}
+                  >
+                    <Text style={styles.signupInlineMuted}>¿No tienes cuenta?</Text>
+                    <Text style={styles.signupInlineLink}> Crear cuenta</Text>
+                  </Pressable>
+                ) : null}
               </View>
 
               {showTestAccounts ? (
@@ -415,6 +457,27 @@ const styles = StyleSheet.create({
   },
 
   // Soporte · texto discreto al final de la pantalla
+  signupBlock: {
+    marginTop: spacing.xl,
+    alignItems: 'center',
+    gap: 4,
+  },
+  signupLead: { fontSize: 15, color: colors.textMuted, fontWeight: '500' },
+  signupLink: {
+    color: colors.primaryDark,
+    fontSize: 15,
+    fontWeight: '700',
+    paddingVertical: 6,
+  },
+  forgotLinkWrap: { alignSelf: 'flex-end', paddingVertical: 4 },
+  forgotLink: { color: colors.primaryDark, fontSize: 13, fontWeight: '600' },
+  signupInlineRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+  },
+  signupInlineMuted: { color: colors.textMuted, fontSize: 14 },
+  signupInlineLink: { color: colors.primaryDark, fontSize: 14, fontWeight: '700' },
   supportBlock: {
     marginTop: spacing.xxl,
     alignItems: 'center',

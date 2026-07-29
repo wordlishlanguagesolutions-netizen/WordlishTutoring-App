@@ -4,6 +4,8 @@ import {
   MockUser,
   SignInResult,
   ResetPasswordResult,
+  SignUpResult,
+  SignUpArgs,
 } from '@/services/authService';
 import type { UserRole } from '@/constants/roles';
 import type { AccountType } from '@/types';
@@ -20,6 +22,8 @@ export interface AuthContextType {
   loginAs: (role: UserRole) => Promise<MockUser>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<ResetPasswordResult>;
+  signUp: (args: SignUpArgs) => Promise<SignUpResult>;
+  updatePassword: (newPassword: string) => Promise<ResetPasswordResult>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -92,9 +96,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return authService.resetPassword(email);
   };
 
+  const signUp = async (args: SignUpArgs) => {
+    const result = await authService.signUp(args);
+    if (result.user) setUser(result.user);
+    return result;
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    return authService.updatePassword(newPassword);
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, signIn, loginAs, logout, resetPassword }}
+      value={{
+        user,
+        loading,
+        signIn,
+        loginAs,
+        logout,
+        resetPassword,
+        signUp,
+        updatePassword,
+      }}
     >
       {children}
     </AuthContext.Provider>

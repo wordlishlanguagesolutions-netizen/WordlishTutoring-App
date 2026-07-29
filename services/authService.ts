@@ -35,6 +35,19 @@ export interface ResetPasswordResult {
   error?: string;
 }
 
+export interface SignUpResult {
+  user?: MockUser;
+  error?: string;
+  needsEmailConfirmation?: boolean;
+}
+
+export interface SignUpArgs {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
 type AuthMode = 'mock' | 'real';
 
 function resolveAuthMode(): AuthMode {
@@ -265,9 +278,56 @@ async function realLogout(): Promise<void> {
 async function realResetPassword(email: string): Promise<ResetPasswordResult> {
   const supabase = getSupabaseClient();
   const normalized = email.trim().toLowerCase();
-  const { error } = await supabase.auth.resetPasswordForEmail(normalized);
+  // Deep-link para retomar la sesion en la pantalla de nueva contrasena.
+  const redirectTo =
+    typeof window !== 'undefined' && window.location
+      ? `${window.location.origin}/reset-password`
+      : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
+    redirectTo,
+  });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+async function realSignUp(args: SignUpArgs): Promise<SignUpResult> {
+  const supabase = getSupabaseClient();
+  const email = args.email.trim().toLowerCase();
+  const firstName = args.firstName.trim();
+  const lastName = args.lastName.trim();
+  const fullName = `${firstName} ${lastName}`.trim() || email;
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: args.password,
+    options: {
+      data: {
+        first_name: firstName,
+        full_name: fullName,
+        // No enviamos role/account_type: el trigger handle_new_user asigna
+        // 'student' por defecto. El registro publico nunca crea staff.
+      },
+    },
+  });
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('already registered') || msg.includes('already been')) {
+      return { error: 'Ya existe una cuenta con este correo.' };
+    }
+    if (msg.includes('password')) {
+      return { error: 'La contrasena no cumple los requisitos minimos.' };
+    }
+    return { error: error.message || 'No se pudo crear la cuenta.' };
+  }
+  if (!data.user) return { error: 'No se pudo crear la cuenta.' };
+
+  // Si la sesion viene inmediata (confirmacion de email desactivada),
+  // resolvemos el perfil. Si el proyecto exige confirmar, avisamos al usuario.
+  if (data.session) {
+    const profile = await realFetchProfile(data.user.id, email);
+    return { user: profile ?? undefined };
+  }
+  return { needsEmailConfirmation: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -307,9 +367,26 @@ export const authService = {
 
   async resetPassword(email: string): Promise<ResetPasswordResult> {
     if (resolveAuthMode() !== 'real') {
-      return { ok: false, error: 'Recuperación disponible solo en modo real.' };
+      return { ok: false, error: 'Recuperacion disponible solo en modo real.' };
     }
     return realResetPassword(email);
+  },
+
+  async signUp(args: SignUpArgs): Promise<SignUpResult> {
+    if (resolveAuthMode() !== 'real') {
+      return { error: 'El registro publico solo esta disponible en modo real.' };
+    }
+    return realSignUp(args);
+  },
+
+  async updatePassword(newPassword: string): Promise<ResetPasswordResult> {
+    if (resolveAuthMode() !== 'real') {
+      return { ok: false, error: 'Solo disponible en modo real.' };
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
   },
 
   getRoleForEmail(email: string): UserRole | null {
