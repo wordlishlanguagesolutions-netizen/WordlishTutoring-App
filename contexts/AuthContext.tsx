@@ -7,6 +7,7 @@ import {
   SignUpResult,
   SignUpArgs,
 } from '@/services/authService';
+
 import type { UserRole } from '@/constants/roles';
 import type { AccountType } from '@/types';
 import { getSupabaseClient } from '@/template';
@@ -24,6 +25,9 @@ export interface AuthContextType {
   resetPassword: (email: string) => Promise<ResetPasswordResult>;
   signUp: (args: SignUpArgs) => Promise<SignUpResult>;
   updatePassword: (newPassword: string) => Promise<ResetPasswordResult>;
+  verifySignupOtp: (email: string, token: string) => Promise<SignUpResult>;
+  verifyRecoveryOtp: (email: string, token: string) => Promise<ResetPasswordResult>;
+  resendSignupOtp: (email: string) => Promise<ResetPasswordResult>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,6 +110,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return authService.updatePassword(newPassword);
   };
 
+  const verifySignupOtp = async (email: string, token: string) => {
+    const result = await authService.verifySignupOtp(email, token);
+    if (result.user) setUser(result.user);
+    return result;
+  };
+
+  const verifyRecoveryOtp = async (email: string, token: string) => {
+    return authService.verifyRecoveryOtp(email, token);
+  };
+
+  const resendSignupOtp = async (email: string) => {
+    return authService.resendSignupOtp(email);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -117,6 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         signUp,
         updatePassword,
+        verifySignupOtp,
+        verifyRecoveryOtp,
+        resendSignupOtp,
       }}
     >
       {children}

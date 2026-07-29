@@ -11,46 +11,71 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@/components/ui/Icon';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { getRoleInfo } from '@/constants/roles';
 import { colors, radius, spacing, shadow } from '@/constants/theme';
 import { PageContainer } from '@/components/ui/PageContainer';
 import { useResponsive } from '@/hooks/useResponsive';
 
-// Paso 1 de la recuperacion: pide el correo, dispara resetPasswordForEmail
-// (OnSpace Auth envia un OTP de 4 digitos) y navega a /reset-password donde
-// el usuario introduce el codigo + nueva contrasena.
-export default function ForgotPasswordScreen() {
+// Pantalla de verificacion post-registro. OnSpace Auth envia un OTP de 4
+// digitos al correo. El usuario lo introduce aqui, verificamos con Supabase
+// (type: 'signup') y quedamos autenticados.
+export default function VerifyEmailScreen() {
   const router = useRouter();
-  const { resetPassword } = useAuth();
+  const params = useLocalSearchParams<{ email?: string }>();
+  const { verifySignupOtp, resendSignupOtp } = useAuth();
   const { isDesktop } = useResponsive();
 
-  const [email, setEmail] = useState<string>('');
+  const initialEmail = typeof params.email === 'string' ? params.email : '';
+  const [email, setEmail] = useState<string>(initialEmail);
+  const [code, setCode] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [resending, setResending] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [info, setInfo] = useState<string>('');
 
-  const handleSubmit = async () => {
+  const handleVerify = async () => {
     setError('');
+    setInfo('');
     if (!email.trim()) {
       setError('Ingresa tu correo.');
       return;
     }
-    setLoading(true);
-    const result = await resetPassword(email.trim());
-    setLoading(false);
-    if (!result.ok && result.error) {
-      const msg = result.error.toLowerCase();
-      if (msg.includes('modo real')) {
-        setError(result.error);
-        return;
-      }
+    if (code.trim().length < 4) {
+      setError('El codigo tiene 4 digitos.');
+      return;
     }
-    // Mensaje neutral: siempre continuamos al paso 2 con el correo cargado,
-    // no revelamos si la cuenta existe o no.
-    router.replace({
-      pathname: '/reset-password',
-      params: { email: email.trim() },
-    } as any);
+    setLoading(true);
+    const result = await verifySignupOtp(email.trim(), code.trim());
+    setLoading(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    if (result.user) {
+      const route = getRoleInfo(result.user.role).route as any;
+      router.replace(route);
+    } else {
+      router.replace('/login');
+    }
+  };
+
+  const handleResend = async () => {
+    setError('');
+    setInfo('');
+    if (!email.trim()) {
+      setError('Ingresa tu correo para reenviar el codigo.');
+      return;
+    }
+    setResending(true);
+    const result = await resendSignupOtp(email.trim());
+    setResending(false);
+    if (result.ok) {
+      setInfo('Codigo reenviado. Revisa tu correo.');
+    } else {
+      setError(result.error || 'No se pudo reenviar el codigo.');
+    }
   };
 
   return (
@@ -78,25 +103,41 @@ export default function ForgotPasswordScreen() {
             </Pressable>
 
             <View style={styles.header}>
-              <Text style={styles.title}>Recuperar contrasena</Text>
+              <Text style={styles.title}>Verifica tu correo</Text>
               <Text style={styles.subtitle}>
-                Ingresa tu correo y te enviaremos un codigo de 4 digitos para
-                restablecer tu contrasena.
+                Te enviamos un codigo de 4 digitos a{'\n'}
+                <Text style={styles.emailStrong}>{email || 'tu correo'}</Text>
               </Text>
             </View>
 
             <View style={styles.form}>
+              {!initialEmail ? (
+                <View style={styles.inputWrap}>
+                  <Ionicons name="mail-outline" size={18} color={colors.textSubtle} />
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="tu@correo.com"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={styles.input}
+                  />
+                </View>
+              ) : null}
+
               <View style={styles.inputWrap}>
-                <Ionicons name="mail-outline" size={18} color={colors.textSubtle} />
+                <Ionicons name="key-outline" size={18} color={colors.textSubtle} />
                 <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="tu@correo.com"
+                  value={code}
+                  onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                  placeholder="Codigo (4 digitos)"
                   placeholderTextColor={colors.textMuted}
-                  keyboardType="email-address"
+                  keyboardType="number-pad"
                   autoCapitalize="none"
-                  autoCorrect={false}
-                  style={styles.input}
+                  maxLength={6}
+                  style={[styles.input, styles.otpInput]}
                 />
               </View>
 
@@ -107,8 +148,15 @@ export default function ForgotPasswordScreen() {
                 </View>
               ) : null}
 
+              {info ? (
+                <View style={styles.infoRow}>
+                  <Ionicons name="mail-open-outline" size={16} color={colors.primaryDark} />
+                  <Text style={styles.infoText}>{info}</Text>
+                </View>
+              ) : null}
+
               <Pressable
-                onPress={handleSubmit}
+                onPress={handleVerify}
                 disabled={loading}
                 style={({ pressed }) => [
                   styles.submitBtn,
@@ -117,22 +165,21 @@ export default function ForgotPasswordScreen() {
                 ]}
               >
                 <Text style={styles.submitText}>
-                  {loading ? 'Enviando...' : 'Enviar codigo'}
+                  {loading ? 'Verificando...' : 'Verificar cuenta'}
                 </Text>
+                <Ionicons name="arrow-forward" size={18} color={colors.textOnPrimary} />
               </Pressable>
 
               <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/reset-password',
-                    params: email.trim() ? { email: email.trim() } : {},
-                  } as any)
-                }
+                onPress={handleResend}
+                disabled={resending}
                 hitSlop={10}
                 style={styles.linkRow}
               >
-                <Text style={styles.linkMuted}>Ya tienes un codigo?</Text>
-                <Text style={styles.link}> Ingresarlo</Text>
+                <Text style={styles.linkMuted}>No recibiste el codigo?</Text>
+                <Text style={styles.link}>
+                  {resending ? ' Reenviando...' : ' Reenviar'}
+                </Text>
               </Pressable>
             </View>
           </PageContainer>
@@ -169,7 +216,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.5,
   },
-  subtitle: { fontSize: 16, color: colors.textSubtle, fontWeight: '500', lineHeight: 22 },
+  subtitle: {
+    fontSize: 16,
+    color: colors.textSubtle,
+    fontWeight: '500',
+    lineHeight: 22,
+  },
+  emailStrong: { color: colors.text, fontWeight: '700' },
   form: { gap: spacing.md },
   inputWrap: {
     flexDirection: 'row',
@@ -182,6 +235,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   input: { flex: 1, paddingVertical: 14, fontSize: 15, color: colors.text },
+  otpInput: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 8,
+    textAlign: 'center',
+  },
   errorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -191,9 +250,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   errorText: { color: colors.danger, fontSize: 13, fontWeight: '600', flex: 1 },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primarySoft,
+    padding: spacing.md,
+    borderRadius: radius.md,
+  },
+  infoText: { color: colors.primaryDark, fontSize: 13, fontWeight: '600', flex: 1 },
   submitBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.primary,
     paddingVertical: 16,
     borderRadius: radius.lg,

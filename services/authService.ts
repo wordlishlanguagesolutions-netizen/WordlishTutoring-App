@@ -278,13 +278,55 @@ async function realLogout(): Promise<void> {
 async function realResetPassword(email: string): Promise<ResetPasswordResult> {
   const supabase = getSupabaseClient();
   const normalized = email.trim().toLowerCase();
-  // Deep-link para retomar la sesion en la pantalla de nueva contrasena.
-  const redirectTo =
-    typeof window !== 'undefined' && window.location
-      ? `${window.location.origin}/reset-password`
-      : undefined;
-  const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
-    redirectTo,
+  // OnSpace Auth envia un codigo OTP (no un magic link). El usuario lo
+  // introduce en /reset-password. Por eso NO enviamos redirectTo.
+  const { error } = await supabase.auth.resetPasswordForEmail(normalized);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+async function realVerifySignupOtp(email: string, token: string): Promise<SignUpResult> {
+  const supabase = getSupabaseClient();
+  const normalized = email.trim().toLowerCase();
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: normalized,
+    token: token.trim(),
+    type: 'signup',
+  });
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('expired')) return { error: 'El codigo expiro. Solicita uno nuevo.' };
+    if (msg.includes('invalid') || msg.includes('token')) return { error: 'Codigo invalido. Verifica los digitos.' };
+    return { error: error.message || 'No se pudo verificar el codigo.' };
+  }
+  if (!data.user) return { error: 'No se pudo verificar la cuenta.' };
+  const profile = await realFetchProfile(data.user.id, data.user.email || normalized);
+  return { user: profile ?? undefined };
+}
+
+async function realVerifyRecoveryOtp(email: string, token: string): Promise<ResetPasswordResult> {
+  const supabase = getSupabaseClient();
+  const normalized = email.trim().toLowerCase();
+  const { error } = await supabase.auth.verifyOtp({
+    email: normalized,
+    token: token.trim(),
+    type: 'recovery',
+  });
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('expired')) return { ok: false, error: 'El codigo expiro. Solicita uno nuevo.' };
+    if (msg.includes('invalid') || msg.includes('token')) return { ok: false, error: 'Codigo invalido. Verifica los digitos.' };
+    return { ok: false, error: error.message || 'No se pudo verificar el codigo.' };
+  }
+  return { ok: true };
+}
+
+async function realResendSignupOtp(email: string): Promise<ResetPasswordResult> {
+  const supabase = getSupabaseClient();
+  const normalized = email.trim().toLowerCase();
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: normalized,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -387,6 +429,27 @@ export const authService = {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
+  },
+
+  async verifySignupOtp(email: string, token: string): Promise<SignUpResult> {
+    if (resolveAuthMode() !== 'real') {
+      return { error: 'Solo disponible en modo real.' };
+    }
+    return realVerifySignupOtp(email, token);
+  },
+
+  async verifyRecoveryOtp(email: string, token: string): Promise<ResetPasswordResult> {
+    if (resolveAuthMode() !== 'real') {
+      return { ok: false, error: 'Solo disponible en modo real.' };
+    }
+    return realVerifyRecoveryOtp(email, token);
+  },
+
+  async resendSignupOtp(email: string): Promise<ResetPasswordResult> {
+    if (resolveAuthMode() !== 'real') {
+      return { ok: false, error: 'Solo disponible en modo real.' };
+    }
+    return realResendSignupOtp(email);
   },
 
   getRoleForEmail(email: string): UserRole | null {
