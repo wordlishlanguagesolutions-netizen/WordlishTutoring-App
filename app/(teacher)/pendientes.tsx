@@ -14,6 +14,7 @@ import {
   teacherPendingReports,
 } from '@/services/mockData';
 import { POLICIES } from '@/constants/policies';
+import { getScreenshotStatus } from '@/constants/teacherCulture';
 
 // Pantalla "Pendientes" del profesor · vista extendida.
 // Vista extendida de "Acciones de hoy" del Home con la misma jerarquía
@@ -42,16 +43,6 @@ const PRIORITY: Record<ActionType, number> = {
   report: 2,
   booking: 3,
 };
-
-function screenshotLabel(minutesElapsed: number): {
-  label: string;
-  tone: 'primary' | 'warning' | 'danger';
-} {
-  const grace = POLICIES.screenshotGraceMin;
-  if (minutesElapsed > grace) return { label: 'Screenshot vencido', tone: 'danger' };
-  if (minutesElapsed >= grace - 2) return { label: 'Envíalo ahora', tone: 'warning' };
-  return { label: 'Screenshot pendiente', tone: 'primary' };
-}
 
 export default function PendientesScreen() {
   const router = useRouter();
@@ -82,7 +73,7 @@ export default function PendientesScreen() {
 
     // 1) Screenshot de clase en curso (máxima prioridad)
     if (showScreenshot && live) {
-      const ss = screenshotLabel(live.minutesElapsed);
+      const ss = getScreenshotStatus(live.minutesElapsed, POLICIES.screenshotGraceMin);
       list.push({
         id: 'screenshot-active',
         type: 'screenshot',

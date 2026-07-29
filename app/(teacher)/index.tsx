@@ -12,7 +12,6 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, PageContainer, WebTwoColumn, ZoomButton } from '@/components/ui';
 import { CoachBanner } from '@/components/teacher/CoachBanner';
-import { GrowthCard } from '@/components/teacher/GrowthCard';
 import { TeacherHint } from '@/components/teacher/TeacherHint';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
@@ -21,6 +20,7 @@ import {
   GROWTH_INDICATORS,
   growthAverage,
   SPECIAL_THRESHOLD,
+  getScreenshotStatus,
 } from '@/constants/teacherCulture';
 import {
   currentTeacher,
@@ -45,7 +45,6 @@ type Incident = 'no_camera' | 'late' | 'no_show' | 'technical';
 type FlowStep =
   | 'screenshot_pending'
   | 'in_progress'
-  | 'ended'
   | 'report_pending'
   | 'report_sent';
 
@@ -99,10 +98,9 @@ export default function TeacherHome() {
   const step: FlowStep = useMemo(() => {
     if (reportSent) return 'report_sent';
     if (classEnded) return 'report_pending';
-    if (incidents.has('no_show')) return 'ended';
     if (screenshotAt !== null) return 'in_progress';
     return 'screenshot_pending';
-  }, [reportSent, classEnded, incidents, screenshotAt]);
+  }, [reportSent, classEnded, screenshotAt]);
 
   const showAttendanceAlert =
     step === 'in_progress' &&
@@ -167,18 +165,10 @@ export default function TeacherHome() {
     logEvent(`Reporte enviado · ${fmtHm(Date.now())}`);
   };
 
-  const ssLabel = useMemo(() => {
-    if (elapsedMin < 8) return 'Screenshot pendiente';
-    if (elapsedMin <= POLICIES.screenshotGraceMin) return 'Envíalo ahora';
-    return 'Screenshot vencido';
-  }, [elapsedMin]);
-
-  const ssTone: 'primary' | 'warning' | 'danger' =
-    elapsedMin > POLICIES.screenshotGraceMin
-      ? 'danger'
-      : elapsedMin >= 8
-      ? 'warning'
-      : 'primary';
+  const { label: ssLabel, tone: ssTone } = useMemo(
+    () => getScreenshotStatus(elapsedMin, POLICIES.screenshotGraceMin),
+    [elapsedMin],
+  );
 
   // Focus mode: durante clase en curso o previa, ocultamos todo lo secundario.
   // Solo cuando el reporte esta enviado (o no hay clase activa) vuelven a
@@ -326,16 +316,6 @@ export default function TeacherHome() {
         </Pressable>
       ) : null}
 
-      {step === 'ended' ? (
-        <Pressable
-          onPress={() => setClassEnded(true)}
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
-        >
-          <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
-          <Text style={styles.primaryBtnText}>Continuar</Text>
-        </Pressable>
-      ) : null}
-
       {step === 'report_pending' ? (
         <Pressable
           onPress={handleGoToReport}
@@ -357,16 +337,6 @@ export default function TeacherHome() {
         <View style={styles.alertBox}>
           <Text style={styles.alertText}>Han pasado 15 minutos y el estudiante aún no ingresa.</Text>
           <View style={styles.alertRow}>
-            <Pressable
-              onPress={handleNoShow}
-              style={({ pressed }) => [
-                styles.alertBtn,
-                { backgroundColor: colors.danger },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <Text style={styles.alertBtnText}>No asistió</Text>
-            </Pressable>
             <Pressable
               onPress={handleWhatsApp}
               style={({ pressed }) => [
@@ -423,55 +393,64 @@ export default function TeacherHome() {
     </View>
   ) : null;
 
-  const ActionsBlock = pendingReports.length > 0 || pendingBookings.length > 0 ? (
+  // Único pendiente destacado (acción más urgente): reporte primero, luego
+  // reserva. El listado completo vive en la pestaña Pendientes.
+  const totalPending = pendingReports.length + pendingBookings.length;
+  const urgentReport = pendingReports[0];
+  const urgentBooking = urgentReport ? undefined : pendingBookings[0];
+
+  const UrgentActionBlock = totalPending > 0 ? (
     <View>
-      <Text style={styles.section}>Acciones de hoy</Text>
-      {pendingReports.length > 0 ? (
-        <TeacherHint hint="complete_report" icon="document-text-outline" />
+      <Text style={styles.section}>Pendiente</Text>
+      {urgentReport ? (
+        <View style={styles.actionCard}>
+          <View style={styles.actionIcon}>
+            <Ionicons name="document-text" size={16} color={colors.primaryDark} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionStudent} numberOfLines={1}>{urgentReport.student}</Text>
+            <Text style={styles.actionText} numberOfLines={1}>Completar reporte · {urgentReport.subject}</Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              setCompleted((prev) => new Set(prev).add(`report-${urgentReport.id}`));
+              markReportSent();
+              router.push(`/class/${urgentReport.classRecordId}` as any);
+            }}
+            style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.actionCtaText}>Completar</Text>
+          </Pressable>
+        </View>
+      ) : urgentBooking ? (
+        <View style={styles.actionCard}>
+          <View style={styles.actionIcon}>
+            <Ionicons name="calendar" size={16} color={colors.primaryDark} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionStudent} numberOfLines={1}>{urgentBooking.studentName}</Text>
+            <Text style={styles.actionText} numberOfLines={1}>Confirmar reserva · {urgentBooking.subject}</Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              setCompleted((prev) => new Set(prev).add(`booking-${urgentBooking.id}`));
+              if (urgentBooking.classRecordId) router.push(`/class/${urgentBooking.classRecordId}` as any);
+            }}
+            style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.actionCtaText}>Confirmar</Text>
+          </Pressable>
+        </View>
       ) : null}
-      <View style={{ gap: spacing.sm }}>
-        {pendingReports.map((r) => (
-          <View key={`r-${r.id}`} style={styles.actionCard}>
-            <View style={styles.actionIcon}>
-              <Ionicons name="document-text" size={16} color={colors.primaryDark} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionStudent} numberOfLines={1}>{r.student}</Text>
-              <Text style={styles.actionText} numberOfLines={1}>Completar reporte · {r.subject}</Text>
-            </View>
-            <Pressable
-              onPress={() => {
-                setCompleted((prev) => new Set(prev).add(`report-${r.id}`));
-                markReportSent();
-                router.push(`/class/${r.classRecordId}` as any);
-              }}
-              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={styles.actionCtaText}>Completar</Text>
-            </Pressable>
-          </View>
-        ))}
-        {pendingBookings.map((b) => (
-          <View key={`b-${b.id}`} style={styles.actionCard}>
-            <View style={styles.actionIcon}>
-              <Ionicons name="calendar" size={16} color={colors.primaryDark} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionStudent} numberOfLines={1}>{b.studentName}</Text>
-              <Text style={styles.actionText} numberOfLines={1}>Confirmar reserva · {b.subject}</Text>
-            </View>
-            <Pressable
-              onPress={() => {
-                setCompleted((prev) => new Set(prev).add(`booking-${b.id}`));
-                if (b.classRecordId) router.push(`/class/${b.classRecordId}` as any);
-              }}
-              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={styles.actionCtaText}>Confirmar</Text>
-            </Pressable>
-          </View>
-        ))}
-      </View>
+      {totalPending > 1 ? (
+        <Pressable
+          onPress={() => router.push('/(teacher)/pendientes' as any)}
+          style={({ pressed }) => [styles.seeAllBtn, pressed && { opacity: 0.85 }]}
+        >
+          <Text style={styles.seeAllText}>Ver todos los pendientes ({totalPending})</Text>
+          <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
+        </Pressable>
+      ) : null}
     </View>
   ) : null;
 
@@ -497,12 +476,6 @@ export default function TeacherHome() {
     </View>
   ) : null;
 
-  const GrowthBlock = (
-    <View style={{ marginTop: spacing.lg }}>
-      <GrowthCard currentLevel="essential" />
-    </View>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -522,8 +495,7 @@ export default function TeacherHome() {
               }
               right={
                 <View style={{ gap: spacing.md }}>
-                  {!focusMode ? ActionsBlock : null}
-                  {!focusMode ? GrowthBlock : null}
+                  {!focusMode ? UrgentActionBlock : null}
                   {!focusMode ? UpcomingBlock : null}
                 </View>
               }
@@ -532,8 +504,7 @@ export default function TeacherHome() {
             <>
               {!focusMode ? AvailabilityStrip : null}
               {LiveClassCard}
-              {!focusMode ? ActionsBlock : null}
-              {!focusMode ? GrowthBlock : null}
+              {!focusMode ? UrgentActionBlock : null}
               {!focusMode ? UpcomingBlock : null}
             </>
           )}
@@ -659,6 +630,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill,
   },
   actionCtaText: { color: colors.textOnPrimary, fontSize: 13, fontWeight: '700' },
+  seeAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 8, marginTop: 4,
+  },
+  seeAllText: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
   upcomingWrap: {
     backgroundColor: colors.surface, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border, overflow: 'hidden',

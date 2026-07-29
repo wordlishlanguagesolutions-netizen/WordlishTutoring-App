@@ -4,6 +4,7 @@ import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import { WizardHeader } from '@/components/booking';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
 import {
@@ -106,19 +107,9 @@ export default function BookingSchedule() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Paso 2 de 4</Text>
-          <Text style={typography.h2}>Fecha y hora</Text>
-        </View>
-      </View>
+      <WizardHeader step={1} title="Fecha y hora" onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-        <StepDots current={1} />
-
         <View style={s.contextRow}>
           <View style={s.pill}>
             <Ionicons name="book-outline" size={13} color={colors.primaryDark} />
@@ -202,32 +193,14 @@ export default function BookingSchedule() {
   );
 }
 
-function StepDots({ current }: { current: number }) {
-  return (
-    <View style={s.dotsRow}>
-      {[0, 1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
-        />
-      ))}
-    </View>
-  );
+function StepDotsUnused() {
+  return null;
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    padding: spacing.lg, paddingBottom: spacing.md,
-  },
-  iconBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center', justifyContent: 'center',
-  },
   section: { ...typography.h3, marginTop: spacing.lg, marginBottom: spacing.md },
 
-  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.lg },
+  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.lg, display: 'none' },
   dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.primary },
   dotDone: { backgroundColor: colors.primaryDark },

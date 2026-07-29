@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { Avatar, KnowCard } from '@/components/ui';
+import { WizardHeader } from '@/components/booking';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
 import { dateUtils } from '@/services/mockData';
@@ -182,21 +183,11 @@ export default function BookingSummary() {
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={s.stepLabel}>Paso 3 de 4</Text>
-          <Text style={s.stepTitle}>Resumen</Text>
-        </View>
-      </View>
+      <WizardHeader step={2} title="Resumen" onBack={() => router.back()} />
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
-        <StepDots current={2} />
-
         {hold && !holdExpired && (
           <View style={s.holdBanner}>
             <Ionicons name="lock-closed" size={16} color={colors.primaryDark} />
@@ -417,17 +408,8 @@ function InfoLine({
   );
 }
 
-function StepDots({ current }: { current: number }) {
-  return (
-    <View style={s.dotsRow}>
-      {[0, 1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
-        />
-      ))}
-    </View>
-  );
+function StepDotsUnused() {
+  return null;
 }
 
 const s = StyleSheet.create({
