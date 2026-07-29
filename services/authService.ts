@@ -39,10 +39,12 @@ type AuthMode = 'mock' | 'real';
 
 function resolveAuthMode(): AuthMode {
   const raw = (process.env.EXPO_PUBLIC_AUTH_MODE || '').trim().toLowerCase();
-  if (raw === 'real') return 'real';
-  // Cualquier otro valor (incluido vacío) mantiene el modo mock para no
-  // romper el arranque cuando aún no se han creado cuentas reales.
-  return 'mock';
+  // Preparación para lanzamiento web: por defecto usamos autenticación
+  // real contra OnSpace Cloud. Solo cuando `EXPO_PUBLIC_AUTH_MODE=mock`
+  // esté explícito volvemos a la rama mock (para desarrollo local sin
+  // cuentas reales). Cualquier otro valor (incluido vacío) = real.
+  if (raw === 'mock') return 'mock';
+  return 'real';
 }
 
 // ----------------------------------------------------------------------------

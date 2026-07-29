@@ -35,6 +35,7 @@ export default function LoginScreen() {
   const [error, setError] = useState<string>('');
 
   const accounts = accountType ? authService.getTestAccounts(accountType) : [];
+  const showTestAccounts = accounts.length > 0; // solo modo mock
   const { isDesktop } = useResponsive();
 
   const pickType = (t: AccountType) => {
@@ -257,12 +258,14 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
-              <View style={styles.banner}>
-                <Ionicons name="flask-outline" size={14} color={colors.primaryDark} />
-                <Text style={styles.bannerText}>
-                  Cuentas de prueba · toca para autocompletar (clave 123456)
-                </Text>
-              </View>
+              {showTestAccounts ? (
+                <View style={styles.banner}>
+                  <Ionicons name="flask-outline" size={14} color={colors.primaryDark} />
+                  <Text style={styles.bannerText}>
+                    Cuentas de prueba · toca para autocompletar (clave 123456)
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={{ gap: spacing.sm }}>
                 {accounts.map((acc) => {

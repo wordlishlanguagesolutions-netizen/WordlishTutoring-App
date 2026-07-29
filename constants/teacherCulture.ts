@@ -357,3 +357,19 @@ export function pickCoachMoment(ctx: CoachContext): CoachMoment | null {
   if (ctx.justLoggedIn) return 'login';
   return null;
 }
+
+// ----------------------------------------------------------------------------
+// Estado del screenshot durante la clase en curso.
+// Fuente única compartida entre Home y Pendientes.
+// ----------------------------------------------------------------------------
+
+export type ScreenshotTone = 'primary' | 'warning' | 'danger';
+
+export function getScreenshotStatus(
+  minutesElapsed: number,
+  graceMin: number,
+): { label: string; tone: ScreenshotTone } {
+  if (minutesElapsed > graceMin) return { label: 'Screenshot vencido', tone: 'danger' };
+  if (minutesElapsed >= graceMin - 2) return { label: 'Envíalo ahora', tone: 'warning' };
+  return { label: 'Screenshot pendiente', tone: 'primary' };
+}
