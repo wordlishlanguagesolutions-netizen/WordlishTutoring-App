@@ -53,19 +53,33 @@ export default function GuardianBookHub() {
 
   // ═════════════ Bloques ═════════════
   const ReserveCTA = (
-    <Pressable
-      onPress={() => router.push('/booking/type' as any)}
-      style={({ pressed }) => [styles.hero, pressed && { opacity: 0.92 }]}
-    >
-      <View style={styles.heroIcon}>
-        <Ionicons name="add-circle" size={26} color={colors.textOnPrimary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.heroTitle}>Reservar clase</Text>
-        <Text style={styles.heroSubtitle}>3 pasos · el pago va incluido</Text>
-      </View>
-      <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
-    </Pressable>
+    <View style={{ gap: spacing.sm }}>
+      <Pressable
+        onPress={() => router.push('/booking/type' as any)}
+        style={({ pressed }) => [styles.hero, pressed && { opacity: 0.92 }]}
+      >
+        <View style={styles.heroIcon}>
+          <Ionicons name="add-circle" size={26} color={colors.textOnPrimary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.heroTitle}>Reservar clase</Text>
+          <Text style={styles.heroSubtitle}>3 pasos · el pago va incluido</Text>
+        </View>
+        <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
+      </Pressable>
+      {/* P1 · Compra sin reservar: acceso directo al catalogo de planes
+          y banco de horas, para acudientes que primero adquieren horas
+          y luego organizan las clases. */}
+      <Pressable
+        onPress={() => router.push('/(guardian)/payments' as any)}
+        style={({ pressed }) => [styles.buyLink, pressed && { opacity: 0.85 }]}
+        hitSlop={6}
+      >
+        <Ionicons name="pricetag-outline" size={14} color={colors.primaryDark} />
+        <Text style={styles.buyLinkText}>Comprar plan o banco de horas</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
+      </Pressable>
+    </View>
   );
 
   // Nudge discreto de saldo bajo (Caso 3). Se muestra unicamente si al
@@ -419,5 +433,24 @@ const styles = StyleSheet.create({
     color: colors.textOnPrimary,
     fontWeight: '700',
     fontSize: 12,
+  },
+
+  // P1 · Acceso descubrible al catalogo de compra sin reservar.
+  buyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+  },
+  buyLinkText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 13,
   },
 });
