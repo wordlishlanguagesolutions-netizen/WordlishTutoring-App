@@ -6,11 +6,7 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
-  Alert,
-  Linking,
-  Platform,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,6 +16,7 @@ import { Avatar, KnowCard } from '@/components/ui';
 import { WizardHeader } from '@/components/booking';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
+import { useAuth } from '@/hooks/useAuth';
 import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
@@ -42,6 +39,7 @@ import { getSetting } from '@/services/appSettingsService';
 
 export default function BookingSummary() {
   const router = useRouter();
+  const { user } = useAuth();
   const { draft, setHoldId, reset } = useDraftBooking();
   const { holds, createBooking, releaseHold, remainingHours } = useBookings();
 
@@ -49,33 +47,21 @@ export default function BookingSummary() {
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
   const requiresPayment = hoursLeft === 0;
   const PRICE_PER_HOUR = getSetting<number>('payment.price_per_hour_usd', 18);
-  const beneficiary = getSetting<string>('payment.beneficiary_name', 'Maristella Florian');
-  const yappyNumber = getSetting<string>('payment.yappy_number', '+507 6216-4495');
-  const achAccount = getSetting<string>('payment.ach_account', '04-72-99-558451-2');
-  const checkoutUrl = getSetting<string>('payment.checkout_url', '');
-  const [copied, setCopied] = useState<string>('');
 
-  const copy = async (value: string, label: string) => {
-    try {
-      await Clipboard.setStringAsync(value);
-    } catch {
-      /* no-op */
+  const role = (user as any)?.role ?? 'student';
+  const homeRoute = (): string => {
+    switch (role) {
+      case 'guardian':
+        return '/(guardian)';
+      case 'teacher':
+        return '/(teacher)';
+      case 'supervisor':
+        return '/(supervisor)';
+      case 'admin':
+        return '/(admin)';
+      default:
+        return '/(student)';
     }
-    setCopied(label);
-    setTimeout(() => setCopied(''), 1500);
-  };
-
-  const handleCardPay = () => {
-    if (!checkoutUrl) {
-      Alert.alert(
-        'Enlace de pago no configurado',
-        'El administrador aún no habilitó la pasarela. Envía tu comprobante o contacta soporte.',
-      );
-      return;
-    }
-    Linking.openURL(checkoutUrl).catch(() =>
-      Alert.alert('Error', 'No se pudo abrir el enlace de pago.'),
-    );
   };
 
   const [remaining, setRemaining] = useState<number>(() =>
@@ -166,7 +152,14 @@ export default function BookingSummary() {
     }
     setHoldId(null);
     const id = result.booking.id;
-    router.replace(`/booking/success?id=${id}` as any);
+    // Flujo unificado: si requiere pago, va al Paso 4 (success como pantalla
+    // de pago). Si ya tiene horas, la reserva queda confirmada y volvemos
+    // directamente al home; el estado se muestra dentro de la reserva.
+    if (requiresPayment) {
+      router.replace(`/booking/success?id=${id}` as any);
+    } else {
+      router.replace(homeRoute() as any);
+    }
     setTimeout(() => reset(), 200);
   };
 
@@ -251,15 +244,7 @@ export default function BookingSummary() {
           />
         </View>
 
-        {requiresPayment ? (
-          <View style={s.pendingBox}>
-            <Ionicons name="card-outline" size={18} color={colors.warning} />
-            <Text style={s.pendingText}>
-              Sin horas disponibles. Al continuar veras los metodos de pago
-              oficiales (Yappy, ACH y tarjeta) en el Paso 4.
-            </Text>
-          </View>
-        ) : (
+        {requiresPayment ? null : (
           <View style={s.planBox}>
             <Ionicons name="hourglass" size={18} color={colors.success} />
             <Text style={s.planBoxText}>
