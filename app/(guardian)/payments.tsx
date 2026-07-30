@@ -13,18 +13,22 @@ import {
 import { useBookings } from '@/hooks/useBookings';
 
 // ============================================================================
-// Mi plan · acudiente (P1 · MVP Ready).
+// Mi plan · dashboard del acudiente (P2 · MVP Ready).
 //
-// Wordlish es 100% prepago. El acudiente es el cliente comercial: aquí
-// puede comprar plan, banco de horas o clase individual SIN necesidad
-// de iniciar una reserva. El resultado es un dashboard con:
-//   · Boton "Adquirir plan" → catálogo (plan destacado + planes + recargas)
-//   · Selector del estudiante al que se le acreditan las horas
-//   · Estado por estudiante (horas disponibles)
-//   · Historial de movimientos
+// Único punto de administración financiera por estudiante:
+//   · Resumen (plan activo, estado, horas, próximo vencimiento)
+//   · Acciones rápidas (comprar plan / banco / recarga / métodos de pago)
+//   · Último pago + historial de pagos e "invoice" (recibo por pago)
 //
-// Reutiliza los mismos precios del catalogo mock del rol estudiante para
-// no introducir nuevas reglas comerciales.
+// Reutiliza el catálogo mock existente (mismos precios que estudiante)
+// y filtra el historial por el estudiante seleccionado. Cambia según
+// el selector superior si el acudiente tiene varios estudiantes. Todo
+// vive en una sola pantalla, con dos columnas en desktop.
+//
+// Compatibilidad Cloud: la fuente de datos hoy son mocks (linkedStudents +
+// guardianPaymentsHistory + useBookings.remainingHours); cuando se migre
+// Payments a Cloud basta con inyectar los mismos shapes desde el servicio,
+// sin cambios en la UI.
 // ============================================================================
 
 type PlanOffer = {
@@ -73,18 +77,43 @@ const TONE_MAP = {
   muted: { bg: colors.surfaceAlt, fg: colors.textMuted },
 } as const;
 
+// Modo del panel de catálogo. El botón de accion rápida abre el panel
+// directamente en la sección elegida, sin crear pantallas nuevas.
+type CatalogMode = 'plans' | 'bank' | 'topup' | 'methods' | null;
+
 export default function GuardianMyPlan() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const { remainingHours } = useBookings();
 
-  const [catalogOpen, setCatalogOpen] = useState<boolean>(false);
   const [activeStudentId, setActiveStudentId] = useState<string>(
     linkedStudents[0]?.id ?? '',
   );
+  const [catalogMode, setCatalogMode] = useState<CatalogMode>(null);
 
   const activeStudent =
     linkedStudents.find((s) => s.id === activeStudentId) ?? linkedStudents[0];
+
+  // ─── Datos derivados del estudiante activo ─────────────────────────
+  const remaining = remainingHours[activeStudent.id] ?? activeStudent.remaining;
+  const total = activeStudent.total;
+  const consumed = Math.max(0, total - remaining);
+  const planName = `Paquete ${total} horas`;
+  const isLow = remaining > 0 && remaining <= 2;
+  const isEmpty = remaining === 0;
+  const nextRenewal = '15 Ago 2026'; // Mock · reemplazable por Cloud
+
+  // Historial filtrado por el estudiante activo. Filtra por firstName
+  // dentro del concepto (patrón "Paquete X horas · Lucía").
+  const studentHistory = useMemo(
+    () =>
+      guardianPaymentsHistory.filter((p) =>
+        p.concept.toLowerCase().includes(activeStudent.firstName.toLowerCase()),
+      ),
+    [activeStudent.id],
+  );
+  const lastPayment = studentHistory[0];
+
   const featuredPlan = useMemo(
     () => ACTIVE_PLANS.find((p) => p.active && p.featured),
     [],
@@ -98,7 +127,6 @@ export default function GuardianMyPlan() {
     router.push(`/payments/${id}?kind=guardianPayment` as any);
 
   const choosePlan = (plan: PlanOffer) => {
-    if (!activeStudent) return;
     Alert.alert(
       plan.name,
       `Confirmarás ${plan.hours} horas por $${plan.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,
@@ -106,171 +134,287 @@ export default function GuardianMyPlan() {
   };
 
   const chooseTopUp = (t: QuickTopUp) => {
-    if (!activeStudent) return;
     Alert.alert(
       `Recarga rápida · ${t.hours} h`,
       `Total $${t.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,
     );
   };
 
-  // ═════════════ Bloques ═════════════
-  const AcquireButton = (
-    <Pressable
-      onPress={() => setCatalogOpen((v) => !v)}
-      style={({ pressed }) => [styles.acquireBtn, pressed && { opacity: 0.9 }]}
-    >
-      <Ionicons
-        name={catalogOpen ? 'chevron-up' : 'add-circle'}
-        size={16}
-        color={colors.textOnPrimary}
-      />
-      <Text style={styles.acquireText}>
-        {catalogOpen ? 'Cerrar catálogo' : 'Adquirir plan o recarga'}
-      </Text>
-    </Pressable>
-  );
+  const openCatalog = (mode: CatalogMode) => {
+    setCatalogMode((prev) => (prev === mode ? null : mode));
+  };
 
+  // ══════════════════ Bloques ══════════════════
   const StudentSelector = linkedStudents.length > 1 ? (
-    <View style={styles.selectorWrap}>
-      <Text style={styles.selectorLabel}>Para</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: spacing.sm }}
-      >
-        {linkedStudents.map((st) => {
-          const on = st.id === activeStudentId;
-          return (
-            <Pressable
-              key={st.id}
-              onPress={() => setActiveStudentId(st.id)}
-              style={[styles.studentChip, on && styles.studentChipOn]}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.lg }}
+      style={{ marginBottom: spacing.md }}
+    >
+      {linkedStudents.map((st) => {
+        const on = st.id === activeStudentId;
+        const hrs = remainingHours[st.id] ?? st.remaining;
+        return (
+          <Pressable
+            key={st.id}
+            onPress={() => {
+              setActiveStudentId(st.id);
+              setCatalogMode(null);
+            }}
+            style={[styles.studentChip, on && styles.studentChipOn]}
+          >
+            <Avatar name={st.name} uri={st.avatar} size={22} />
+            <Text
+              style={[
+                styles.studentChipText,
+                on && { color: colors.textOnPrimary },
+              ]}
             >
-              <Avatar name={st.name} uri={st.avatar} size={22} />
-              <Text
-                style={[
-                  styles.studentChipText,
-                  on && { color: colors.textOnPrimary },
-                ]}
-              >
-                {st.firstName}
-              </Text>
-              <Text
-                style={[
-                  styles.studentChipHours,
-                  on && { color: colors.primarySoft },
-                ]}
-              >
-                {remainingHours[st.id] ?? 0} h
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </View>
+              {st.firstName}
+            </Text>
+            <Text
+              style={[
+                styles.studentChipHours,
+                on && { color: colors.primarySoft },
+              ]}
+            >
+              {hrs} h
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   ) : null;
 
-  const CatalogPanel = catalogOpen ? (
-    <View style={styles.catalog}>
-      {StudentSelector}
+  const SummaryCard = (
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryHead}>
+        <Avatar
+          name={activeStudent.name}
+          uri={activeStudent.avatar}
+          size={44}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.summaryName}>{activeStudent.name}</Text>
+          <Text style={styles.summaryPlan}>{planName}</Text>
+        </View>
+        <View
+          style={[
+            styles.statusPill,
+            isEmpty
+              ? { backgroundColor: colors.dangerSoft }
+              : isLow
+              ? { backgroundColor: colors.warningSoft }
+              : { backgroundColor: colors.successSoft },
+          ]}
+        >
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor: isEmpty
+                  ? colors.danger
+                  : isLow
+                  ? colors.warning
+                  : colors.success,
+              },
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusPillText,
+              {
+                color: isEmpty
+                  ? colors.danger
+                  : isLow
+                  ? colors.warning
+                  : colors.success,
+              },
+            ]}
+          >
+            {isEmpty ? 'Sin horas' : isLow ? 'Saldo bajo' : 'Activo'}
+          </Text>
+        </View>
+      </View>
 
-      {featuredPlan ? (
-        <View style={styles.featuredCard}>
-          {featuredPlan.tag ? (
-            <View style={styles.featuredTag}>
-              <Ionicons name="star" size={11} color={colors.primaryDark} />
-              <Text style={styles.featuredTagText}>{featuredPlan.tag}</Text>
+      <View style={styles.metricsRow}>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{remaining}</Text>
+          <Text style={styles.metricLabel}>disponibles</Text>
+        </View>
+        <View style={styles.metricSep} />
+        <View style={styles.metric}>
+          <Text style={[styles.metricValue, { color: colors.textSubtle }]}>
+            {consumed}
+          </Text>
+          <Text style={styles.metricLabel}>consumidas</Text>
+        </View>
+        <View style={styles.metricSep} />
+        <View style={styles.metric}>
+          <Text style={[styles.metricValue, { color: colors.textSubtle }]}>
+            {total}
+          </Text>
+          <Text style={styles.metricLabel}>totales</Text>
+        </View>
+      </View>
+
+      <View style={styles.renewalRow}>
+        <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
+        <Text style={styles.renewalText}>Próxima renovación · {nextRenewal}</Text>
+      </View>
+    </View>
+  );
+
+  const QuickActions = (
+    <View style={styles.actionsGrid}>
+      <ActionBtn
+        icon="pricetags"
+        label="Comprar plan"
+        active={catalogMode === 'plans'}
+        onPress={() => openCatalog('plans')}
+      />
+      <ActionBtn
+        icon="library"
+        label="Banco de horas"
+        active={catalogMode === 'bank'}
+        onPress={() => openCatalog('bank')}
+      />
+      <ActionBtn
+        icon="add-circle"
+        label="Horas adicionales"
+        active={catalogMode === 'topup'}
+        onPress={() => openCatalog('topup')}
+      />
+      <ActionBtn
+        icon="card"
+        label="Métodos de pago"
+        active={catalogMode === 'methods'}
+        onPress={() => openCatalog('methods')}
+      />
+    </View>
+  );
+
+  const CatalogPanel = catalogMode ? (
+    <View style={styles.catalog}>
+      {catalogMode === 'plans' || catalogMode === 'bank' ? (
+        <>
+          {featuredPlan ? (
+            <View style={styles.featuredCard}>
+              {featuredPlan.tag ? (
+                <View style={styles.featuredTag}>
+                  <Ionicons name="star" size={11} color={colors.primaryDark} />
+                  <Text style={styles.featuredTagText}>{featuredPlan.tag}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.planName}>{featuredPlan.name}</Text>
+              <Text style={styles.planHours}>{featuredPlan.hours} horas</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planPrice}>${featuredPlan.price}</Text>
+                {featuredPlan.saves ? (
+                  <Text style={styles.planSaves}>Ahorra ${featuredPlan.saves}</Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={() => choosePlan(featuredPlan)}
+                style={({ pressed }) => [styles.planBtn, pressed && { opacity: 0.9 }]}
+              >
+                <Text style={styles.planBtnText}>Elegir plan</Text>
+              </Pressable>
             </View>
           ) : null}
-          <Text style={styles.planName}>{featuredPlan.name}</Text>
-          <Text style={styles.planHours}>{featuredPlan.hours} horas</Text>
-          <View style={styles.planPriceRow}>
-            <Text style={styles.planPrice}>${featuredPlan.price}</Text>
-            {featuredPlan.saves ? (
-              <Text style={styles.planSaves}>Ahorra ${featuredPlan.saves}</Text>
-            ) : null}
+
+          {otherPlans.map((plan) => (
+            <View key={plan.id} style={styles.planCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.planName}>{plan.name}</Text>
+                <Text style={styles.planHoursSm}>{plan.hours} horas</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                <Text style={styles.planPriceSm}>${plan.price}</Text>
+                <Pressable
+                  onPress={() => choosePlan(plan)}
+                  style={({ pressed }) => [styles.planBtnSm, pressed && { opacity: 0.9 }]}
+                >
+                  <Text style={styles.planBtnSmText}>Elegir</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </>
+      ) : null}
+
+      {catalogMode === 'topup' ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.topUpsTitle}>Horas adicionales</Text>
+          <View style={styles.topUpsGrid}>
+            {ACTIVE_TOPUPS.map((t) => (
+              <Pressable
+                key={t.hours}
+                onPress={() => chooseTopUp(t)}
+                style={({ pressed }) => [styles.topUpChip, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.topUpHours}>
+                  {t.hours} {t.hours === 1 ? 'hora' : 'horas'}
+                </Text>
+                <Text style={styles.topUpPrice}>${t.price}</Text>
+              </Pressable>
+            ))}
           </View>
-          <Pressable
-            onPress={() => choosePlan(featuredPlan)}
-            style={({ pressed }) => [styles.planBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Text style={styles.planBtnText}>Elegir plan</Text>
-          </Pressable>
         </View>
       ) : null}
 
-      {otherPlans.map((plan) => (
-        <View key={plan.id} style={styles.planCard}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.planName}>{plan.name}</Text>
-            <Text style={styles.planHoursSm}>{plan.hours} horas</Text>
-          </View>
-          <View style={{ alignItems: 'flex-end', gap: 8 }}>
-            <Text style={styles.planPriceSm}>${plan.price}</Text>
-            <Pressable
-              onPress={() => choosePlan(plan)}
-              style={({ pressed }) => [styles.planBtnSm, pressed && { opacity: 0.9 }]}
-            >
-              <Text style={styles.planBtnSmText}>Elegir</Text>
-            </Pressable>
-          </View>
+      {catalogMode === 'methods' ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.topUpsTitle}>Métodos aceptados</Text>
+          <MethodRow icon="phone-portrait" label="Yappy" hint="Pago instantáneo" />
+          <MethodRow icon="business" label="ACH" hint="Transferencia bancaria" />
+          <MethodRow icon="card" label="Tarjeta" hint="Débito o crédito" />
+          <Text style={styles.methodsFoot}>
+            Los métodos se aplican al confirmar la reserva o la compra.
+          </Text>
         </View>
-      ))}
-
-      <View style={styles.topUpsRow}>
-        <Text style={styles.topUpsTitle}>Recarga rápida</Text>
-        <View style={styles.topUpsGrid}>
-          {ACTIVE_TOPUPS.map((t) => (
-            <Pressable
-              key={t.hours}
-              onPress={() => chooseTopUp(t)}
-              style={({ pressed }) => [styles.topUpChip, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={styles.topUpHours}>
-                {t.hours} {t.hours === 1 ? 'hora' : 'horas'}
-              </Text>
-              <Text style={styles.topUpPrice}>${t.price}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      ) : null}
 
       <Text style={styles.catalogFoot}>
-        Wordlish es prepago. Las horas se acreditan al estudiante seleccionado
-        y no vencen mientras el plan esté activo.
+        Las horas se acreditan a {activeStudent.firstName}. Wordlish es prepago.
       </Text>
     </View>
   ) : null;
 
-  const StatusBlock = (
-    <View style={styles.statusCard}>
-      <View style={styles.statusHead}>
-        <Ionicons name="hourglass" size={20} color={colors.primaryDark} />
-        <Text style={styles.statusTitle}>Horas disponibles</Text>
-      </View>
-      <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-        {linkedStudents.map((st) => {
-          const hrs = remainingHours[st.id] ?? 0;
-          const low = hrs > 0 && hrs <= 2;
-          const empty = hrs === 0;
-          return (
-            <View key={st.id} style={styles.statusRow}>
-              <Avatar name={st.name} uri={st.avatar} size={26} />
-              <Text style={styles.statusName} numberOfLines={1}>
-                {st.firstName}
-              </Text>
-              <Text
-                style={[
-                  styles.statusHours,
-                  empty && { color: colors.danger },
-                  low && { color: colors.warning },
-                ]}
-              >
-                {hrs} {hrs === 1 ? 'hora' : 'horas'}
-              </Text>
+  const LastPaymentCard = lastPayment ? (
+    (() => {
+      const st = PAYMENT_STATUS[lastPayment.status];
+      const t = TONE_MAP[st.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
+      return (
+        <Pressable
+          onPress={() => openDetail(lastPayment.id)}
+          style={({ pressed }) => [styles.lastPayCard, pressed && { opacity: 0.95 }]}
+        >
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.lastPayLabel}>Último pago</Text>
+            <Text style={styles.lastPayConcept} numberOfLines={1}>
+              {lastPayment.concept}
+            </Text>
+            <Text style={styles.lastPayMeta}>{lastPayment.date}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <Text style={styles.lastPayAmount}>${lastPayment.amount}</Text>
+            <View style={[styles.badgeSmall, { backgroundColor: t.bg }]}>
+              <Text style={[styles.badgeText, { color: t.fg }]}>{st.label}</Text>
             </View>
-          );
-        })}
+          </View>
+        </Pressable>
+      );
+    })()
+  ) : (
+    <View style={styles.emptyPay}>
+      <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.emptyPayTitle}>Sin pagos registrados</Text>
+        <Text style={styles.emptyPaySubtitle}>
+          Al comprar un plan aparecerá aquí.
+        </Text>
       </View>
     </View>
   );
@@ -279,57 +423,19 @@ export default function GuardianMyPlan() {
     <View>
       <View style={styles.sectionHead}>
         <Text style={typography.h3}>Historial</Text>
+        <Text style={styles.sectionCount}>{studentHistory.length}</Text>
       </View>
-      {isDesktop ? (
-        <View style={styles.table}>
-          <View style={styles.tableHead}>
-            <Text style={[styles.thCell, { flex: 3 }]}>Concepto</Text>
-            <Text style={[styles.thCell, { flex: 1.5 }]}>Fecha</Text>
-            <Text style={[styles.thCell, { flex: 1.5 }]}>Estado</Text>
-            <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}>Monto</Text>
-            <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}> </Text>
-          </View>
-          {guardianPaymentsHistory.map((p) => {
-            const s = PAYMENT_STATUS[p.status];
-            const t = TONE_MAP[s.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => openDetail(p.id)}
-                style={({ pressed }) => [
-                  styles.tableRow,
-                  pressed && { backgroundColor: colors.surfaceAlt },
-                ]}
-              >
-                <Text style={[styles.tdCell, { flex: 3, fontWeight: '600' }]} numberOfLines={1}>
-                  {p.concept}
-                </Text>
-                <Text style={[styles.tdCell, { flex: 1.5, color: colors.textSubtle }]}>
-                  {p.date}
-                </Text>
-                <View style={{ flex: 1.5 }}>
-                  <View style={[styles.badgeSmall, { backgroundColor: t.bg }]}>
-                    <Text style={[styles.badgeText, { color: t.fg }]}>{s.label}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.tdCell, { flex: 1, textAlign: 'right', fontWeight: '700' }]}>
-                  ${p.amount}
-                </Text>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  <View style={styles.detailBtn}>
-                    <Text style={styles.detailBtnText}>Ver detalle</Text>
-                    <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
+      {studentHistory.length === 0 ? (
+        <View style={styles.emptyHistory}>
+          <Text style={typography.caption}>
+            Aún no hay pagos para {activeStudent.firstName}.
+          </Text>
         </View>
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {guardianPaymentsHistory.map((p) => {
-            const s = PAYMENT_STATUS[p.status];
-            const t = TONE_MAP[s.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
+          {studentHistory.map((p) => {
+            const st = PAYMENT_STATUS[p.status];
+            const t = TONE_MAP[st.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
             return (
               <Pressable
                 key={p.id}
@@ -338,16 +444,16 @@ export default function GuardianMyPlan() {
               >
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={styles.cardTitle} numberOfLines={1}>{p.concept}</Text>
-                  <Text style={styles.cardMeta} numberOfLines={1}>{p.date}</Text>
+                  <Text style={styles.cardMeta}>{p.date} · {p.method}</Text>
                   <View style={[styles.badgeSmall, { backgroundColor: t.bg }]}>
-                    <Text style={[styles.badgeText, { color: t.fg }]}>{s.label}</Text>
+                    <Text style={[styles.badgeText, { color: t.fg }]}>{st.label}</Text>
                   </View>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <Text style={styles.cardAmount}>${p.amount}</Text>
                   <View style={styles.detailBtn}>
-                    <Text style={styles.detailBtnText}>Ver detalle</Text>
-                    <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
+                    <Ionicons name="receipt-outline" size={12} color={colors.primaryDark} />
+                    <Text style={styles.detailBtnText}>Recibo</Text>
                   </View>
                 </View>
               </Pressable>
@@ -360,21 +466,48 @@ export default function GuardianMyPlan() {
 
   return (
     <Screen>
-      <Header title="Mi plan" subtitle="Compra planes y recarga horas" />
+      <Header
+        title="Mi plan"
+        subtitle={
+          linkedStudents.length > 1
+            ? `Administra el plan de ${activeStudent.firstName}`
+            : 'Plan, horas y pagos'
+        }
+      />
 
-      {AcquireButton}
-      {CatalogPanel}
+      {StudentSelector}
 
       {isDesktop ? (
         <WebTwoColumn
           leftFlex={5}
           rightFlex={7}
-          left={StatusBlock}
-          right={HistoryBlock}
+          left={
+            <View style={{ gap: spacing.md }}>
+              {SummaryCard}
+              {QuickActions}
+              {CatalogPanel}
+            </View>
+          }
+          right={
+            <View style={{ gap: spacing.md }}>
+              {LastPaymentCard}
+              {HistoryBlock}
+            </View>
+          }
         />
       ) : (
         <>
-          {StatusBlock}
+          {SummaryCard}
+          <View style={{ height: spacing.md }} />
+          {QuickActions}
+          {CatalogPanel ? (
+            <>
+              <View style={{ height: spacing.md }} />
+              {CatalogPanel}
+            </>
+          ) : null}
+          <View style={{ height: spacing.lg }} />
+          {LastPaymentCard}
           <View style={{ height: spacing.lg }} />
           {HistoryBlock}
         </>
@@ -383,46 +516,75 @@ export default function GuardianMyPlan() {
   );
 }
 
+function ActionBtn({
+  icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionBtn,
+        active && styles.actionBtnOn,
+        pressed && { opacity: 0.9 },
+      ]}
+    >
+      <View
+        style={[
+          styles.actionIcon,
+          active && { backgroundColor: colors.primary },
+        ]}
+      >
+        <Ionicons
+          name={icon as any}
+          size={16}
+          color={active ? colors.textOnPrimary : colors.primaryDark}
+        />
+      </View>
+      <Text
+        style={[
+          styles.actionLabel,
+          active && { color: colors.primaryDark },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function MethodRow({
+  icon,
+  label,
+  hint,
+}: {
+  icon: string;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <View style={styles.methodRow}>
+      <View style={styles.methodIcon}>
+        <Ionicons name={icon as any} size={16} color={colors.primaryDark} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.methodLabel}>{label}</Text>
+        <Text style={styles.methodHint}>{hint}</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  // Acquire button
-  acquireBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-  },
-  acquireText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 14 },
-
-  // Catalog panel
-  catalog: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  catalogFoot: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-    lineHeight: 17,
-  },
-
-  // Selector estudiante
-  selectorWrap: { gap: spacing.sm },
-  selectorLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
+  // ─── Selector estudiante ────────────────────────────────────────────
   studentChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,31 +611,137 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
-  // Estado por estudiante
-  statusCard: {
+  // ─── Summary Card ───────────────────────────────────────────────────
+  summaryCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    padding: spacing.md,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    ...shadow.sm,
   },
-  statusHead: {
+  summaryHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
-  statusTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  statusRow: {
+  summaryName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  summaryPlan: {
+    fontSize: 13,
+    color: colors.textSubtle,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 6,
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
   },
-  statusName: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
-  statusHours: { fontSize: 14, fontWeight: '700', color: colors.textSubtle },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  statusPillText: { fontSize: 11, fontWeight: '700' },
 
-  // Sección
-  sectionHead: { marginBottom: spacing.md },
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+  },
+  metric: { flex: 1, alignItems: 'center' },
+  metricValue: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    letterSpacing: -0.4,
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+  metricSep: {
+    width: 1,
+    height: 32,
+    backgroundColor: colors.border,
+  },
+
+  renewalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+  },
+  renewalText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+
+  // ─── Quick actions ──────────────────────────────────────────────────
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  actionBtn: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  actionBtnOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  actionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+
+  // ─── Catalog panel ──────────────────────────────────────────────────
+  catalog: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  catalogFoot: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    lineHeight: 17,
+  },
 
   // Plan destacado
   featuredCard: {
@@ -535,12 +803,10 @@ const styles = StyleSheet.create({
   },
   planBtnSmText: { color: colors.textOnPrimary, fontSize: 12, fontWeight: '700' },
 
-  topUpsRow: {},
   topUpsTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.textSubtle,
-    marginBottom: spacing.sm,
   },
   topUpsGrid: { flexDirection: 'row', gap: spacing.sm },
   topUpChip: {
@@ -556,7 +822,89 @@ const styles = StyleSheet.create({
   topUpHours: { fontSize: 13, fontWeight: '700', color: colors.text },
   topUpPrice: { fontSize: 12, color: colors.primaryDark, fontWeight: '700' },
 
-  // Historial fila móvil
+  // Methods
+  methodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+  },
+  methodIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  methodHint: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  methodsFoot: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+
+  // ─── Último pago + historial ────────────────────────────────────────
+  lastPayCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+  },
+  lastPayLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  lastPayConcept: { fontSize: 15, fontWeight: '700', color: colors.text },
+  lastPayMeta: { fontSize: 12, color: colors.textSubtle, fontWeight: '500' },
+  lastPayAmount: { fontSize: 22, fontWeight: '700', color: colors.text },
+
+  emptyPay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyPayTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  emptyPaySubtitle: { fontSize: 12, color: colors.textSubtle, marginTop: 2 },
+
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  sectionCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  emptyHistory: {
+    padding: spacing.lg,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -568,45 +916,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   cardTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
-  cardMeta: { fontSize: 12, color: colors.textSubtle },
-  cardAmount: { fontSize: 18, fontWeight: '700', color: colors.text },
-  detailBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  cardMeta: { fontSize: 12, color: colors.textSubtle, fontWeight: '500' },
+  cardAmount: { fontSize: 17, fontWeight: '700', color: colors.text },
+  detailBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   detailBtnText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700' },
-
-  // Tabla desktop
-  table: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  tableHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    backgroundColor: colors.surfaceAlt,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  thCell: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    paddingHorizontal: 4,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  tdCell: { fontSize: 13, color: colors.text, paddingHorizontal: 4 },
 
   badgeSmall: {
     alignSelf: 'flex-start',
