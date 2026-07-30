@@ -12,8 +12,9 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { Avatar, KnowCard } from '@/components/ui';
+import { Avatar, KnowCard, Modal } from '@/components/ui';
 import { WizardHeader } from '@/components/booking';
+import { PaymentMethods } from '@/components/booking/PaymentMethods';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,7 +42,13 @@ export default function BookingSummary() {
   const router = useRouter();
   const { user } = useAuth();
   const { draft, setHoldId, reset } = useDraftBooking();
-  const { holds, createBooking, releaseHold, remainingHours } = useBookings();
+  const {
+    holds,
+    createBooking,
+    releaseHold,
+    remainingHours,
+    submitPaymentProof,
+  } = useBookings();
 
   const hold = holds.find((h) => h.id === draft.holdId);
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
@@ -73,6 +80,12 @@ export default function BookingSummary() {
     policiesAck.hasViewed(draft.studentId),
   );
   const [policiesAccepted, setPoliciesAccepted] = useState<boolean>(false);
+  const [uploadedProof, setUploadedProof] = useState<{ name: string; at: number } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    bookingId: string;
+    mode: 'hours' | 'proof' | 'pending';
+  }>({ visible: false, bookingId: '', mode: 'hours' });
 
   useEffect(() => {
     if (
@@ -152,21 +165,44 @@ export default function BookingSummary() {
     }
     setHoldId(null);
     const id = result.booking.id;
-    // Flujo unificado: si requiere pago, va al Paso 4 (success como pantalla
-    // de pago). Si ya tiene horas, la reserva queda confirmada y volvemos
-    // directamente al home; el estado se muestra dentro de la reserva.
+    // En vez de saltar de golpe al home, mostramos un modal de
+    // confirmacion premium (estilo hotel/aerolinea) que le hace sentir al
+    // estudiante que la reserva quedo hecha, no que solo subio un archivo.
+    let mode: 'hours' | 'proof' | 'pending' = 'hours';
     if (requiresPayment) {
-      router.replace(`/booking/success?id=${id}` as any);
-    } else {
-      router.replace(homeRoute() as any);
+      if (uploadedProof) {
+        submitPaymentProof(id, uploadedProof.name);
+        mode = 'proof';
+      } else {
+        mode = 'pending';
+      }
     }
+    setBusy(false);
+    setConfirmModal({ visible: true, bookingId: id, mode });
+  };
+
+  const modalTitle =
+    confirmModal.mode === 'hours' ? 'Reserva confirmada' : 'Reserva creada';
+
+  const closeAndGoHome = () => {
+    setConfirmModal((c) => ({ ...c, visible: false }));
     setTimeout(() => reset(), 200);
+    router.replace(homeRoute() as any);
+  };
+
+  const closeAndGoDetail = () => {
+    const id = confirmModal.bookingId;
+    setConfirmModal((c) => ({ ...c, visible: false }));
+    setTimeout(() => reset(), 200);
+    router.replace(`/booking/${id}` as any);
   };
 
   const holdExpired = hold ? remaining === 0 : false;
 
   const primaryLabel = requiresPayment
-    ? 'Continuar al pago'
+    ? uploadedProof
+      ? 'Confirmar y enviar comprobante'
+      : 'Confirmar reserva'
     : 'Confirmar reserva';
 
   return (
@@ -244,7 +280,22 @@ export default function BookingSummary() {
           />
         </View>
 
-        {requiresPayment ? null : (
+        {requiresPayment ? (
+          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+            <Text style={typography.h3}>Metodo de pago</Text>
+            <Text style={typography.caption}>
+              Sin horas disponibles · Valor ${PRICE_PER_HOUR.toFixed(2)}. Elige un metodo y sube tu comprobante aqui mismo (opcional, puedes hacerlo despues desde la reserva).
+            </Text>
+            <PaymentMethods
+              amount={PRICE_PER_HOUR}
+              onUploadProof={(name) =>
+                setUploadedProof({ name, at: Date.now() })
+              }
+              uploadedProof={uploadedProof}
+              onReplaceProof={() => setUploadedProof(null)}
+            />
+          </View>
+        ) : (
           <View style={s.planBox}>
             <Ionicons name="hourglass" size={18} color={colors.success} />
             <Text style={s.planBoxText}>
@@ -316,7 +367,7 @@ export default function BookingSummary() {
           ]}
         >
           <Ionicons
-            name={requiresPayment ? 'arrow-forward' : 'checkmark-circle'}
+            name="checkmark-circle"
             size={20}
             color={colors.textOnPrimary}
           />
@@ -327,7 +378,123 @@ export default function BookingSummary() {
           <Text style={s.secondaryText}>Cambiar horario</Text>
         </Pressable>
       </ScrollView>
+
+      <Modal
+        visible={confirmModal.visible}
+        onClose={closeAndGoHome}
+        title={modalTitle}
+        primaryAction={{ label: 'Ver mi reserva', onPress: closeAndGoDetail }}
+        secondaryAction={{ label: 'Volver al inicio', onPress: closeAndGoHome }}
+      >
+        <View style={s.modalIconWrap}>
+          <View
+            style={[
+              s.modalIcon,
+              confirmModal.mode === 'hours'
+                ? { backgroundColor: colors.successSoft }
+                : { backgroundColor: colors.warningSoft },
+            ]}
+          >
+            <Ionicons
+              name={confirmModal.mode === 'hours' ? 'checkmark-circle' : 'time'}
+              size={44}
+              color={confirmModal.mode === 'hours' ? colors.success : colors.warning}
+            />
+          </View>
+        </View>
+
+        <Text style={s.modalLead}>
+          {confirmModal.mode === 'hours'
+            ? 'Tu clase ha sido reservada exitosamente.'
+            : 'Tu clase ha sido reservada correctamente.'}
+        </Text>
+
+        <View style={s.modalCard}>
+          <View style={s.modalRow}>
+            <Ionicons name="book-outline" size={16} color={colors.primaryDark} />
+            <Text style={s.modalRowLabel}>Materia</Text>
+            <Text style={s.modalRowValue}>{draft.subject}</Text>
+          </View>
+          <View style={s.modalRow}>
+            <Ionicons name="calendar-outline" size={16} color={colors.primaryDark} />
+            <Text style={s.modalRowLabel}>Fecha</Text>
+            <Text style={s.modalRowValue}>
+              {dateUtils.formatDisplay(draft.date)} · {draft.time}
+            </Text>
+          </View>
+        </View>
+
+        {confirmModal.mode === 'hours' ? (
+          <View style={s.modalNote}>
+            <Ionicons name="hourglass" size={16} color={colors.success} />
+            <Text style={s.modalNoteText}>
+              Se descontaron las horas correspondientes de tu plan.
+            </Text>
+          </View>
+        ) : confirmModal.mode === 'proof' ? (
+          <>
+            <View style={s.modalNote}>
+              <Ionicons name="receipt-outline" size={16} color={colors.warning} />
+              <Text style={s.modalNoteText}>
+                Tu comprobante fue recibido y sera revisado por nuestro equipo.
+              </Text>
+            </View>
+            <View style={s.modalStatusRow}>
+              <Text style={s.modalStatusLabel}>Estado actual</Text>
+              <StatusChip tone="warning" icon="time-outline" label="Pendiente de validacion" />
+            </View>
+            <Text style={s.modalFoot}>
+              Una vez aprobado, la reserva cambiara automaticamente a Confirmada.
+            </Text>
+          </>
+        ) : (
+          <>
+            <View style={s.modalNote}>
+              <Ionicons name="card-outline" size={16} color={colors.warning} />
+              <Text style={s.modalNoteText}>
+                Tu reserva quedo apartada. Completa el pago para confirmarla.
+              </Text>
+            </View>
+            <View style={s.modalStatusRow}>
+              <Text style={s.modalStatusLabel}>Estado actual</Text>
+              <StatusChip tone="warning" icon="alert-circle-outline" label="Pendiente de pago" />
+            </View>
+            <Text style={s.modalFoot}>
+              Puedes pagar ahora desde el detalle o mas tarde antes de la clase.
+            </Text>
+          </>
+        )}
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function StatusChip({
+  tone,
+  icon,
+  label,
+}: {
+  tone: 'warning' | 'success' | 'info';
+  icon: string;
+  label: string;
+}) {
+  const bg =
+    tone === 'success'
+      ? colors.successSoft
+      : tone === 'info'
+      ? colors.infoSoft
+      : colors.warningSoft;
+  const fg =
+    tone === 'success'
+      ? colors.success
+      : tone === 'info'
+      ? colors.info
+      : colors.warning;
+  return (
+    <View style={[s.chip, { backgroundColor: bg }]}>
+      <Ionicons name={icon as any} size={13} color={fg} />
+      <Text style={[s.chipText, { color: fg }]}>{label}</Text>
+    </View>
   );
 }
 
@@ -841,4 +1008,88 @@ const s = StyleSheet.create({
     marginTop: spacing.sm,
   },
   secondaryText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
+
+  modalIconWrap: { alignItems: 'center' },
+  modalIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalLead: {
+    ...typography.body,
+    textAlign: 'center',
+    color: colors.text,
+  },
+  modalCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  modalRowLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    minWidth: 60,
+  },
+  modalRowValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  modalNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  modalNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSubtle,
+    lineHeight: 18,
+  },
+  modalStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  modalStatusLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  modalFoot: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    lineHeight: 17,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  chipText: { fontSize: 12, fontWeight: '700' },
 });
