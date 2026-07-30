@@ -14,8 +14,10 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { BookingsProvider } from '@/contexts/BookingsContext';
 import { DraftBookingProvider } from '@/contexts/DraftBookingContext';
+import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
 import { PushBootstrap } from '@/components/PushBootstrap';
 import { NotificationsHUD } from '@/components/ui/NotificationsHUD';
+import { ImpersonationBanner } from '@/components/ui/ImpersonationBanner';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 
 // ============================================================================
@@ -179,15 +181,18 @@ export default function RootLayout() {
       <AlertProvider>
         <SafeAreaProvider>
           <AuthProvider>
-            <NotificationsProvider>
-              <BookingsProvider>
-                <DraftBookingProvider>
-                  <PushBootstrap />
-                  <Stack screenOptions={{ headerShown: false }} />
-                  <NotificationsHUD />
-                </DraftBookingProvider>
-              </BookingsProvider>
-            </NotificationsProvider>
+            <ImpersonationProvider>
+              <NotificationsProvider>
+                <BookingsProvider>
+                  <DraftBookingProvider>
+                    <PushBootstrap />
+                    <Stack screenOptions={{ headerShown: false }} />
+                    <NotificationsHUD />
+                    <ImpersonationBanner />
+                  </DraftBookingProvider>
+                </BookingsProvider>
+              </NotificationsProvider>
+            </ImpersonationProvider>
           </AuthProvider>
         </SafeAreaProvider>
       </AlertProvider>

@@ -24,6 +24,8 @@ import {
 } from '@/components/ui';
 import { DashboardTable } from '@/components/admin';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useImpersonation, type ImpersonationRole } from '@/hooks/useImpersonation';
+import { useAuth } from '@/hooks/useAuth';
 import {
   colors,
   spacing,
@@ -119,6 +121,9 @@ function AdminDashboardDesktop() {
 
             {/* ─── Reporte Global (Beta) · destacado ────────────────────── */}
             <GlobalReportBanner onPress={() => router.push('/global-report' as any)} />
+
+            {/* ─── Ver como... (QA / inspeccion) ────────────────────────── */}
+            <ViewAsBlock />
 
             {/* ─── KPIs principales ────────────────────────────────────── */}
             <View style={styles.kpiStrip}>
@@ -759,6 +764,9 @@ function AdminDashboardMobile() {
       <Text style={styles.section}>Reporte Global del Estudiante</Text>
       <GlobalReportBanner onPress={() => router.push('/global-report' as any)} />
 
+      <Text style={styles.section}>Ver como...</Text>
+      <ViewAsBlock />
+
       <Text style={styles.section}>Módulos</Text>
       <View style={{ gap: spacing.md }}>
         <Module
@@ -801,6 +809,51 @@ function AdminDashboardMobile() {
         />
       </View>
     </Screen>
+  );
+}
+
+// ─── Ver como... · Solo Administrador (impersonacion segura) ─────────────
+function ViewAsBlock() {
+  const { user } = useAuth();
+  const { startViewAs } = useImpersonation();
+  if (!user || user.role !== 'admin') return null;
+
+  const ROLES: { role: ImpersonationRole; label: string; icon: string; tone: string }[] = [
+    { role: 'teacher',    label: 'Profesor',    icon: 'school',     tone: colors.info },
+    { role: 'supervisor', label: 'Supervisor',  icon: 'eye',        tone: colors.primary },
+    { role: 'student',    label: 'Estudiante',  icon: 'person',     tone: colors.success },
+    { role: 'guardian',   label: 'Acudiente',   icon: 'heart',      tone: colors.warning },
+  ];
+
+  return (
+    <View style={viewAsStyles.wrap}>
+      <View style={viewAsStyles.head}>
+        <View style={viewAsStyles.headIcon}>
+          <Ionicons name="eye" size={16} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={viewAsStyles.headTitle}>Ver como...</Text>
+          <Text style={viewAsStyles.headSub}>
+            Inspecciona el panel de otro rol sin cambiar tu cuenta. Tu rol real sigue siendo admin.
+          </Text>
+        </View>
+      </View>
+      <View style={viewAsStyles.grid}>
+        {ROLES.map((r) => (
+          <Pressable
+            key={r.role}
+            onPress={() => startViewAs(r.role)}
+            style={({ pressed }) => [viewAsStyles.card, pressed && { opacity: 0.85 }]}
+          >
+            <View style={[viewAsStyles.cardIcon, { backgroundColor: colors.surfaceTinted }]}>
+              <Ionicons name={r.icon as any} size={18} color={r.tone} />
+            </View>
+            <Text style={viewAsStyles.cardLabel}>{r.label}</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -1192,6 +1245,56 @@ const eventStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginLeft: spacing.sm,
+  },
+});
+
+const viewAsStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.md,
+    gap: spacing.md,
+    ...shadow.xs,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  headTitle: { ...typography.bodyStrong, fontSize: 15 },
+  headSub: { ...typography.caption, fontSize: 12, marginTop: 2, lineHeight: 16 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  card: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  cardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textStrong,
   },
 });
 

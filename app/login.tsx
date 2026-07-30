@@ -170,6 +170,16 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
+              {/* Bootstrap del admin principal (solo se completa una vez) */}
+              <Pressable
+                onPress={() => router.push('/bootstrap-admin' as any)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.bootstrapLink, pressed && { opacity: 0.6 }]}
+              >
+                <Ionicons name="shield-checkmark" size={14} color={colors.textMuted} />
+                <Text style={styles.bootstrapLinkText}>Configurar Administrador principal</Text>
+              </Pressable>
+
               {/* Soporte al final · discreto, tipográfico, sin FAB ni burbujas */}
               <View style={styles.supportBlock}>
                 <Text style={styles.supportLead}>¿Necesitas ayuda?</Text>
@@ -498,6 +508,21 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontSize: 18,
     fontWeight: '600',
+  },
+  bootstrapLink: {
+    marginTop: spacing.lg,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+  },
+  bootstrapLinkText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 
   // Paso credenciales (sin cambios funcionales)
