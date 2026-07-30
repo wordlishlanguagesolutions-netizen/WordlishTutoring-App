@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
+import { RoleGuard } from '@/components/ui/RoleGuard';
 
 // ============================================================================
 // Layout del estudiante.
@@ -29,6 +30,7 @@ export default function StudentLayout() {
   const { isDesktop } = useResponsive();
 
   return (
+    <RoleGuard allow="student">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={STUDENT_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -73,5 +75,6 @@ export default function StudentLayout() {
         </Tabs>
       </View>
     </View>
+    </RoleGuard>
   );
 }

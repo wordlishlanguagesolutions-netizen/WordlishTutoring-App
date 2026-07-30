@@ -180,7 +180,7 @@ function isValidAccountType(v: unknown): v is AccountType {
   return v === 'staff' || v === 'student_guardian';
 }
 
-async function realFetchProfile(userId: string, email: string): Promise<MockUser | null> {
+async function realFetchProfile(userId: string, email: string): Promise<{ profile: MockUser | null; inactive?: boolean }> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('user_profiles')
@@ -192,10 +192,14 @@ async function realFetchProfile(userId: string, email: string): Promise<MockUser
     // Log discreto y no bloquea: si RLS bloquea o hay 500, dejamos que la UI
     // reporte el error de sesión con el mensaje devuelto en signIn.
     console.warn('[authService][realFetchProfile] error', error.message);
-    return null;
+    return { profile: null };
   }
-  if (!data) return null;
-  if (!isValidRole(data.role)) return null;
+  if (!data) return { profile: null };
+  if (!isValidRole(data.role)) return { profile: null };
+  // Bloqueo de cuentas desactivadas: el registro existe pero el admin
+  // marco `active=false`. Devolvemos flag para que signIn cierre la
+  // sesion recien creada y muestre un error claro al usuario.
+  if (data.active === false) return { profile: null, inactive: true };
 
   const accountType: AccountType = isValidAccountType(data.account_type)
     ? data.account_type
@@ -204,12 +208,14 @@ async function realFetchProfile(userId: string, email: string): Promise<MockUser
         : 'student_guardian');
 
   return {
-    id: data.id,
-    fullName: data.full_name || email,
-    email: data.email || email,
-    role: data.role,
-    accountType,
-    avatar: data.avatar_url || undefined,
+    profile: {
+      id: data.id,
+      fullName: data.full_name || email,
+      email: data.email || email,
+      role: data.role,
+      accountType,
+      avatar: data.avatar_url || undefined,
+    },
   };
 }
 
@@ -222,7 +228,14 @@ async function realGetCurrentUser(): Promise<MockUser | null> {
   }
   const session = sessionRes?.session;
   if (!session?.user) return null;
-  return realFetchProfile(session.user.id, session.user.email || '');
+  const res = await realFetchProfile(session.user.id, session.user.email || '');
+  if (res.inactive) {
+    // Sesion residual de una cuenta desactivada: la cerramos para
+    // que el usuario vuelva al login y no vea shells vacios.
+    await supabase.auth.signOut().catch(() => undefined);
+    return null;
+  }
+  return res.profile;
 }
 
 async function realSignIn(
@@ -250,7 +263,12 @@ async function realSignIn(
   }
   if (!data.user) return { error: 'No se pudo iniciar sesión.' };
 
-  const profile = await realFetchProfile(data.user.id, data.user.email || normalized);
+  const res = await realFetchProfile(data.user.id, data.user.email || normalized);
+  if (res.inactive) {
+    await supabase.auth.signOut().catch(() => undefined);
+    return { error: 'Esta cuenta esta desactivada. Contacta al administrador.' };
+  }
+  const profile = res.profile;
   if (!profile) {
     // Cierra la sesión para no dejar al usuario "logueado sin rol".
     await supabase.auth.signOut().catch(() => undefined);
@@ -300,8 +318,8 @@ async function realVerifySignupOtp(email: string, token: string): Promise<SignUp
     return { error: error.message || 'No se pudo verificar el codigo.' };
   }
   if (!data.user) return { error: 'No se pudo verificar la cuenta.' };
-  const profile = await realFetchProfile(data.user.id, data.user.email || normalized);
-  return { user: profile ?? undefined };
+  const res = await realFetchProfile(data.user.id, data.user.email || normalized);
+  return { user: res.profile ?? undefined };
 }
 
 async function realVerifyRecoveryOtp(email: string, token: string): Promise<ResetPasswordResult> {
@@ -366,8 +384,8 @@ async function realSignUp(args: SignUpArgs): Promise<SignUpResult> {
   // Si la sesion viene inmediata (confirmacion de email desactivada),
   // resolvemos el perfil. Si el proyecto exige confirmar, avisamos al usuario.
   if (data.session) {
-    const profile = await realFetchProfile(data.user.id, email);
-    return { user: profile ?? undefined };
+    const res = await realFetchProfile(data.user.id, email);
+    return { user: res.profile ?? undefined };
   }
   return { needsEmailConfirmation: true };
 }
