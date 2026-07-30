@@ -30,9 +30,19 @@ export const NotificationsContext = createContext<
   NotificationsContextType | undefined
 >(undefined);
 
-// Mapa role → userId en mockDb (auth mock)
-function userIdFromRole(role: string | undefined): string | null {
-  switch (role) {
+// Resolucion de userId para el buzon de notificaciones.
+// QA fix (Production): en modo real el user.id es el UUID de
+// auth.users. Si venimos de auth mock (id 'mock-<role>') mapeamos al
+// slot canonico usado por el seed. Priorizamos el UUID real para que
+// las notificaciones creadas por otros usuarios (dirigidas a un
+// userId concreto) lleguen a su destinatario legitimo.
+function userIdFromAuth(
+  user: { id?: string; role?: string } | null | undefined,
+): string | null {
+  if (!user) return null;
+  const id = user.id ?? '';
+  if (id && !id.startsWith('mock-')) return id; // UUID real
+  switch (user.role) {
     case 'admin':
       return 'u-admin';
     case 'supervisor':
@@ -50,7 +60,7 @@ function userIdFromRole(role: string | undefined): string | null {
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const userId = userIdFromRole(user?.role);
+  const userId = userIdFromAuth(user);
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread, setUnread] = useState<number>(0);

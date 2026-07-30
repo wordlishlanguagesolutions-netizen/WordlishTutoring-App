@@ -43,7 +43,12 @@ import {
 import {
   paymentsRepo,
   getPaymentsForBooking,
+  hydratePayments,
 } from '@/services/paymentsService';
+import {
+  hydrateUsers,
+  getUsersByRole,
+} from '@/services/usersService';
 import { getSetting } from '@/services/appSettingsService';
 import { mockDb } from '@/services/mockDb';
 import { useAuth } from '@/hooks/useAuth';
@@ -164,6 +169,12 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     hydrateGuardians().catch(() => undefined);
     hydratePackages().catch(() => undefined);
     hydrateClassRecords().catch(() => undefined);
+    // QA fix (Production): sin estas dos hidrataciones, los pagos de
+    // Cloud nunca aparecian tras recargar la app (solo se veian los
+    // escritos en la sesion actual) y las notificaciones a staff se
+    // enviaban a IDs mock que en produccion no existen.
+    hydratePayments().catch(() => undefined);
+    hydrateUsers().catch(() => undefined);
     const unsubBookings = subscribeBookings(() => {
       setBookings(getBookings());
     });
@@ -459,26 +470,27 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       }
 
       // Notificaciones internas para admin y supervisor.
+      // QA fix (Production): resolvemos UUID real de cada admin y
+      // supervisor activo desde usersService (Cloud). Antes se hardcodeaba
+      // 'u-admin' / 'u-sup' (IDs mock) y en real ningun staff recibia el
+      // aviso de comprobante subido.
       const meta = `${b.studentName} · ${b.subject} · ${b.date} ${b.time}`;
-      createNotification({
-        userId: 'u-admin',
-        type: 'payment_pending',
-        title: 'Comprobante recibido',
-        message: `${meta} · Revisar en reservas`,
-        refType: 'booking',
-        refId: bookingId,
-        actionRoute: `/booking/${bookingId}`,
-        actionLabel: 'Revisar pago',
-      });
-      createNotification({
-        userId: 'u-sup',
-        type: 'payment_pending',
-        title: 'Comprobante recibido',
-        message: `${meta} · Revisar en reservas`,
-        refType: 'booking',
-        refId: bookingId,
-        actionRoute: `/booking/${bookingId}`,
-        actionLabel: 'Revisar pago',
+      const staffTargets = [
+        ...getUsersByRole('admin'),
+        ...getUsersByRole('supervisor'),
+      ].filter((u) => u.active !== false);
+      const fallbackTargets = staffTargets.length === 0 ? ['u-admin', 'u-sup'] : [];
+      [...staffTargets.map((u) => u.id), ...fallbackTargets].forEach((uid) => {
+        createNotification({
+          userId: uid,
+          type: 'payment_pending',
+          title: 'Comprobante recibido',
+          message: `${meta} · Revisar en reservas`,
+          refType: 'booking',
+          refId: bookingId,
+          actionRoute: `/booking/${bookingId}`,
+          actionLabel: 'Revisar pago',
+        });
       });
     },
     [resolveGuardianIdForCurrentUser, user?.id],
