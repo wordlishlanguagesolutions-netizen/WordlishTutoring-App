@@ -39,6 +39,11 @@ import {
   classRecordsRepo,
   hydrateClassRecords,
 } from '@/services/classRecordsService';
+import {
+  paymentsRepo,
+  getPaymentsForBooking,
+} from '@/services/paymentsService';
+import { getSetting } from '@/services/appSettingsService';
 import { mockDb } from '@/services/mockDb';
 
 const HOLD_MS = 5 * 60 * 1000; // 5 minutos
@@ -376,6 +381,34 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         ...prev,
         [bookingId]: { name: fileName, at, status: 'reviewing' },
       }));
+
+      // ── QA fix (Payments Cloud) ────────────────────────────────────
+      // Persistir un Payment 'pending' asociado a la reserva.
+      // Guard idempotente: si ya existe uno pending/paid, solo
+      // actualizamos externalReference (reemplazo de comprobante).
+      const existing = getPaymentsForBooking(bookingId).find(
+        (p) => p.status === 'pending' || p.status === 'paid',
+      );
+      if (existing) {
+        paymentsRepo.update(existing.id, { externalReference: fileName });
+      } else {
+        const price = getSetting<number>('payment.price_per_hour_usd', 18);
+        const amount = (price * ((b.durationMin ?? 60) / 60));
+        paymentsRepo.create({
+          studentId: b.studentId,
+          guardianId: b.guardianId ?? null,
+          packageId: null,
+          bookingId: b.id,
+          concept: `${b.subject} · ${b.date} ${b.time}`,
+          amount,
+          currency: 'USD',
+          status: 'pending',
+          method: 'other',
+          paidAt: null,
+          externalReference: fileName,
+        });
+      }
+
       // Notificaciones internas: admin + supervisor pueden abrir la reserva
       // directamente desde el aviso. Preparado para futura integracion con
       // WhatsApp API sin cambiar el consumidor.
@@ -406,8 +439,14 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   const markPaid = useCallback(
     (id: string) => {
+      // ── QA fix (idempotencia) ─────────────────────────────────────
+      // Lectura fresca del cache: evita que un doble clic aprovado
+      // aún con el mismo `b` capturado del render dispare dos
+      // consumos de hora contra el paquete.
       const b = bookingsRepo.findById(id);
       if (!b) return;
+      if (b.status === 'confirmed') return; // ya aprobada
+
       let consumed = b.hourConsumed;
       if (!consumed) {
         consumed = packagesRepo.consumeHour(b.studentId);
@@ -416,6 +455,35 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         status: 'confirmed' as BookingStatus,
         hourConsumed: consumed,
       });
+
+      // ── QA fix (Payments Cloud) ──────────────────────────────────
+      // Cerrar el pago asociado. Si el estudiante había subido
+      // comprobante, movemos ese Payment de 'pending' a 'paid'
+      // (una sola vez). Si no existe, generamos uno 'paid' para
+      // dejar trazabilidad completa en el historial.
+      const linked = getPaymentsForBooking(id);
+      const pending = linked.find((p) => p.status === 'pending');
+      const alreadyPaid = linked.find((p) => p.status === 'paid');
+      if (pending) {
+        paymentsRepo.markStatus(pending.id, 'paid');
+      } else if (!alreadyPaid) {
+        const price = getSetting<number>('payment.price_per_hour_usd', 18);
+        const amount = (price * ((b.durationMin ?? 60) / 60));
+        paymentsRepo.create({
+          studentId: b.studentId,
+          guardianId: b.guardianId ?? null,
+          packageId: null,
+          bookingId: b.id,
+          concept: `${b.subject} · ${b.date} ${b.time}`,
+          amount,
+          currency: 'USD',
+          status: 'paid',
+          method: 'other',
+          paidAt: new Date().toISOString(),
+          externalReference: null,
+        });
+      }
+
       createNotification({
         userId: studentToUserId(b.studentId),
         type: 'payment_confirmed',

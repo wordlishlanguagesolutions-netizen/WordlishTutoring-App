@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
@@ -11,7 +11,12 @@ import {
   reportsHistory,
   BOOKING_STATUS,
 } from '@/services/mockData';
-import { getGuardianPaymentsHistory } from '@/services/paymentsService';
+import {
+  getGuardianPaymentsHistory,
+  paymentsRepo,
+  subscribePayments,
+  getPaymentsVersion,
+} from '@/services/paymentsService';
 import { useBookings } from '@/hooks/useBookings';
 
 // ============================================================================
@@ -93,6 +98,19 @@ export default function GuardianDashboard() {
   );
   const [catalogMode, setCatalogMode] = useState<CatalogMode>(null);
 
+  // QA fix: reactivo al cache de payments (compras/aprobaciones
+  // deben aparecer sin recargar). subscribePayments dispara un
+  // re-render que fuerza a useMemo(studentHistory) a re-ejecutarse.
+  const [paymentsVersion, setPaymentsVersion] = useState<number>(
+    getPaymentsVersion(),
+  );
+  useEffect(() => {
+    const unsub = subscribePayments(() => {
+      setPaymentsVersion(getPaymentsVersion());
+    });
+    return unsub;
+  }, []);
+
   const activeStudent =
     linkedStudents.find((s) => s.id === activeStudentId) ?? linkedStudents[0];
 
@@ -114,7 +132,7 @@ export default function GuardianDashboard() {
       getGuardianPaymentsHistory().filter((p) =>
         p.concept.toLowerCase().includes(activeStudent.firstName.toLowerCase()),
       ),
-    [activeStudent.id],
+    [activeStudent.id, paymentsVersion],
   );
   const lastPayment = studentHistory[0];
 
@@ -150,6 +168,22 @@ export default function GuardianDashboard() {
     router.push(`/payments/${id}?kind=guardianPayment` as any);
 
   const choosePlan = (plan: PlanOffer) => {
+    // QA fix (Payments Cloud): persistir la compra como Payment
+    // 'pending'. Antes solo se mostraba un Alert y la compra nunca
+    // llegaba al historial (→ test 'compra de plan' fallaba).
+    paymentsRepo.create({
+      studentId: activeStudent.id,
+      guardianId: null,
+      packageId: null,
+      bookingId: null,
+      concept: `${plan.name} · ${plan.hours} h para ${activeStudent.firstName}`,
+      amount: plan.price,
+      currency: 'USD',
+      status: 'pending',
+      method: 'card',
+      paidAt: null,
+      externalReference: null,
+    });
     Alert.alert(
       plan.name,
       `Confirmarás ${plan.hours} horas por $${plan.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,
@@ -157,6 +191,20 @@ export default function GuardianDashboard() {
   };
 
   const chooseTopUp = (t: QuickTopUp) => {
+    // QA fix (Payments Cloud): idem para recargas.
+    paymentsRepo.create({
+      studentId: activeStudent.id,
+      guardianId: null,
+      packageId: null,
+      bookingId: null,
+      concept: `Recarga de ${t.hours} h para ${activeStudent.firstName}`,
+      amount: t.price,
+      currency: 'USD',
+      status: 'pending',
+      method: 'card',
+      paidAt: null,
+      externalReference: null,
+    });
     Alert.alert(
       `Recarga rápida · ${t.hours} h`,
       `Total $${t.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,
