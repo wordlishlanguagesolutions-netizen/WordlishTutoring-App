@@ -48,21 +48,16 @@ import {
 } from '@/services/teacherRatesConfig';
 
 // ============================================================================
-// Panel de Usuarios · Módulo #3 migrado a OnSpace Cloud.
+// Panel de Usuarios · Modulo Staff sobre OnSpace Cloud.
 //
-// Origen de datos: `public.user_profiles` (via `services/usersService`).
-// Ya no lee de `mockDb.users` ni de un array hardcoded local.
+// Crear usuarios: Edge Function create-staff-user (admin gate + service role).
+//   · Crea auth.users + user_profiles con rol unico
+//   · Inserta filas en staff / teachers / guardians segun rol
+//   · Envia invitacion (resetPasswordForEmail) al correo
+//   · Devuelve contrasena temporal de respaldo si el SMTP falla
 //
-// Funciones cubiertas por el panel (todas persistentes en Cloud):
-//   · Consultar (lista + detalle).
-//   · Editar identidad (nombre completo, primer nombre, teléfono, avatar).
-//   · Cambiar rol (respetando triggers DB: máx. 3 supervisores, admin
-//     principal irremplazable sin transferencia).
-//   · Activar / desactivar (el admin principal queda bloqueado por trigger).
-//
-// Crear usuarios: se realiza vía signup real (trigger `handle_new_user`
-// crea el perfil). El botón "Nuevo usuario" abre las instrucciones oficiales
-// mientras no exista una edge function de invitación.
+// Reenviar invitacion: misma Edge Function con action=resend_invite.
+// Cambio de rol / estado: RPC directo sobre user_profiles (RLS + triggers).
 // ============================================================================
 
 type Role = UserRole;
@@ -114,7 +109,7 @@ export default function UsersScreen() {
     invitationSent: boolean;
   } | null>(null);
 
-  // Hidratación desde Cloud + suscripción reactiva al cache.
+  // Hidratacion desde Cloud + suscripcion reactiva al cache.
   useEffect(() => {
     hydrateUsers()
       .then(() => {
@@ -126,7 +121,7 @@ export default function UsersScreen() {
     return unsub;
   }, []);
 
-  // Consulta de capacidad de supervisores (para mostrar 2/3, etc.).
+  // Capacidad de supervisores (para mostrar 2/3, etc.).
   useEffect(() => {
     getRoleCapacity('supervisor')
       .then(setSupervisorCap)
@@ -156,21 +151,6 @@ export default function UsersScreen() {
 
   const refresh = () => {
     hydrateUsers(true).catch(() => undefined);
-  };
-
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
   };
 
   return (
@@ -247,22 +227,7 @@ export default function UsersScreen() {
       >
         {FILTERS.map((f) => {
           const active = filter === f.key;
-          const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
-  return (
+          return (
             <Pressable
               key={f.key}
               onPress={() => setFilter(f.key)}
@@ -280,20 +245,20 @@ export default function UsersScreen() {
         })}
       </ScrollView>
 
-      {/* Lista o estados vacíos */}
+      {/* Lista o estados vacios */}
       {loading ? (
         <View style={styles.emptyBox}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.emptyText}>Cargando usuarios desde Cloud…</Text>
+          <Text style={styles.emptyText}>Cargando usuarios desde Cloud...</Text>
         </View>
       ) : filtered.length === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="cloud-outline" size={28} color={colors.textMuted} />
           <Text style={styles.emptyTitle}>Sin usuarios en Cloud</Text>
           <Text style={styles.emptyText}>
-            Crea el primer administrador desde OnSpace Cloud Dashboard → Users y
-            marca `is_primary_admin=true`. Luego los siguientes usuarios entrarán
-            vía signup en la pantalla de login.
+            Crea el primer administrador desde OnSpace Cloud Dashboard - Users y
+            marca is_primary_admin=true. Los siguientes usuarios se crean desde
+            aqui con "Nuevo usuario" (invitacion por correo).
           </Text>
         </View>
       ) : (
@@ -432,22 +397,7 @@ export default function UsersScreen() {
               <View style={styles.roleGrid}>
                 {(['supervisor', 'teacher', 'student', 'guardian'] as StaffCreatableRole[]).map((r) => {
                   const active = createForm.role === r;
-                  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
-  return (
+                  return (
                     <Pressable
                       key={r}
                       onPress={() => setCreateForm((f) => ({ ...f, role: r }))}
@@ -491,23 +441,8 @@ export default function UsersScreen() {
   );
 }
 
-// ─── Fila de usuario ────────────────────────────────────────────────────────
+// --- Fila de usuario ---------------------------------------------------------
 function UserRow({ user, onPress }: { user: UserProfileFull; onPress: () => void }) {
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <Pressable
       onPress={onPress}
@@ -542,7 +477,7 @@ function UserRow({ user, onPress }: { user: UserProfileFull; onPress: () => void
   );
 }
 
-// ─── Tile resumen ───────────────────────────────────────────────────────────
+// --- Tile resumen ------------------------------------------------------------
 function SummaryTile({
   label,
   value,
@@ -561,21 +496,6 @@ function SummaryTile({
     warning: { bg: colors.warningSoft, fg: colors.warning },
   };
   const t = TONES[tone];
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <View style={styles.tile}>
       <View style={[styles.tileIcon, { backgroundColor: t.bg }]}>
@@ -590,7 +510,7 @@ function SummaryTile({
 }
 
 // ============================================================================
-// Detalle de usuario · edición inline sobre Cloud.
+// Detalle de usuario · edicion inline sobre Cloud.
 // ============================================================================
 function UserDetail({ user }: { user: UserProfileFull }) {
   const [fullName, setFullName] = useState(user.fullName);
@@ -601,7 +521,6 @@ function UserDetail({ user }: { user: UserProfileFull }) {
   const [activeSaving, setActiveSaving] = useState(false);
   const [resendingInvite, setResendingInvite] = useState(false);
 
-  // Sincroniza el form cuando cambia el usuario (por hidratación).
   useEffect(() => {
     setFullName(user.fullName);
     setFirstName(user.firstName);
@@ -625,7 +544,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
       Alert.alert('No se pudo guardar', translateRolePolicyError(res.error));
       return;
     }
-    Alert.alert('Guardado', 'La información del usuario se actualizó.');
+    Alert.alert('Guardado', 'La informacion del usuario se actualizo.');
   };
 
   const handleToggleActive = async () => {
@@ -635,7 +554,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
       role: user.role as UserRole,
     });
     if (!nextActive && !guard.allowed) {
-      Alert.alert('Acción bloqueada', guard.reason ?? 'No permitido.');
+      Alert.alert('Accion bloqueada', guard.reason ?? 'No permitido.');
       return;
     }
     setActiveSaving(true);
@@ -656,7 +575,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
       role: user.role as UserRole,
     });
     if (!guard.allowed) {
-      Alert.alert('Acción bloqueada', guard.reason ?? 'No permitido.');
+      Alert.alert('Accion bloqueada', guard.reason ?? 'No permitido.');
       return;
     }
     if (nextRole === 'supervisor') {
@@ -668,7 +587,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
     }
     Alert.alert(
       'Cambiar rol',
-      `¿Confirmas cambiar el rol a "${ROLE_LABEL[nextRole]}"?`,
+      `Confirmas cambiar el rol a "${ROLE_LABEL[nextRole]}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -708,7 +627,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
     <View style={{ gap: spacing.md }}>
       <IdentityBlock user={user} />
 
-      {/* Edición inline */}
+      {/* Edicion inline */}
       <View style={styles.section}>
         <View style={styles.sectionHead}>
           <Ionicons name="person-circle-outline" size={16} color={colors.primaryDark} />
@@ -733,7 +652,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
               placeholderTextColor={colors.textMuted}
             />
           </FieldRow>
-          <FieldRow label="Teléfono">
+          <FieldRow label="Telefono">
             <TextInput
               value={phone}
               onChangeText={setPhone}
@@ -744,7 +663,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
             />
           </FieldRow>
           <Button
-            label={saving ? 'Guardando…' : 'Guardar cambios'}
+            label={saving ? 'Guardando...' : 'Guardar cambios'}
             onPress={handleSaveIdentity}
             disabled={!dirty || saving}
             loading={saving}
@@ -776,22 +695,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
                   isCurrent ||
                   user.isPrimaryAdmin ||
                   roleSaving !== null;
-                const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
-  return (
+                return (
                   <Pressable
                     key={r}
                     onPress={() => handleChangeRole(r)}
@@ -809,7 +713,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
                         isCurrent && styles.roleBtnTextActive,
                       ]}
                     >
-                      {roleSaving === r ? '…' : ROLE_LABEL[r]}
+                      {roleSaving === r ? '...' : ROLE_LABEL[r]}
                     </Text>
                   </Pressable>
                 );
@@ -832,7 +736,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
             tone={user.active ? 'default' : 'warning'}
           />
           <DataRow
-            label="Última actualización"
+            label="Ultima actualizacion"
             value={new Date(user.updatedAt).toLocaleString()}
           />
           {!user.isPrimaryAdmin ? (
@@ -868,7 +772,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
             />
             <Text style={styles.dangerBtnText}>
               {activeSaving
-                ? 'Aplicando…'
+                ? 'Aplicando...'
                 : user.active
                 ? 'Desactivar usuario'
                 : 'Reactivar usuario'}
@@ -883,23 +787,8 @@ function UserDetail({ user }: { user: UserProfileFull }) {
   );
 }
 
-// ─── Bloque identidad ───────────────────────────────────────────────────────
+// --- Bloque identidad --------------------------------------------------------
 function IdentityBlock({ user }: { user: UserProfileFull }) {
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <View style={styles.identity}>
       <Avatar name={user.fullName} uri={user.avatar ?? undefined} size={64} />
@@ -923,7 +812,7 @@ function IdentityBlock({ user }: { user: UserProfileFull }) {
   );
 }
 
-// ─── Tarifa por hora vigente (solo profesores) ──────────────────────────────
+// --- Tarifa por hora vigente (solo profesores) -------------------------------
 function TeacherRateBlock() {
   const [tick, setTick] = useState(0);
   const [tier] = useState<TeacherTier>('essentials');
@@ -941,21 +830,6 @@ function TeacherRateBlock() {
   const group = getRate(year, tier, 'group');
   const currency = yearData?.currency ?? 'USD';
 
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <View style={rateStyles.wrap}>
       <View style={rateStyles.head}>
@@ -965,7 +839,7 @@ function TeacherRateBlock() {
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={rateStyles.headTitle}>Tarifa por hora</Text>
           <Text style={rateStyles.headMeta}>
-            Categoría {TIER_LABEL[tier]} · {year}
+            Categoria {TIER_LABEL[tier]} · {year}
           </Text>
         </View>
         <StatusBadge label={TIER_LABEL[tier]} tone="info" />
@@ -974,13 +848,13 @@ function TeacherRateBlock() {
         <View style={rateStyles.cell}>
           <Text style={rateStyles.cellLabel}>{KIND_LABEL.individual}</Text>
           <Text style={rateStyles.cellValue}>
-            {individual ? formatAmount(individual.amount, currency) : '—'}
+            {individual ? formatAmount(individual.amount, currency) : '-'}
           </Text>
         </View>
         <View style={rateStyles.cell}>
           <Text style={rateStyles.cellLabel}>{KIND_LABEL.group}</Text>
           <Text style={rateStyles.cellValue}>
-            {group ? formatAmount(group.amount, currency) : '—'}
+            {group ? formatAmount(group.amount, currency) : '-'}
           </Text>
         </View>
       </View>
@@ -991,23 +865,8 @@ function TeacherRateBlock() {
   );
 }
 
-// ─── Piezas reutilizables ───────────────────────────────────────────────────
+// --- Piezas reutilizables ----------------------------------------------------
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <View style={{ gap: 4 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -1031,21 +890,6 @@ function DataRow({
       : tone === 'danger'
       ? colors.danger
       : colors.textStrong;
-  const handleResendInvite = async () => {
-    if (resendingInvite) return;
-    setResendingInvite(true);
-    const res = await resendInvitation(user.email);
-    setResendingInvite(false);
-    if (!res.ok) {
-      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
-      return;
-    }
-    Alert.alert(
-      'Invitacion enviada',
-      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
-    );
-  };
-
   return (
     <View style={styles.dataRow}>
       <Text style={styles.dataLabel}>{label}</Text>
