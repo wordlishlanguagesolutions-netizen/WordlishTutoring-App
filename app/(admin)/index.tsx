@@ -117,6 +117,9 @@ function AdminDashboardDesktop() {
               </View>
             </View>
 
+            {/* ─── Reporte Global (Beta) · destacado ────────────────────── */}
+            <GlobalReportBanner onPress={() => router.push('/global-report' as any)} />
+
             {/* ─── KPIs principales ────────────────────────────────────── */}
             <View style={styles.kpiStrip}>
               <StatCard
@@ -753,6 +756,9 @@ function AdminDashboardMobile() {
         })}
       </View>
 
+      <Text style={styles.section}>Reporte Global del Estudiante</Text>
+      <GlobalReportBanner onPress={() => router.push('/global-report' as any)} />
+
       <Text style={styles.section}>Módulos</Text>
       <View style={{ gap: spacing.md }}>
         <Module
@@ -795,6 +801,36 @@ function AdminDashboardMobile() {
         />
       </View>
     </Screen>
+  );
+}
+
+function GlobalReportBanner({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [globalReportStyles.wrap, pressed && { opacity: 0.94 }]}
+    >
+      <View style={globalReportStyles.iconWrap}>
+        <Ionicons name="sparkles" size={22} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <View style={globalReportStyles.titleRow}>
+          <Text style={globalReportStyles.title} numberOfLines={1}>
+            Reporte Global del Estudiante
+          </Text>
+          <View style={globalReportStyles.betaTag}>
+            <Text style={globalReportStyles.betaText}>BETA</Text>
+          </View>
+        </View>
+        <Text style={globalReportStyles.desc} numberOfLines={2}>
+          Genera un resumen integral del progreso academico utilizando los reportes existentes.
+        </Text>
+      </View>
+      <View style={globalReportStyles.cta}>
+        <Text style={globalReportStyles.ctaText}>Generar reporte global</Text>
+        <Ionicons name="arrow-forward" size={14} color={colors.textOnPrimary} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -1156,6 +1192,70 @@ const eventStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginLeft: spacing.sm,
+  },
+});
+
+const globalReportStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    ...shadow.sm,
+    flexWrap: 'wrap',
+  },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  betaTag: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  betaText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textOnPrimary,
+    letterSpacing: 1,
+  },
+  desc: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    lineHeight: 17,
+  },
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+  },
+  ctaText: {
+    color: colors.textOnPrimary,
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
 

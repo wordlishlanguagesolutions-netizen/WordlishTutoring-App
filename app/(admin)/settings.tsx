@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Switch, TextInput, ScrollView, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, Card, SupportRow, Modal, StatusBadge } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
@@ -104,6 +105,7 @@ function ReadinessBanner({ missing }: { missing: ReadinessCheck[] }) {
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   // Re-render reactivo cuando cambia cualquier valor de app_settings.
   const [settingsTick, setSettingsTick] = useState(0);
 
@@ -208,11 +210,54 @@ export default function SettingsScreen() {
         ))}
       </View>
 
+      <Text style={styles.section}>Notificaciones</Text>
+      <Text style={typography.caption}>
+        Cada usuario controla sus canales desde su propio perfil. Como admin
+        tambien puedes acceder aqui para revisar tus preferencias.
+      </Text>
+      <Pressable
+        onPress={() => router.push('/settings/notifications' as any)}
+        style={({ pressed }) => [notifStyles.entryRow, pressed && { opacity: 0.9 }]}
+      >
+        <View style={notifStyles.entryIcon}>
+          <Ionicons name="notifications-outline" size={18} color={colors.primaryDark} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.bodyStrong}>Preferencias de notificaciones</Text>
+          <Text style={typography.caption}>
+            Push Android, sonido web, correo y WhatsApp (proximamente).
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
       <Text style={[typography.h3, styles.section]}>Soporte</Text>
       <SupportRow role="admin" screen="Ajustes" />
     </Screen>
   );
 }
+
+const notifStyles = StyleSheet.create({
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.md,
+  },
+  entryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 // ============================================================================
 // Tarifas por hora · Profesores
