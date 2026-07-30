@@ -13,6 +13,37 @@ import {
 import type { UserRole } from '@/constants/roles';
 import type { AccountType } from '@/types';
 import { getSupabaseClient } from '@/template';
+import { resetUsersCache } from '@/services/usersService';
+import { resetStudentsCache } from '@/services/studentsService';
+import { resetTeachersCache } from '@/services/teachersService';
+import { resetGuardiansCache } from '@/services/guardiansService';
+import { resetBookingsCache } from '@/services/bookingsService';
+import { resetReportsCache } from '@/services/reportsService';
+import { resetPaymentsCache } from '@/services/paymentsService';
+import { resetPackagesCache } from '@/services/packagesService';
+import { resetNotificationsCache } from '@/services/notificationService';
+import { resetMaterialsCache } from '@/services/materialsService';
+import { resetScreenshotsCache } from '@/services/screenshotsService';
+import { resetClassRecordsCache } from '@/services/classRecordsService';
+import { invalidateRoleCapacityCache } from '@/services/userRolesPolicy';
+
+// Limpia todas las caches locales para evitar que un usuario nuevo
+// herede datos del anterior en el mismo dispositivo.
+function clearAllLocalCaches() {
+  try { resetUsersCache(); } catch {}
+  try { resetStudentsCache(); } catch {}
+  try { resetTeachersCache(); } catch {}
+  try { resetGuardiansCache(); } catch {}
+  try { resetBookingsCache(); } catch {}
+  try { resetReportsCache(); } catch {}
+  try { resetPaymentsCache(); } catch {}
+  try { resetPackagesCache(); } catch {}
+  try { resetNotificationsCache(); } catch {}
+  try { resetMaterialsCache(); } catch {}
+  try { resetScreenshotsCache(); } catch {}
+  try { resetClassRecordsCache(); } catch {}
+  try { invalidateRoleCapacityCache(); } catch {}
+}
 
 export interface AuthContextType {
   user: MockUser | null;
@@ -124,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Limpia estado local ANTES de navegar para que el guard de index.tsx
     // no rebote al dashboard.
+    clearAllLocalCaches();
     if (mounted.current) setUser(null);
     try {
       // replace evita agregar entrada al historial (back del navegador

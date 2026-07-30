@@ -21,6 +21,8 @@ import {
   updateUser,
   setUserActive,
   setUserRole,
+  createStaffUser,
+  type StaffCreatableRole,
 } from '@/services/usersService';
 import type { UserProfileFull } from '@/repositories/users';
 import {
@@ -97,7 +99,15 @@ export default function UsersScreen() {
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [supervisorCap, setSupervisorCap] = useState<RoleCapacity | null>(null);
-  const [showCreateHelp, setShowCreateHelp] = useState<boolean>(false);
+  const [showCreate, setShowCreate] = useState<boolean>(false);
+  const [createForm, setCreateForm] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    role: StaffCreatableRole;
+  }>({ fullName: '', email: '', phone: '', role: 'teacher' });
+  const [creating, setCreating] = useState(false);
+  const [createTempPass, setCreateTempPass] = useState<string | null>(null);
 
   // Hidratación desde Cloud + suscripción reactiva al cache.
   useEffect(() => {
@@ -181,7 +191,11 @@ export default function UsersScreen() {
       {/* Acciones de cabecera */}
       <View style={styles.actionsRow}>
         <Pressable
-          onPress={() => setShowCreateHelp(true)}
+          onPress={() => {
+            setCreateTempPass(null);
+            setCreateForm({ fullName: '', email: '', phone: '', role: 'teacher' });
+            setShowCreate(true);
+          }}
           style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.9 }]}
         >
           <Ionicons name="add-circle" size={18} color={colors.textOnPrimary} />
@@ -266,39 +280,136 @@ export default function UsersScreen() {
         {selected ? <UserDetail user={selected} /> : null}
       </Modal>
 
-      {/* Ayuda de creación */}
+      {/* Creacion de usuarios · rol unico obligatorio */}
       <Modal
-        visible={showCreateHelp}
-        onClose={() => setShowCreateHelp(false)}
-        title="Alta de nuevos usuarios"
-        subtitle="Wordlish · procedimiento oficial"
+        visible={showCreate}
+        onClose={() => {
+          if (creating) return;
+          setShowCreate(false);
+        }}
+        title="Crear nuevo usuario"
+        subtitle="Un rol unico por cuenta · no admin"
         scrollable
+        primaryAction={
+          createTempPass
+            ? { label: 'Listo', onPress: () => setShowCreate(false) }
+            : {
+                label: creating ? 'Creando...' : 'Crear usuario',
+                onPress: async () => {
+                  if (creating) return;
+                  const cap = await getRoleCapacity(createForm.role as UserRole);
+                  if (!cap.canAddMore) {
+                    Alert.alert('No permitido', cap.reason ?? 'Cupo lleno.');
+                    return;
+                  }
+                  setCreating(true);
+                  const res = await createStaffUser({
+                    email: createForm.email,
+                    fullName: createForm.fullName,
+                    phone: createForm.phone.trim() ? createForm.phone.trim() : null,
+                    role: createForm.role,
+                  });
+                  setCreating(false);
+                  if (!res.ok) {
+                    Alert.alert('No se pudo crear', res.error ?? 'Error desconocido.');
+                    return;
+                  }
+                  setCreateTempPass(res.temporaryPassword ?? null);
+                },
+              }
+        }
+        secondaryAction={
+          createTempPass
+            ? undefined
+            : { label: 'Cancelar', onPress: () => setShowCreate(false) }
+        }
       >
-        <View style={{ gap: spacing.md }}>
-          <View style={styles.helpBlock}>
-            <Text style={styles.helpTitle}>Administrador principal</Text>
+        {createTempPass ? (
+          <View style={{ gap: spacing.md }}>
+            <View style={styles.helpBlock}>
+              <Text style={styles.helpTitle}>Usuario creado correctamente</Text>
+              <Text style={styles.helpBody}>
+                Comparte esta contrasena temporal con {createForm.fullName || 'el usuario'}.
+                Debera cambiarla al iniciar sesion.
+              </Text>
+            </View>
+            <View style={createStyles.tempPassBox}>
+              <Ionicons name="key" size={18} color={colors.primary} />
+              <Text selectable style={createStyles.tempPassText}>{createTempPass}</Text>
+            </View>
             <Text style={styles.helpBody}>
-              Se crea manualmente desde OnSpace Cloud Dashboard → Users (una sola
-              vez). Luego se marca `is_primary_admin=true` en `user_profiles`.
+              El usuario ya aparece en la lista con rol {ROLE_LABEL[createForm.role]} y no
+              podra abrir rutas de otros roles.
             </Text>
           </View>
-          <View style={styles.helpBlock}>
-            <Text style={styles.helpTitle}>Supervisores</Text>
-            <Text style={styles.helpBody}>
-              Máximo {MAX_ACTIVE_SUPERVISORS} activos. Se crean vía signup con rol
-              staff y el admin les asigna rol supervisor desde el detalle del
-              usuario. El límite está aplicado por trigger en la base de datos.
-            </Text>
+        ) : (
+          <View style={{ gap: spacing.md }}>
+            <FieldRow label="Nombre completo">
+              <TextInput
+                value={createForm.fullName}
+                onChangeText={(v) => setCreateForm((f) => ({ ...f, fullName: v }))}
+                style={styles.input}
+                placeholder="Ej. Ana Perez"
+                placeholderTextColor={colors.textMuted}
+                editable={!creating}
+                autoCapitalize="words"
+              />
+            </FieldRow>
+            <FieldRow label="Correo electronico">
+              <TextInput
+                value={createForm.email}
+                onChangeText={(v) => setCreateForm((f) => ({ ...f, email: v }))}
+                style={styles.input}
+                placeholder="nombre@wordlish.com"
+                placeholderTextColor={colors.textMuted}
+                editable={!creating}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </FieldRow>
+            <FieldRow label="Telefono (opcional)">
+              <TextInput
+                value={createForm.phone}
+                onChangeText={(v) => setCreateForm((f) => ({ ...f, phone: v }))}
+                style={styles.input}
+                placeholder="+507 6..."
+                placeholderTextColor={colors.textMuted}
+                editable={!creating}
+                keyboardType="phone-pad"
+              />
+            </FieldRow>
+            <FieldRow label="Rol unico">
+              <View style={styles.roleGrid}>
+                {(['supervisor', 'teacher', 'student', 'guardian'] as StaffCreatableRole[]).map((r) => {
+                  const active = createForm.role === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      onPress={() => setCreateForm((f) => ({ ...f, role: r }))}
+                      disabled={creating}
+                      style={({ pressed }) => [
+                        styles.roleBtn,
+                        active && styles.roleBtnActive,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                    >
+                      <Text style={[styles.roleBtnText, active && styles.roleBtnTextActive]}>
+                        {ROLE_LABEL[r]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </FieldRow>
+            <View style={createStyles.hint}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={createStyles.hintText}>
+                Cada usuario tendra un unico rol. La cuenta administradora principal
+                se transfiere aparte. Se generara una contrasena temporal.
+              </Text>
+            </View>
           </View>
-          <View style={styles.helpBlock}>
-            <Text style={styles.helpTitle}>Profesores, estudiantes y acudientes</Text>
-            <Text style={styles.helpBody}>
-              Se registran solos desde la pantalla de login (signup). El trigger
-              `handle_new_user` crea automáticamente su perfil. El admin puede
-              luego cambiar rol o desactivar desde este panel.
-            </Text>
-          </View>
-        </View>
+        )}
       </Modal>
     </Screen>
   );
@@ -1022,6 +1133,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSubtle,
     lineHeight: 18,
+  },
+});
+
+const createStyles = StyleSheet.create({
+  tempPassBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceTinted,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  tempPassText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    letterSpacing: 1,
+  },
+  hint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  hintText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
   },
 });
 

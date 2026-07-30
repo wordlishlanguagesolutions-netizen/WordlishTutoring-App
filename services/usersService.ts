@@ -21,6 +21,8 @@ import {
 } from '@/repositories/users';
 import type { UserRole } from '@/constants/roles';
 import { invalidateRoleCapacityCache } from './userRolesPolicy';
+import { getSupabaseClient } from '@/template';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
 // ─── Estado interno ─────────────────────────────────────────────────────────
 let cache: UserProfileFull[] = [];
@@ -193,6 +195,107 @@ export async function setUserRole(
   invalidateRoleCapacityCache();
   notify();
   return { ok: true };
+}
+
+// ─── Alta de staff via Edge Function create-staff-user ──────────────────────
+export type StaffCreatableRole = 'supervisor' | 'teacher' | 'student' | 'guardian';
+
+export interface CreateStaffUserArgs {
+  email: string;
+  fullName: string;
+  firstName?: string;
+  phone?: string | null;
+  role: StaffCreatableRole;
+  password?: string;
+}
+
+export interface CreateStaffUserResult {
+  ok: boolean;
+  user?: UserProfileFull;
+  temporaryPassword?: string;
+  error?: string;
+}
+
+function translateCreateError(code: string, message?: string): string {
+  switch (code) {
+    case 'invalid_email':          return 'El correo no es valido.';
+    case 'invalid_full_name':      return 'El nombre completo es obligatorio.';
+    case 'invalid_role':           return 'El rol seleccionado no es valido.';
+    case 'email_already_exists':   return 'Ya existe una cuenta con este correo.';
+    case 'forbidden':
+    case 'forbidden_not_admin':    return 'Solo el administrador puede crear usuarios.';
+    case 'invalid_token':
+    case 'missing_token':          return 'La sesion expiro. Vuelve a iniciar sesion.';
+    case 'server_misconfigured':   return 'Servidor no configurado. Contacta soporte.';
+    default:                       return message ?? 'No se pudo crear el usuario.';
+  }
+}
+
+export async function createStaffUser(
+  args: CreateStaffUserArgs,
+): Promise<CreateStaffUserResult> {
+  const email = args.email.trim().toLowerCase();
+  const fullName = args.fullName.trim();
+  const firstName = (args.firstName ?? '').trim() || fullName.split(' ')[0] || fullName;
+  const phone = args.phone && args.phone.trim() ? args.phone.trim() : null;
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: 'El correo no es valido.' };
+  }
+  if (!fullName || fullName.length < 2) {
+    return { ok: false, error: 'El nombre completo es obligatorio.' };
+  }
+
+  // Validacion local anti-duplicado (case-insensitive).
+  if (cache.some((u) => u.email.toLowerCase() === email)) {
+    return { ok: false, error: 'Ya existe una cuenta con este correo.' };
+  }
+
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('create-staff-user', {
+      body: {
+        email,
+        fullName,
+        firstName,
+        phone,
+        role: args.role,
+        password: args.password,
+      },
+    });
+    if (error) {
+      let code = 'unknown_error';
+      let msg = error.message;
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const raw = await error.context?.text();
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            code = parsed?.error ?? code;
+            msg = parsed?.message ?? msg;
+          }
+        } catch {
+          // fall-through
+        }
+      }
+      return { ok: false, error: translateCreateError(code, msg) };
+    }
+    if (!data?.ok || !data?.user) {
+      return { ok: false, error: 'No se pudo crear el usuario.' };
+    }
+    // Re-hidratar para incluir el nuevo perfil en la lista.
+    await hydrateUsers(true).catch(() => undefined);
+    invalidateRoleCapacityCache();
+    const created = getUserById(data.user.id);
+    return {
+      ok: true,
+      user: created,
+      temporaryPassword: data.temporaryPassword,
+    };
+  } catch (err: any) {
+    console.warn('[usersService.createStaffUser] exception', err);
+    return { ok: false, error: err?.message ?? 'No se pudo crear el usuario.' };
+  }
 }
 
 // ─── Reset (uso interno para logout / cambio de sesión) ─────────────────────
