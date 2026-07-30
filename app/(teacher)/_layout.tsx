@@ -9,6 +9,7 @@ import { TeacherNotificationsProvider } from '@/contexts/TeacherNotificationsCon
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
+import { RoleGuard } from '@/components/ui/RoleGuard';
 
 // Barra inferior simplificada · 4 tabs.
 // Inicio / Agenda (fusiona horario + clases) / Pendientes (todas las acciones)
@@ -94,8 +95,10 @@ function TeacherTabs() {
 
 export default function TeacherLayout() {
   return (
-    <TeacherNotificationsProvider>
-      <TeacherTabs />
-    </TeacherNotificationsProvider>
+    <RoleGuard allow="teacher">
+      <TeacherNotificationsProvider>
+        <TeacherTabs />
+      </TeacherNotificationsProvider>
+    </RoleGuard>
   );
 }

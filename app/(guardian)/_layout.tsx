@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
+import { RoleGuard } from '@/components/ui/RoleGuard';
 
 // ============================================================================
 // Layout del acudiente.
@@ -26,6 +27,7 @@ export default function GuardianLayout() {
   const { isDesktop } = useResponsive();
 
   return (
+    <RoleGuard allow="guardian">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={GUARDIAN_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -70,5 +72,6 @@ export default function GuardianLayout() {
         </Tabs>
       </View>
     </View>
+    </RoleGuard>
   );
 }

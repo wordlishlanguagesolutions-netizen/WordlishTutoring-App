@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
+import { RoleGuard } from '@/components/ui/RoleGuard';
 
 const ADMIN_NAV: SidebarItem[] = [
   { label: 'Dashboard', icon: 'grid', route: '/(admin)' },
@@ -20,6 +21,7 @@ export default function AdminLayout() {
   const { isDesktop } = useResponsive();
 
   return (
+    <RoleGuard allow="admin">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={ADMIN_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -69,5 +71,6 @@ export default function AdminLayout() {
         </Tabs>
       </View>
     </View>
+    </RoleGuard>
   );
 }

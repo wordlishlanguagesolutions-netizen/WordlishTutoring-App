@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
+import { RoleGuard } from '@/components/ui/RoleGuard';
 
 const SUPERVISOR_NAV: SidebarItem[] = [
   { label: 'Monitor', icon: 'pulse', route: '/(supervisor)' },
@@ -17,6 +18,7 @@ export default function SupervisorLayout() {
   const { isDesktop } = useResponsive();
 
   return (
+    <RoleGuard allow="supervisor">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={SUPERVISOR_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -45,5 +47,6 @@ export default function SupervisorLayout() {
         </Tabs>
       </View>
     </View>
+    </RoleGuard>
   );
 }
