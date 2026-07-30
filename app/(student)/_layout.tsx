@@ -19,7 +19,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 
 const STUDENT_NAV: SidebarItem[] = [
   { label: 'Inicio', icon: 'home', route: '/(student)' },
-  { label: 'Reservas', icon: 'add-circle', route: '/(student)/book' },
+  { label: 'Mis clases', icon: 'add-circle', route: '/(student)/book' },
   { label: 'Reportes', icon: 'document-text', route: '/(student)/progress' },
   { label: 'Perfil', icon: 'person', route: '/(student)/profile' },
 ];
@@ -50,7 +50,7 @@ export default function StudentLayout() {
           <Tabs.Screen
             name="book"
             options={{
-              title: 'Reservas',
+              title: 'Mis clases',
               tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" size={size} color={color} />,
             }}
           />

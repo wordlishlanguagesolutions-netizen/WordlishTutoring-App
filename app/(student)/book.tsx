@@ -64,15 +64,10 @@ export default function StudentBookHub() {
         </View>
         <Text style={styles.planLabel}>disponibles en tu plan</Text>
       </View>
-      <Pressable
-        onPress={() => router.push('/booking/pay' as any)}
-        style={({ pressed }) => [styles.acquireLink, pressed && { opacity: 0.85 }]}
-        hitSlop={6}
-      >
-        <Ionicons name="card-outline" size={16} color={colors.primaryDark} />
-        <Text style={styles.acquireLinkText}>Adquirir plan o recarga</Text>
-        <Ionicons name="chevron-forward" size={14} color={colors.primaryDark} />
-      </Pressable>
+      {/* Fase 2 navegacion: el link "Adquirir plan" se removio de aqui
+          para que la unica accion dominante de esta pantalla sea
+          "Reservar clase". Mi plan vive en Perfil (via Perfil > Mi plan)
+          como unico punto de acceso administrativo. */}
     </View>
   );
 
@@ -148,7 +143,7 @@ export default function StudentBookHub() {
 
   return (
     <Screen>
-      <Header title="Reservas" />
+      <Header title="Mis clases" />
 
       {isDesktop ? (
         <WebTwoColumn

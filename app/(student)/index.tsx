@@ -201,13 +201,13 @@ export default function StudentHome() {
         </View>
       </View>
       <Pressable
-        onPress={() => router.push('/(student)/payments' as any)}
+        onPress={() => router.push('/(student)/profile' as any)}
         style={({ pressed }) => [
           styles.sideLink,
           pressed && { opacity: 0.7 },
         ]}
       >
-        <Text style={styles.sideLinkText}>Ver Mi plan</Text>
+        <Text style={styles.sideLinkText}>Gestionar en Perfil</Text>
         <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
       </Pressable>
     </View>
