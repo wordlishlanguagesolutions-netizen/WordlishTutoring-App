@@ -55,6 +55,26 @@ export default function GuardianProfile() {
         ))}
       </View>
 
+      <Text style={styles.section}>Mi plan</Text>
+      <Pressable
+        onPress={() => router.push('/(guardian)/payments' as any)}
+        style={({ pressed }) => [
+          styles.policiesRow,
+          pressed && { opacity: 0.9 },
+        ]}
+      >
+        <View style={styles.infoIcon}>
+          <Ionicons name="pricetags-outline" size={16} color={colors.primaryDark} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.bodyStrong}>Plan, horas y pagos</Text>
+          <Text style={typography.caption}>
+            {remainingHours} h disponibles · {guardianPaymentsHistory.length} pagos
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
       <Text style={styles.section}>Resumen</Text>
       <View style={styles.summaryRow}>
         <SummaryTile icon="hourglass" value={remainingHours} label="Horas restantes" />

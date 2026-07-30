@@ -112,10 +112,16 @@ export default function GuardianBookHub() {
       <Text style={styles.studentsTitle}>Tus estudiantes</Text>
       <View style={{ gap: 6 }}>
         {linkedStudents.map((st) => (
-          <View key={st.id} style={styles.studentRow}>
+          <Pressable
+            key={st.id}
+            onPress={() => router.push('/(guardian)/payments' as any)}
+            style={({ pressed }) => [styles.studentRow, pressed && { opacity: 0.8 }]}
+            hitSlop={4}
+          >
             <Avatar name={st.name} uri={st.avatar} size={26} />
             <Text style={styles.studentRowText}>{st.firstName}</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={13} color={colors.textMuted} />
+          </Pressable>
         ))}
       </View>
     </View>
@@ -126,10 +132,15 @@ export default function GuardianBookHub() {
       contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.lg }}
     >
       {linkedStudents.map((st) => (
-        <View key={st.id} style={styles.studentChip}>
+        <Pressable
+          key={st.id}
+          onPress={() => router.push('/(guardian)/payments' as any)}
+          style={({ pressed }) => [styles.studentChip, pressed && { opacity: 0.85 }]}
+          hitSlop={4}
+        >
           <Avatar name={st.name} uri={st.avatar} size={22} />
           <Text style={styles.studentChipText}>{st.firstName}</Text>
-        </View>
+        </Pressable>
       ))}
     </ScrollView>
   );

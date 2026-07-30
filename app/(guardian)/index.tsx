@@ -250,13 +250,22 @@ export default function GuardianHome() {
           </View>
         </Pressable>
 
-        {/* Info secundaria · discreta */}
+        {/* Info secundaria · discreta · enruta al Dashboard Mi plan */}
         <View style={styles.secondaryRow}>
-          <View style={styles.badge}>
+          <Pressable
+            onPress={() => router.push('/(guardian)/payments' as any)}
+            style={({ pressed }) => [styles.badge, pressed && { opacity: 0.85 }]}
+            hitSlop={6}
+          >
             <Ionicons name="hourglass-outline" size={12} color={colors.primaryDark} />
             <Text style={styles.badgeText}>{active.remaining} h disponibles</Text>
-          </View>
-          <View style={styles.badge}>
+            <Ionicons name="chevron-forward" size={11} color={colors.textMuted} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/(guardian)/payments' as any)}
+            style={({ pressed }) => [styles.badge, pressed && { opacity: 0.85 }]}
+            hitSlop={6}
+          >
             <View
               style={[
                 styles.badgeDot,
@@ -267,7 +276,8 @@ export default function GuardianHome() {
               ]}
             />
             <Text style={styles.badgeText}>{payStatus.label}</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={11} color={colors.textMuted} />
+          </Pressable>
         </View>
 
         <Pressable
