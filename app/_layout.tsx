@@ -14,6 +14,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { BookingsProvider } from '@/contexts/BookingsContext';
 import { DraftBookingProvider } from '@/contexts/DraftBookingContext';
+import { PushBootstrap } from '@/components/PushBootstrap';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 
 // ============================================================================
@@ -180,6 +181,7 @@ export default function RootLayout() {
             <NotificationsProvider>
               <BookingsProvider>
                 <DraftBookingProvider>
+                  <PushBootstrap />
                   <Stack screenOptions={{ headerShown: false }} />
                 </DraftBookingProvider>
               </BookingsProvider>
