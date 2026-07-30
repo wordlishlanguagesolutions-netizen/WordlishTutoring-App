@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, StatusBar } from 'react-native';
-import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
+import { Avatar, NotificationBanner, PageContainer, WebTwoColumn } from '@/components/ui';
+import {
+  consumeBookingCreated,
+  type BookingFlashMode,
+} from '@/services/bookingFlash';
 import { useResponsive } from '@/hooks/useResponsive';
 import { openZoom, getZoomUrl } from '@/services/zoomService';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
@@ -43,6 +47,54 @@ export default function StudentHome() {
     return () => clearInterval(t);
   }, []);
   void nowTick;
+
+  // Banner temporal 'Reserva creada' tras confirmar en summary. Se
+  // consume una sola vez al montar y se auto-descarta a los 4 s con
+  // fade suave.
+  const [flash, setFlash] = useState<BookingFlashMode | null>(null);
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const mode = consumeBookingCreated();
+    if (!mode) return;
+    setFlash(mode);
+    Animated.timing(flashOpacity, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+    const hide = setTimeout(() => {
+      Animated.timing(flashOpacity, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }).start(() => setFlash(null));
+    }, 4000);
+    return () => clearTimeout(hide);
+  }, [flashOpacity]);
+
+  const flashProps =
+    flash === 'hours'
+      ? {
+          tone: 'success' as const,
+          icon: 'checkmark-circle',
+          title: 'Reserva creada',
+          message: 'Tu clase quedo confirmada y se descontaron las horas de tu plan.',
+        }
+      : flash === 'proof'
+      ? {
+          tone: 'success' as const,
+          icon: 'checkmark-circle',
+          title: 'Reserva creada',
+          message: 'Comprobante recibido. Te avisaremos cuando el pago sea aprobado.',
+        }
+      : flash === 'pending'
+      ? {
+          tone: 'warning' as const,
+          icon: 'time-outline',
+          title: 'Reserva creada',
+          message: 'Tu reserva quedo apartada. Completa el pago antes de la clase.',
+        }
+      : null;
 
   const minsLeft = hasNextClass ? nextClass.startsInMin : 0;
 
@@ -252,6 +304,15 @@ export default function StudentHome() {
       >
         <PageContainer maxWidth="home">
           {IdentityBlock}
+
+          {flashProps ? (
+            <Animated.View
+              style={{ opacity: flashOpacity, marginBottom: spacing.md }}
+              pointerEvents="none"
+            >
+              <NotificationBanner {...flashProps} />
+            </Animated.View>
+          ) : null}
 
           {isDesktop ? (
             <WebTwoColumn

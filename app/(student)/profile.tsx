@@ -81,6 +81,38 @@ export default function StudentProfile() {
         <MultilineRow icon="accessibility-outline" label="Adaptaciones" value={studentPreferences.accommodations} last />
       </Card>
 
+      {/* Fase 1 simplificacion: "Mi plan" vive en Perfil. Todo lo
+          administrativo (horas, renovaciones, recargas, pagos, facturas)
+          se consulta desde aqui. La navegacion diaria queda centrada en
+          estudiar. */}
+      <Text style={styles.section}>Mi plan</Text>
+      <Pressable
+        onPress={() => router.push('/(student)/payments' as any)}
+        style={({ pressed }) => [
+          styles.policiesRow,
+          pressed && { opacity: 0.9 },
+        ]}
+      >
+        <View style={styles.infoIcon}>
+          <Ionicons
+            name="card-outline"
+            size={16}
+            color={colors.primaryDark}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.bodyStrong}>Plan, horas y pagos</Text>
+          <Text style={typography.caption}>
+            Renueva, recarga o revisa tu historial de pagos y facturas.
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={colors.textMuted}
+        />
+      </Pressable>
+
       {/* Ubicación automática: el documento completo de políticas sólo
           vive aquí. Nunca se obliga al usuario a leerlo. */}
       <Text style={styles.section}>Políticas de Wordlish</Text>

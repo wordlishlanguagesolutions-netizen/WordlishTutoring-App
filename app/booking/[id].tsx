@@ -4,6 +4,7 @@ import { Ionicons } from '@/components/ui/Icon';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Avatar, StatusBadge, ZoomButton } from '@/components/ui';
+import { PaymentMethods } from '@/components/booking/PaymentMethods';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { BOOKING_STATUS, dateUtils, Booking } from '@/services/mockData';
 import {
@@ -12,11 +13,12 @@ import {
 import { useBookings } from '@/hooks/useBookings';
 import { useAuth } from '@/hooks/useAuth';
 import { getZoomUrlForBooking, getMeetingIdDisplay } from '@/services/zoomService';
+import { getSetting } from '@/services/appSettingsService';
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getById, cancelBooking, rescheduleBooking, markPaid, remainingHours, bookings, holds, paymentProofs } = useBookings();
+  const { getById, cancelBooking, rescheduleBooking, markPaid, remainingHours, bookings, holds, paymentProofs, submitPaymentProof } = useBookings();
   const { user } = useAuth();
   const b = getById(id ?? '');
   const [rOpen, setROpen] = useState(false);
@@ -50,18 +52,14 @@ export default function BookingDetail() {
     ]);
   }
 
-  function handlePay() {
-    if (!b) return;
-    // Flujo unificado: reutilizamos el Paso 4 (success como pantalla de
-    // pago) en lugar de una simulacion aparte. Sin pantallas nuevas.
-    router.push(`/booking/success?id=${b.id}` as any);
-  }
-
   const role = (user as any)?.role ?? 'student';
   const isReviewer = role === 'admin' || role === 'supervisor';
   const proof = paymentProofs[b.id];
   const canApprovePayment =
     isReviewer && b.status === 'pending_payment' && !!proof && proof.status !== 'approved';
+  const showPaymentPanel =
+    b.status === 'pending_payment' && !isReviewer;
+  const priceUsd = getSetting<number>('payment.price_per_hour_usd', 18);
 
   function handleApprovePayment() {
     if (!b) return;
@@ -181,6 +179,24 @@ export default function BookingDetail() {
           <Info label="Hora consumida" value={b.hourConsumed ? 'Sí' : 'No'} last />
         </Card>
 
+        {showPaymentPanel ? (
+          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+            <Text style={typography.h3}>
+              {proof ? 'Pago en revisión' : 'Completar pago'}
+            </Text>
+            <Text style={typography.caption}>
+              {proof
+                ? 'Recibimos tu comprobante. Te avisaremos apenas el equipo Wordlish lo valide.'
+                : `Sin horas disponibles · Valor $${priceUsd.toFixed(2)}. Elige un método y sube tu comprobante.`}
+            </Text>
+            <PaymentMethods
+              amount={priceUsd}
+              onUploadProof={(name) => submitPaymentProof(b.id, name)}
+              uploadedProof={proof ? { name: proof.name, at: proof.at } : null}
+            />
+          </View>
+        ) : null}
+
         {canApprovePayment ? (
           <View style={s.reviewCard}>
             <View style={s.reviewHeader}>
@@ -204,12 +220,6 @@ export default function BookingDetail() {
         ) : null}
 
         <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
-          {b.status === 'pending_payment' && !isReviewer && (
-            <Pressable onPress={handlePay} style={s.primaryBtn}>
-              <Ionicons name="card" size={18} color={colors.textOnPrimary} />
-              <Text style={s.primaryText}>Pagar ahora</Text>
-            </Pressable>
-          )}
           {canR && (
             <Pressable onPress={() => setROpen(true)} style={s.secondaryBtn}>
               <Ionicons name="refresh" size={18} color={colors.primaryDark} />
