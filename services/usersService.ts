@@ -206,6 +206,7 @@ export interface CreateStaffUserArgs {
   firstName?: string;
   phone?: string | null;
   role: StaffCreatableRole;
+  subjects?: string[];
   password?: string;
 }
 
@@ -213,6 +214,12 @@ export interface CreateStaffUserResult {
   ok: boolean;
   user?: UserProfileFull;
   temporaryPassword?: string;
+  invitationSent?: boolean;
+  error?: string;
+}
+
+export interface ResendInvitationResult {
+  ok: boolean;
   error?: string;
 }
 
@@ -227,7 +234,11 @@ function translateCreateError(code: string, message?: string): string {
     case 'invalid_token':
     case 'missing_token':          return 'La sesion expiro. Vuelve a iniciar sesion.';
     case 'server_misconfigured':   return 'Servidor no configurado. Contacta soporte.';
-    default:                       return message ?? 'No se pudo crear el usuario.';
+    case 'profile_insert_failed':  return message ?? 'No se pudo crear el perfil del rol. Intenta de nuevo.';
+    case 'user_not_found':         return 'No existe una cuenta con ese correo.';
+    case 'user_inactive':          return 'El usuario esta inactivo. Reactivalo antes de reenviar la invitacion.';
+    case 'invite_send_failed':     return message ?? 'No se pudo enviar la invitacion por correo.';
+    default:                       return message ?? 'No se pudo completar la operacion.';
   }
 }
 
@@ -255,11 +266,13 @@ export async function createStaffUser(
     const sb = getSupabaseClient();
     const { data, error } = await sb.functions.invoke('create-staff-user', {
       body: {
+        action: 'create',
         email,
         fullName,
         firstName,
         phone,
         role: args.role,
+        subjects: Array.isArray(args.subjects) ? args.subjects : [],
         password: args.password,
       },
     });
@@ -291,10 +304,45 @@ export async function createStaffUser(
       ok: true,
       user: created,
       temporaryPassword: data.temporaryPassword,
+      invitationSent: Boolean(data.invitationSent),
     };
   } catch (err: any) {
     console.warn('[usersService.createStaffUser] exception', err);
     return { ok: false, error: err?.message ?? 'No se pudo crear el usuario.' };
+  }
+}
+
+// Reenvia la invitacion (OTP/enlace) para establecer contrasena.
+export async function resendInvitation(email: string): Promise<ResendInvitationResult> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return { ok: false, error: 'El correo no es valido.' };
+  }
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('create-staff-user', {
+      body: { action: 'resend_invite', email: normalized },
+    });
+    if (error) {
+      let code = 'unknown_error';
+      let msg = error.message;
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const raw = await error.context?.text();
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            code = parsed?.error ?? code;
+            msg = parsed?.message ?? msg;
+          }
+        } catch { /* fall-through */ }
+      }
+      return { ok: false, error: translateCreateError(code, msg) };
+    }
+    if (!data?.ok) return { ok: false, error: 'No se pudo enviar la invitacion.' };
+    return { ok: true };
+  } catch (err: any) {
+    console.warn('[usersService.resendInvitation] exception', err);
+    return { ok: false, error: err?.message ?? 'No se pudo enviar la invitacion.' };
   }
 }
 

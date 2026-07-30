@@ -22,6 +22,7 @@ import {
   setUserActive,
   setUserRole,
   createStaffUser,
+  resendInvitation,
   type StaffCreatableRole,
 } from '@/services/usersService';
 import type { UserProfileFull } from '@/repositories/users';
@@ -105,9 +106,13 @@ export default function UsersScreen() {
     email: string;
     phone: string;
     role: StaffCreatableRole;
-  }>({ fullName: '', email: '', phone: '', role: 'teacher' });
+    subjects: string;
+  }>({ fullName: '', email: '', phone: '', role: 'teacher', subjects: '' });
   const [creating, setCreating] = useState(false);
-  const [createTempPass, setCreateTempPass] = useState<string | null>(null);
+  const [createResult, setCreateResult] = useState<{
+    tempPass: string | null;
+    invitationSent: boolean;
+  } | null>(null);
 
   // Hidratación desde Cloud + suscripción reactiva al cache.
   useEffect(() => {
@@ -153,6 +158,21 @@ export default function UsersScreen() {
     hydrateUsers(true).catch(() => undefined);
   };
 
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <Screen>
       <Header
@@ -192,8 +212,8 @@ export default function UsersScreen() {
       <View style={styles.actionsRow}>
         <Pressable
           onPress={() => {
-            setCreateTempPass(null);
-            setCreateForm({ fullName: '', email: '', phone: '', role: 'teacher' });
+            setCreateResult(null);
+            setCreateForm({ fullName: '', email: '', phone: '', role: 'teacher', subjects: '' });
             setShowCreate(true);
           }}
           style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.9 }]}
@@ -227,7 +247,22 @@ export default function UsersScreen() {
       >
         {FILTERS.map((f) => {
           const active = filter === f.key;
-          return (
+          const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
+  return (
             <Pressable
               key={f.key}
               onPress={() => setFilter(f.key)}
@@ -291,7 +326,7 @@ export default function UsersScreen() {
         subtitle="Un rol unico por cuenta · no admin"
         scrollable
         primaryAction={
-          createTempPass
+          createResult
             ? { label: 'Listo', onPress: () => setShowCreate(false) }
             : {
                 label: creating ? 'Creando...' : 'Crear usuario',
@@ -302,44 +337,59 @@ export default function UsersScreen() {
                     Alert.alert('No permitido', cap.reason ?? 'Cupo lleno.');
                     return;
                   }
+                  const subjectsList = createForm.role === 'teacher'
+                    ? createForm.subjects
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                    : [];
                   setCreating(true);
                   const res = await createStaffUser({
                     email: createForm.email,
                     fullName: createForm.fullName,
                     phone: createForm.phone.trim() ? createForm.phone.trim() : null,
                     role: createForm.role,
+                    subjects: subjectsList,
                   });
                   setCreating(false);
                   if (!res.ok) {
                     Alert.alert('No se pudo crear', res.error ?? 'Error desconocido.');
                     return;
                   }
-                  setCreateTempPass(res.temporaryPassword ?? null);
+                  setCreateResult({
+                    tempPass: res.temporaryPassword ?? null,
+                    invitationSent: Boolean(res.invitationSent),
+                  });
                 },
               }
         }
         secondaryAction={
-          createTempPass
+          createResult
             ? undefined
             : { label: 'Cancelar', onPress: () => setShowCreate(false) }
         }
       >
-        {createTempPass ? (
+        {createResult ? (
           <View style={{ gap: spacing.md }}>
             <View style={styles.helpBlock}>
               <Text style={styles.helpTitle}>Usuario creado correctamente</Text>
               <Text style={styles.helpBody}>
-                Comparte esta contrasena temporal con {createForm.fullName || 'el usuario'}.
-                Debera cambiarla al iniciar sesion.
+                {createResult.invitationSent
+                  ? `Se envio una invitacion a ${createForm.email || 'su correo'} para configurar su acceso. Cuando la reciba, entrara desde Staff con su correo y la contrasena que establezca.`
+                  : `No se pudo enviar el correo de invitacion automaticamente. Comparte manualmente la contrasena temporal con ${createForm.fullName || 'el usuario'} para que ingrese por Staff.`}
               </Text>
             </View>
-            <View style={createStyles.tempPassBox}>
-              <Ionicons name="key" size={18} color={colors.primary} />
-              <Text selectable style={createStyles.tempPassText}>{createTempPass}</Text>
-            </View>
+            {createResult.tempPass ? (
+              <View style={createStyles.tempPassBox}>
+                <Ionicons name="key" size={18} color={colors.primary} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={createStyles.tempPassLabel}>Contrasena temporal (respaldo)</Text>
+                  <Text selectable style={createStyles.tempPassText}>{createResult.tempPass}</Text>
+                </View>
+              </View>
+            ) : null}
             <Text style={styles.helpBody}>
-              El usuario ya aparece en la lista con rol {ROLE_LABEL[createForm.role]} y no
-              podra abrir rutas de otros roles.
+              Rol asignado: {ROLE_LABEL[createForm.role]}. Si no recibe el correo, puedes reenviar la invitacion desde el detalle del usuario.
             </Text>
           </View>
         ) : (
@@ -382,7 +432,22 @@ export default function UsersScreen() {
               <View style={styles.roleGrid}>
                 {(['supervisor', 'teacher', 'student', 'guardian'] as StaffCreatableRole[]).map((r) => {
                   const active = createForm.role === r;
-                  return (
+                  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
+  return (
                     <Pressable
                       key={r}
                       onPress={() => setCreateForm((f) => ({ ...f, role: r }))}
@@ -401,11 +466,22 @@ export default function UsersScreen() {
                 })}
               </View>
             </FieldRow>
+            {createForm.role === 'teacher' ? (
+              <FieldRow label="Materias (separadas por coma)">
+                <TextInput
+                  value={createForm.subjects}
+                  onChangeText={(v) => setCreateForm((f) => ({ ...f, subjects: v }))}
+                  style={styles.input}
+                  placeholder="Ej. Ingles, Matematicas"
+                  placeholderTextColor={colors.textMuted}
+                  editable={!creating}
+                />
+              </FieldRow>
+            ) : null}
             <View style={createStyles.hint}>
               <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
               <Text style={createStyles.hintText}>
-                Cada usuario tendra un unico rol. La cuenta administradora principal
-                se transfiere aparte. Se generara una contrasena temporal.
+                Al guardar se enviara una invitacion al correo del usuario para establecer su contrasena. Ingresara por Staff con su correo. Se genera tambien una contrasena temporal de respaldo por si el correo no llega.
               </Text>
             </View>
           </View>
@@ -417,6 +493,21 @@ export default function UsersScreen() {
 
 // ─── Fila de usuario ────────────────────────────────────────────────────────
 function UserRow({ user, onPress }: { user: UserProfileFull; onPress: () => void }) {
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <Pressable
       onPress={onPress}
@@ -470,6 +561,21 @@ function SummaryTile({
     warning: { bg: colors.warningSoft, fg: colors.warning },
   };
   const t = TONES[tone];
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={styles.tile}>
       <View style={[styles.tileIcon, { backgroundColor: t.bg }]}>
@@ -493,6 +599,7 @@ function UserDetail({ user }: { user: UserProfileFull }) {
   const [saving, setSaving] = useState(false);
   const [roleSaving, setRoleSaving] = useState<Role | null>(null);
   const [activeSaving, setActiveSaving] = useState(false);
+  const [resendingInvite, setResendingInvite] = useState(false);
 
   // Sincroniza el form cuando cambia el usuario (por hidratación).
   useEffect(() => {
@@ -582,6 +689,21 @@ function UserDetail({ user }: { user: UserProfileFull }) {
     );
   };
 
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={{ gap: spacing.md }}>
       <IdentityBlock user={user} />
@@ -654,7 +776,22 @@ function UserDetail({ user }: { user: UserProfileFull }) {
                   isCurrent ||
                   user.isPrimaryAdmin ||
                   roleSaving !== null;
-                return (
+                const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
+  return (
                   <Pressable
                     key={r}
                     onPress={() => handleChangeRole(r)}
@@ -698,6 +835,22 @@ function UserDetail({ user }: { user: UserProfileFull }) {
             label="Última actualización"
             value={new Date(user.updatedAt).toLocaleString()}
           />
+          {!user.isPrimaryAdmin ? (
+            <Pressable
+              onPress={handleResendInvite}
+              disabled={resendingInvite || !user.active}
+              style={({ pressed }) => [
+                styles.inviteBtn,
+                (resendingInvite || !user.active) && { opacity: 0.5 },
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Ionicons name="mail-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.inviteBtnText}>
+                {resendingInvite ? 'Enviando...' : 'Reenviar invitacion / restablecer contrasena'}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={handleToggleActive}
             disabled={activeSaving || user.isPrimaryAdmin}
@@ -732,6 +885,21 @@ function UserDetail({ user }: { user: UserProfileFull }) {
 
 // ─── Bloque identidad ───────────────────────────────────────────────────────
 function IdentityBlock({ user }: { user: UserProfileFull }) {
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={styles.identity}>
       <Avatar name={user.fullName} uri={user.avatar ?? undefined} size={64} />
@@ -773,6 +941,21 @@ function TeacherRateBlock() {
   const group = getRate(year, tier, 'group');
   const currency = yearData?.currency ?? 'USD';
 
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={rateStyles.wrap}>
       <View style={rateStyles.head}>
@@ -810,6 +993,21 @@ function TeacherRateBlock() {
 
 // ─── Piezas reutilizables ───────────────────────────────────────────────────
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={{ gap: 4 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -833,6 +1031,21 @@ function DataRow({
       : tone === 'danger'
       ? colors.danger
       : colors.textStrong;
+  const handleResendInvite = async () => {
+    if (resendingInvite) return;
+    setResendingInvite(true);
+    const res = await resendInvitation(user.email);
+    setResendingInvite(false);
+    if (!res.ok) {
+      Alert.alert('No se pudo reenviar', res.error ?? 'Intenta de nuevo.');
+      return;
+    }
+    Alert.alert(
+      'Invitacion enviada',
+      `Se envio un correo a ${user.email} con las instrucciones para establecer o restablecer su contrasena.`,
+    );
+  };
+
   return (
     <View style={styles.dataRow}>
       <Text style={styles.dataLabel}>{label}</Text>
@@ -1134,6 +1347,23 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     lineHeight: 18,
   },
+  inviteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceTinted,
+  },
+  inviteBtnText: {
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 13,
+  },
 });
 
 const createStyles = StyleSheet.create({
@@ -1146,6 +1376,13 @@ const createStyles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.primary,
+  },
+  tempPassLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   tempPassText: {
     flex: 1,
