@@ -4,8 +4,10 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from 'react';
+import { Platform } from 'react-native';
 import type { Notification } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -85,6 +87,70 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
     const unsub = subscribeNotifications(() => setTick((t) => t + 1));
     return unsub;
+  }, [userId]);
+
+  // -------------------------------------------------------------------------
+  // Auto-refresh mientras la sesion este abierta (estrategia hibrida web).
+  //
+  // OnSpace Cloud no expone Realtime, por lo que hacemos polling ligero cada
+  // 30 s contra `hydrateNotifications` (SELECT filtrado por RLS al user
+  // actual). Solo aplica si el userId es UUID real; los IDs mock no tienen
+  // filas en Cloud. Esto alimenta el HUD/campana + toast sin necesidad de
+  // recargar la pagina.
+  // -------------------------------------------------------------------------
+  const pollBusyRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!userId) return;
+    const isRealUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        userId,
+      );
+    if (!isRealUuid) return;
+    const interval = setInterval(() => {
+      if (pollBusyRef.current) return;
+      pollBusyRef.current = true;
+      hydrateNotifications(userId, true)
+        .catch(() => undefined)
+        .finally(() => {
+          pollBusyRef.current = false;
+        });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  // -------------------------------------------------------------------------
+  // Web: refresco inmediato al volver la pestana a foreground. Cubre el caso
+  // clasico de "regreso al navegador y no me entere de nada".
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !userId) return;
+    const isRealUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        userId,
+      );
+    if (!isRealUuid) return;
+    const doc: any = typeof document !== 'undefined' ? document : null;
+    if (!doc || typeof doc.addEventListener !== 'function') return;
+    const handler = () => {
+      if (doc.visibilityState === 'visible') {
+        hydrateNotifications(userId, true).catch(() => undefined);
+      }
+    };
+    doc.addEventListener('visibilitychange', handler);
+    // Focus del window: algunos navegadores no disparan visibilitychange en
+    // tabs recien enfocadas.
+    const w: any = typeof window !== 'undefined' ? window : null;
+    const focusHandler = () =>
+      hydrateNotifications(userId, true).catch(() => undefined);
+    if (w && typeof w.addEventListener === 'function') {
+      w.addEventListener('focus', focusHandler);
+    }
+    return () => {
+      doc.removeEventListener('visibilitychange', handler);
+      if (w && typeof w.removeEventListener === 'function') {
+        w.removeEventListener('focus', focusHandler);
+      }
+    };
   }, [userId]);
 
   const notifications = useMemo<Notification[]>(() => {

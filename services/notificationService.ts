@@ -323,9 +323,17 @@ export function createNotification(args: CreateNotificationArgs): Notification {
       );
   }
 
-  // Push channel (stub Fase 1)
-  if (template.channel === 'push' && !args.scheduledFor) {
-    pushService.send(args.userId, args.type, { title: n.title, body: n.message });
+  // Push Android (FCM V1). El service filtra internamente por
+  // PUSH_ENABLED_TYPES y solo envia si el userId es UUID real. Los
+  // scheduled se dejan al scheduler / recordatorio local.
+  if (!args.scheduledFor) {
+    pushService.send(args.userId, args.type, {
+      title: n.title,
+      body: n.message,
+      actionRoute: n.actionRoute,
+      refType: n.refType,
+      refId: n.refId,
+    });
   }
   return n;
 }
