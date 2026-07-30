@@ -23,11 +23,13 @@ import {
   type PaymentCreateArgs,
   type PaymentUpdatePatch,
 } from '@/repositories/payments';
-import {
-  guardianPaymentsHistory as _seedGuardian,
-  paymentsHistory as _seedStudent,
-} from './mockData';
 import { getSupabaseClient } from '@/template';
+
+// Nota (production hardening): la semilla desde mockData.paymentsHistory
+// / guardianPaymentsHistory fue eliminada para evitar que registros
+// simulados (guardianId='g1', studentId='s1') se mezclen con datos
+// reales de Cloud. El cache arranca vacio y se pobla exclusivamente
+// via hydratePayments() (Cloud) o paymentsRepo.create().
 
 // ---------------------------------------------------------------------------
 // Helpers.
@@ -91,59 +93,10 @@ interface InternalPayment extends Payment {
 }
 
 // ---------------------------------------------------------------------------
-// Semilla desde mock.
+// Cache + suscripción. Arranca vacio: no hay mocks sembrados.
+// Los datos entran via hydratePayments() (Cloud) o paymentsRepo.create().
 // ---------------------------------------------------------------------------
-function seedFromMock(): InternalPayment[] {
-  const nowIso = new Date().toISOString();
-  const seed: InternalPayment[] = [];
-  _seedGuardian.forEach((m) => {
-    seed.push({
-      id: m.id,
-      studentId: null,
-      guardianId: 'g1',
-      packageId: null,
-      bookingId: null,
-      concept: m.concept,
-      amount: m.amount,
-      currency: 'USD',
-      status: m.status as PaymentStatus,
-      method: parseMethodLabel(m.method),
-      paidAt: m.status === 'paid' ? nowIso : null,
-      externalReference: null,
-      receiptUrl: null,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      _displayDate: m.date,
-    });
-  });
-  _seedStudent.forEach((m) => {
-    if (seed.some((s) => s.id === m.id)) return;
-    seed.push({
-      id: m.id,
-      studentId: 's1',
-      guardianId: null,
-      packageId: null,
-      bookingId: null,
-      concept: m.concept,
-      amount: m.amount,
-      currency: 'USD',
-      status: m.status as PaymentStatus,
-      method: parseMethodLabel(m.method),
-      paidAt: m.status === 'paid' ? nowIso : null,
-      externalReference: null,
-      receiptUrl: null,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      _displayDate: m.date,
-    });
-  });
-  return seed;
-}
-
-// ---------------------------------------------------------------------------
-// Cache + suscripción.
-// ---------------------------------------------------------------------------
-let cache: InternalPayment[] = seedFromMock();
+let cache: InternalPayment[] = [];
 let hydrated = false;
 let inflight: Promise<Payment[]> | null = null;
 let version = 0;
@@ -496,7 +449,7 @@ export async function getReceiptSignedUrl(
 // Utilities.
 // ---------------------------------------------------------------------------
 export function resetPaymentsCache(): void {
-  cache = seedFromMock();
+  cache = [];
   hydrated = false;
   inflight = null;
   notify();
