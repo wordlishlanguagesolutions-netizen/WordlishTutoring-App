@@ -10,6 +10,7 @@ import type { Notification } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import {
   listNotifications,
+  listNotificationsGrouped,
   markAsRead as svcMarkRead,
   markAllAsRead as svcMarkAll,
   unreadCount as svcUnread,
@@ -17,15 +18,26 @@ import {
   hydrateNotifications,
   subscribeNotifications,
   CreateNotificationArgs,
+  NotificationPriority,
+  getNotificationPriority,
 } from '@/services/notificationService';
+
+export interface NotificationsGrouped {
+  requires_action: Notification[];
+  important: Notification[];
+  info: Notification[];
+}
 
 export interface NotificationsContextType {
   notifications: Notification[];
+  grouped: NotificationsGrouped;
   unreadCount: number;
+  requiresActionCount: number;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   create: (args: Omit<CreateNotificationArgs, 'userId'>) => void;
   refresh: () => void;
+  priorityOf: (n: Notification) => NotificationPriority;
 }
 
 export const NotificationsContext = createContext<
@@ -81,11 +93,23 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return listNotifications(userId);
   }, [userId, tick]);
 
+  const grouped = useMemo<NotificationsGrouped>(() => {
+    if (!userId) return { requires_action: [], important: [], info: [] };
+    void tick;
+    return listNotificationsGrouped(userId);
+  }, [userId, tick]);
+
   const unread = useMemo<number>(() => {
     if (!userId) return 0;
     void tick;
     return svcUnread(userId);
   }, [userId, tick]);
+
+  const requiresActionCount = useMemo<number>(() => {
+    if (!userId) return 0;
+    void tick;
+    return grouped.requires_action.filter((n) => !n.read).length;
+  }, [userId, tick, grouped]);
 
   const refresh = useCallback(() => {
     if (!userId) return;
@@ -112,13 +136,25 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<NotificationsContextType>(
     () => ({
       notifications,
+      grouped,
       unreadCount: unread,
+      requiresActionCount,
       markAsRead,
       markAllAsRead,
       create,
       refresh,
+      priorityOf: (n: Notification) => getNotificationPriority(n.type),
     }),
-    [notifications, unread, markAsRead, markAllAsRead, create, refresh],
+    [
+      notifications,
+      grouped,
+      unread,
+      requiresActionCount,
+      markAsRead,
+      markAllAsRead,
+      create,
+      refresh,
+    ],
   );
 
   return (

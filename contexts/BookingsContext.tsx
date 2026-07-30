@@ -619,6 +619,38 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         refType: 'booking',
         refId: id,
       });
+      // Soporte de Pago disponible (Cliente). No es una nueva entidad:
+      // el service `soporteService` lo deriva del Payment. Solo
+      // emitimos la notificacion informativa para que el estudiante y
+      // el acudiente sepan que ya pueden descargarlo desde el detalle.
+      const paidPayment =
+        getPaymentsForBooking(id).find((p) => p.status === 'paid') ?? null;
+      const soporteRoute = paidPayment
+        ? `/payments/${paidPayment.id}?kind=guardianPayment`
+        : `/booking/${id}`;
+      createNotification({
+        userId: studentToUserId(b.studentId),
+        type: 'payment_confirmed',
+        title: 'Soporte de Pago disponible',
+        message: `Tu Soporte de Pago de ${b.subject} ya esta disponible.`,
+        refType: 'payment',
+        refId: paidPayment?.id ?? id,
+        actionRoute: soporteRoute,
+        actionLabel: 'Ver soporte',
+      });
+      const guardianUserIdPaid = guardianToUserId(b.guardianId ?? null);
+      if (guardianUserIdPaid && guardianUserIdPaid !== studentToUserId(b.studentId)) {
+        createNotification({
+          userId: guardianUserIdPaid,
+          type: 'payment_confirmed',
+          title: 'Soporte de Pago disponible',
+          message: `Soporte de ${b.studentName} · ${b.subject}`,
+          refType: 'payment',
+          refId: paidPayment?.id ?? id,
+          actionRoute: soporteRoute,
+          actionLabel: 'Ver soporte',
+        });
+      }
       setPaymentProofs((prev) => {
         const existing = prev[id];
         if (!existing) return prev;

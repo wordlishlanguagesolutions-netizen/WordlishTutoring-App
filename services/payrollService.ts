@@ -412,6 +412,21 @@ export function markPaid(payrollId: string, args: MarkPaidArgs): TeacherPayroll 
       actionRoute: '/(teacher)/profile',
       actionLabel: 'Ver resumen',
     });
+    // Soporte de Pago disponible (Profesor). Se deriva del payroll
+    // via `soporteService.buildTeacherSoporte`. No hay nueva entidad;
+    // solo emitimos la notificacion informativa (categoria 'info' -> se
+    // marca auto-leida) para que el profesor sepa que ya puede
+    // descargarlo desde su perfil.
+    createNotification({
+      userId: teacherUserId,
+      type: 'payroll_paid',
+      title: 'Soporte de Pago disponible',
+      message: `Tu Soporte de Pago de ${labelForMonthKey(p.month)} ya esta disponible.`,
+      refType: 'payroll',
+      refId: p.id,
+      actionRoute: '/(teacher)/profile',
+      actionLabel: 'Descargar soporte',
+    });
   }
   return p;
 }

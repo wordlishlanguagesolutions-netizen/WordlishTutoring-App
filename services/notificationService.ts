@@ -33,6 +33,56 @@ import {
 import { pushService } from './pushService';
 
 // ---------------------------------------------------------------------------
+// Prioridad (Fase MVP · Notificaciones Inteligentes).
+//
+// Clasificacion derivada del tipo. Sin cambios en DB (RLS y schema
+// intactos). El UI usa esta prioridad para agrupar el Centro de
+// Actividad en tres secciones (Requiere accion / Importante / Info).
+// Las `info` se marcan automaticamente como leidas al crearse para
+// evitar ruido en el contador de no leidas.
+// ---------------------------------------------------------------------------
+export type NotificationPriority = 'requires_action' | 'important' | 'info';
+
+const PRIORITY_BY_TYPE: Record<NotificationType, NotificationPriority> = {
+  // 1) Requiere accion (persistente hasta que el usuario actue)
+  payment_pending: 'requires_action',
+  teacher_absent: 'requires_action',
+  class_cancelled: 'requires_action',
+  availability_pending: 'requires_action',
+  payroll_ready: 'requires_action',
+  // 2) Importante (accion sugerida, no bloqueante)
+  class_reminder_15m: 'important',
+  class_starting: 'important',
+  schedule_change: 'important',
+  class_rescheduled: 'important',
+  new_report: 'important',
+  system: 'important',
+  // 3) Informativa (auto-leida)
+  class_reminder_24h: 'info',
+  new_material: 'info',
+  payment_confirmed: 'info',
+  booking_confirmed: 'info',
+  payroll_paid: 'info',
+};
+
+export function getNotificationPriority(
+  type: NotificationType,
+): NotificationPriority {
+  return PRIORITY_BY_TYPE[type] ?? 'important';
+}
+
+const PRIORITY_ORDER: Record<NotificationPriority, number> = {
+  requires_action: 0,
+  important: 1,
+  info: 2,
+};
+
+// Ventana anti-duplicados: si en los ultimos 60s se creo una
+// notificacion con el mismo (userId + type + refId), se ignora la
+// nueva. Evita spam por retries o multiples emisores simultaneos.
+const DEDUPE_WINDOW_MS = 60_000;
+
+// ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
 const UUID_RE =
@@ -152,11 +202,41 @@ export function hydrateNotifications(
 export function listNotifications(userId: string): Notification[] {
   return cache
     .filter((n) => n.userId === userId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    .sort((a, b) => {
+      const pa = PRIORITY_ORDER[getNotificationPriority(a.type)] ?? 1;
+      const pb = PRIORITY_ORDER[getNotificationPriority(b.type)] ?? 1;
+      if (pa !== pb) return pa - pb;
+      return a.createdAt < b.createdAt ? 1 : -1;
+    });
+}
+
+export function listNotificationsGrouped(userId: string): {
+  requires_action: Notification[];
+  important: Notification[];
+  info: Notification[];
+} {
+  const all = listNotifications(userId);
+  return {
+    requires_action: all.filter(
+      (n) => getNotificationPriority(n.type) === 'requires_action',
+    ),
+    important: all.filter(
+      (n) => getNotificationPriority(n.type) === 'important',
+    ),
+    info: all.filter((n) => getNotificationPriority(n.type) === 'info'),
+  };
 }
 
 export function unreadCount(userId: string): number {
-  return cache.filter((n) => n.userId === userId && !n.read).length;
+  // Solo cuentan como no leidas las que requieren accion o son
+  // importantes. Las informativas se marcan auto-leidas al crearse,
+  // pero si por alguna razon quedaron sin leer, no inflan el badge.
+  return cache.filter(
+    (n) =>
+      n.userId === userId &&
+      !n.read &&
+      getNotificationPriority(n.type) !== 'info',
+  ).length;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +245,21 @@ export function unreadCount(userId: string): number {
 export function createNotification(args: CreateNotificationArgs): Notification {
   const template = TEMPLATES[args.type];
   const nowIso = new Date().toISOString();
+  const priority = getNotificationPriority(args.type);
+
+  // Dedupe: misma tripleta (userId + type + refId) en la ventana.
+  const nowMs = Date.now();
+  const dup = cache.find(
+    (x) =>
+      x.userId === args.userId &&
+      x.type === args.type &&
+      (x.refId ?? null) === (args.refId ?? null) &&
+      nowMs - new Date(x.createdAt).getTime() < DEDUPE_WINDOW_MS,
+  );
+  if (dup) return dup;
+
+  // Info se marca auto-leida (no aparece como pendiente en el badge).
+  const autoRead = priority === 'info';
   const n: Notification = {
     id: localId(),
     userId: args.userId,
@@ -172,9 +267,13 @@ export function createNotification(args: CreateNotificationArgs): Notification {
     title: args.title ?? template.title,
     message: args.message,
     channel: template.channel,
-    deliveryStatus: args.scheduledFor ? 'queued' : 'delivered',
-    read: false,
-    readAt: null,
+    deliveryStatus: args.scheduledFor
+      ? 'queued'
+      : autoRead
+      ? 'read'
+      : 'delivered',
+    read: autoRead,
+    readAt: autoRead ? nowIso : null,
     actionRoute: args.actionRoute ?? null,
     actionLabel: args.actionLabel ?? null,
     refType: args.refType ?? null,
