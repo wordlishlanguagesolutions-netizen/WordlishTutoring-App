@@ -219,18 +219,11 @@ const styles = StyleSheet.create({
   planLabel: { color: colors.textSubtle, fontSize: 13, fontWeight: '500' },
 
   acquireLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
+    // eliminado en Fase 2 · queda placeholder inerte para no romper referencias externas.
+    display: 'none',
   },
   acquireLinkText: {
-    color: colors.primaryDark,
-    fontWeight: '700',
-    fontSize: 13,
+    display: 'none',
   },
 
   sectionRow: { marginBottom: spacing.md },

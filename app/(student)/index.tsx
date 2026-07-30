@@ -16,8 +16,6 @@ import {
   currentStudent,
   nextClass,
   packageInfo,
-  latestPayment,
-  PAYMENT_STATUS,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -37,7 +35,6 @@ export default function StudentHome() {
   const router = useRouter();
   const { logout } = useAuth();
   const { isDesktop } = useResponsive();
-  const payStatus = PAYMENT_STATUS[latestPayment.status];
 
   const hasNextClass = Boolean(nextClass);
 
@@ -148,6 +145,9 @@ export default function StudentHome() {
     </View>
   );
 
+  // Auditoria MVP Ready: el Home responde solo a 3 preguntas
+  // (proxima clase, horas, entrar). "Estado del pago" vive en
+  // Perfil > Mi plan como unico lugar administrativo.
   const StatusBlockCompact = (
     <View style={styles.statusRow}>
       <View style={styles.statusItem}>
@@ -156,26 +156,10 @@ export default function StudentHome() {
           {packageInfo.remaining} de {packageInfo.total} h
         </Text>
       </View>
-      <View style={styles.statusDivider} />
-      <View style={styles.statusItem}>
-        <Text style={styles.statusLabel}>Estado del pago</Text>
-        <View style={styles.statusValueRow}>
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor:
-                  payStatus.tone === 'success' ? colors.success : colors.warning,
-              },
-            ]}
-          />
-          <Text style={styles.statusValue}>{payStatus.label}</Text>
-        </View>
-      </View>
     </View>
   );
 
-  // Versión desktop del status: apilado vertical con más aire, tarjetas discretas.
+  // Version desktop: solo el saldo. El estado del pago vive en Mi plan.
   const StatusBlockStacked = (
     <View style={styles.statusStack}>
       <Text style={styles.sideTitle}>Tu plan</Text>
@@ -184,21 +168,6 @@ export default function StudentHome() {
         <Text style={styles.statusValueLg}>
           {packageInfo.remaining} de {packageInfo.total} h
         </Text>
-      </View>
-      <View style={styles.statusItemBox}>
-        <Text style={styles.statusLabel}>Estado del pago</Text>
-        <View style={styles.statusValueRow}>
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor:
-                  payStatus.tone === 'success' ? colors.success : colors.warning,
-              },
-            ]}
-          />
-          <Text style={styles.statusValueLg}>{payStatus.label}</Text>
-        </View>
       </View>
       <Pressable
         onPress={() => router.push('/(student)/profile' as any)}
