@@ -9,7 +9,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  CommonActions,
+} from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { Avatar, KnowCard, Modal } from '@/components/ui';
@@ -40,6 +44,7 @@ import { getSetting } from '@/services/appSettingsService';
 
 export default function BookingSummary() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuth();
   const { draft, setHoldId, reset } = useDraftBooking();
   const {
@@ -56,20 +61,20 @@ export default function BookingSummary() {
   const PRICE_PER_HOUR = getSetting<number>('payment.price_per_hour_usd', 18);
 
   const role = (user as any)?.role ?? 'student';
-  const homeRoute = (): string => {
-    switch (role) {
-      case 'guardian':
-        return '/(guardian)';
-      case 'teacher':
-        return '/(teacher)';
-      case 'supervisor':
-        return '/(supervisor)';
-      case 'admin':
-        return '/(admin)';
-      default:
-        return '/(student)';
-    }
-  };
+  // Grupo de rutas segun rol. Se usa tanto para navegacion via router
+  // (con slash) como para CommonActions.reset (sin slash, es el nombre
+  // del segment que registra Expo Router en el navigator raiz).
+  const homeGroup: string =
+    role === 'guardian'
+      ? '(guardian)'
+      : role === 'teacher'
+      ? '(teacher)'
+      : role === 'supervisor'
+      ? '(supervisor)'
+      : role === 'admin'
+      ? '(admin)'
+      : '(student)';
+  const homeRoute = (): string => `/${homeGroup}`;
 
   const [remaining, setRemaining] = useState<number>(() =>
     hold ? Math.max(0, Math.floor((hold.expiresAt - Date.now()) / 1000)) : 0,
@@ -187,21 +192,46 @@ export default function BookingSummary() {
   const closeAndGoHome = () => {
     setConfirmModal((c) => ({ ...c, visible: false }));
     reset();
-    // Reemplazamos el stack completo del wizard con el home.
-    router.replace(homeRoute() as any);
+    // CommonActions.reset reescribe TODO el stack de navegacion,
+    // eliminando las entradas del wizard (type, new, schedule,
+    // summary). Home queda como unica pantalla. router.replace no
+    // basta porque solo cambia la entrada actual y las anteriores
+    // siguen en el historial.
+    try {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: homeGroup }],
+        }),
+      );
+    } catch {
+      router.replace(homeRoute() as any);
+    }
   };
 
   const closeAndGoDetail = () => {
     const id = confirmModal.bookingId;
     setConfirmModal((c) => ({ ...c, visible: false }));
     reset();
-    // Primero vaciamos el stack del wizard (type -> new -> schedule ->
-    // summary) reemplazandolo con el home. Luego empujamos el detalle.
-    // Asi el back desde /booking/[id] regresa al home, NUNCA al Paso 3.
-    router.replace(homeRoute() as any);
-    setTimeout(() => {
-      router.push(`/booking/${id}` as any);
-    }, 0);
+    // Reescribimos el stack para que quede: [home, detalle]. Asi el
+    // usuario ve la reserva creada, y al presionar atras desde el
+    // detalle regresa al home (nunca al asistente).
+    try {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 1,
+          routes: [
+            { name: homeGroup },
+            { name: 'booking/[id]', params: { id } },
+          ],
+        }),
+      );
+    } catch {
+      // Fallback conservador si el nombre de ruta no matchea el
+      // navigator: al menos aterrizamos en el detalle. Back puede
+      // caer en wizard pero es preferible a fallar en silencio.
+      router.replace(`/booking/${id}` as any);
+    }
   };
 
   const holdExpired = hold ? remaining === 0 : false;
