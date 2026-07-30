@@ -1,4 +1,6 @@
 import React, { createContext, useEffect, useState, ReactNode, useRef } from 'react';
+import { router } from 'expo-router';
+import { useAlert } from '@/template/ui';
 import {
   authService,
   MockUser,
@@ -15,6 +17,7 @@ import { getSupabaseClient } from '@/template';
 export interface AuthContextType {
   user: MockUser | null;
   loading: boolean;
+  loggingOut: boolean;
   signIn: (
     email: string,
     password: string,
@@ -35,7 +38,11 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MockUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loggingOut, setLoggingOut] = useState<boolean>(false);
   const mounted = useRef(true);
+  const logoutInFlight = useRef(false);
+  // AlertProvider siempre es padre de AuthProvider (ver app/_layout.tsx).
+  const { showAlert } = useAlert();
 
   // Hidrata sesión al arranque y (en modo real) escucha cambios en auth.
   useEffect(() => {
@@ -92,8 +99,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await authService.logout();
-    setUser(null);
+    // Guard contra multiples pulsaciones consecutivas del boton Salir.
+    if (logoutInFlight.current) return;
+    logoutInFlight.current = true;
+    if (mounted.current) setLoggingOut(true);
+    try {
+      await authService.logout();
+    } catch (err: any) {
+      console.warn('[AuthContext.logout] error', err);
+      const msg =
+        err?.message ??
+        'No se pudo cerrar la sesion. Verifica tu conexion e intentalo de nuevo.';
+      try {
+        showAlert('Cerrar sesion', msg, [
+          { text: 'Reintentar', onPress: () => { logout().catch(() => {}); } },
+          { text: 'Cancelar', style: 'cancel' },
+        ]);
+      } catch {
+        // no-op: si showAlert falla, no bloqueamos al usuario.
+      }
+      logoutInFlight.current = false;
+      if (mounted.current) setLoggingOut(false);
+      return;
+    }
+    // Limpia estado local ANTES de navegar para que el guard de index.tsx
+    // no rebote al dashboard.
+    if (mounted.current) setUser(null);
+    try {
+      // replace evita agregar entrada al historial (back del navegador
+      // o del telefono no vuelve al dashboard tras cerrar sesion).
+      router.replace('/login');
+    } catch (navErr) {
+      console.warn('[AuthContext.logout] navigation error', navErr);
+    }
+    logoutInFlight.current = false;
+    if (mounted.current) setLoggingOut(false);
   };
 
   const resetPassword = async (email: string) => {
@@ -129,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loading,
+        loggingOut,
         signIn,
         loginAs,
         logout,
