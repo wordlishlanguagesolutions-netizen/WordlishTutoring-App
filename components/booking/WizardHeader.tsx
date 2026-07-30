@@ -4,9 +4,10 @@ import { Ionicons } from '@/components/ui/Icon';
 import { colors, spacing } from '@/constants/theme';
 
 // ============================================================================
-// WizardHeader · Header unificado para los 4 pasos del wizard de reserva.
+// WizardHeader · Header unificado para los 3 pasos del wizard de reserva.
 // Contiene boton back (opcional), etiqueta "Paso X de N", titulo y dots.
-// Reutilizado por app/booking/new.tsx, schedule.tsx, summary.tsx, success.tsx.
+// Reutilizado por app/booking/new.tsx, schedule.tsx y summary.tsx.
+// success.tsx ya NO forma parte del wizard: el pago vive dentro del Paso 3.
 // ============================================================================
 
 interface Props {
@@ -22,7 +23,7 @@ export function WizardHeader({
   title,
   onBack,
   rightSlot,
-  totalSteps = 4,
+  totalSteps = 3,
 }: Props) {
   return (
     <>

@@ -51,10 +51,10 @@ export default function BookingDetail() {
   }
 
   function handlePay() {
-    Alert.alert('Simulación de pago', 'Se marcará como confirmada. La pasarela real vendrá luego.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Pagar', onPress: () => markPaid(b!.id) },
-    ]);
+    if (!b) return;
+    // Flujo unificado: reutilizamos el Paso 4 (success como pantalla de
+    // pago) en lugar de una simulacion aparte. Sin pantallas nuevas.
+    router.push(`/booking/success?id=${b.id}` as any);
   }
 
   const role = (user as any)?.role ?? 'student';
@@ -207,7 +207,7 @@ export default function BookingDetail() {
           {b.status === 'pending_payment' && !isReviewer && (
             <Pressable onPress={handlePay} style={s.primaryBtn}>
               <Ionicons name="card" size={18} color={colors.textOnPrimary} />
-              <Text style={s.primaryText}>Pagar (simulación)</Text>
+              <Text style={s.primaryText}>Pagar ahora</Text>
             </Pressable>
           )}
           {canR && (
