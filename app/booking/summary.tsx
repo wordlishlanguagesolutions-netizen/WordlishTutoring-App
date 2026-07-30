@@ -26,6 +26,7 @@ import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
 import { getSetting } from '@/services/appSettingsService';
+import { emitBookingCreated } from '@/services/bookingFlash';
 
 
 // ============================================================================
@@ -190,6 +191,10 @@ export default function BookingSummary() {
     confirmModal.mode === 'hours' ? 'Reserva confirmada' : 'Reserva creada';
 
   const closeAndGoHome = () => {
+    // Emitimos la senal antes de resetear el stack: el home la
+    // consume en su primer render y muestra un banner temporal como
+    // cierre visual.
+    emitBookingCreated(confirmModal.mode);
     setConfirmModal((c) => ({ ...c, visible: false }));
     reset();
     // CommonActions.reset reescribe TODO el stack de navegacion,
