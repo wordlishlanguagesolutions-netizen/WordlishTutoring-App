@@ -186,15 +186,22 @@ export default function BookingSummary() {
 
   const closeAndGoHome = () => {
     setConfirmModal((c) => ({ ...c, visible: false }));
-    setTimeout(() => reset(), 200);
+    reset();
+    // Reemplazamos el stack completo del wizard con el home.
     router.replace(homeRoute() as any);
   };
 
   const closeAndGoDetail = () => {
     const id = confirmModal.bookingId;
     setConfirmModal((c) => ({ ...c, visible: false }));
-    setTimeout(() => reset(), 200);
-    router.replace(`/booking/${id}` as any);
+    reset();
+    // Primero vaciamos el stack del wizard (type -> new -> schedule ->
+    // summary) reemplazandolo con el home. Luego empujamos el detalle.
+    // Asi el back desde /booking/[id] regresa al home, NUNCA al Paso 3.
+    router.replace(homeRoute() as any);
+    setTimeout(() => {
+      router.push(`/booking/${id}` as any);
+    }, 0);
   };
 
   const holdExpired = hold ? remaining === 0 : false;
