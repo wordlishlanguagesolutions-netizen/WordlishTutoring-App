@@ -31,7 +31,14 @@ const TONE_MAP = {
 export default function GuardianBookHub() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
-  const { bookings } = useBookings();
+  const { bookings, remainingHours } = useBookings();
+
+  // Fase venta inteligente (paridad con rol estudiante):
+  // detectamos estudiantes vinculados con saldo bajo (1 o 2 horas) para
+  // mostrar un nudge discreto sin interrumpir el flujo de reserva.
+  const lowHoursStudents = linkedStudents
+    .map((st) => ({ st, hours: remainingHours[st.id] ?? 0 }))
+    .filter((row) => row.hours > 0 && row.hours <= 2);
 
   const linkedIds = new Set(linkedStudents.map((s) => s.id));
   const today = new Date().toISOString().split('T')[0];
@@ -60,6 +67,31 @@ export default function GuardianBookHub() {
       <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
     </Pressable>
   );
+
+  // Nudge discreto de saldo bajo (Caso 3). Se muestra unicamente si al
+  // menos un estudiante vinculado tiene 1 o 2 horas disponibles.
+  const LowHoursNudge = lowHoursStudents.length > 0 ? (
+    <View style={styles.lowNudge}>
+      <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.lowNudgeTitle}>
+          {lowHoursStudents.length === 1
+            ? `A ${lowHoursStudents[0].st.firstName} le quedan pocas horas`
+            : `${lowHoursStudents.length} estudiantes tienen pocas horas`}
+        </Text>
+        <Text style={styles.lowNudgeSubtitle}>
+          Puedes renovarlas antes de que se agoten.
+        </Text>
+      </View>
+      <Pressable
+        onPress={() => router.push('/(guardian)/payments' as any)}
+        style={({ pressed }) => [styles.lowNudgeBtn, pressed && { opacity: 0.85 }]}
+        hitSlop={6}
+      >
+        <Text style={styles.lowNudgeBtnText}>Ver planes</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   const StudentsStrip = isDesktop ? (
     <View style={styles.studentsPanel}>
@@ -191,6 +223,7 @@ export default function GuardianBookHub() {
           left={
             <View style={{ gap: spacing.md }}>
               {ReserveCTA}
+              {LowHoursNudge}
               {StudentsStrip}
             </View>
           }
@@ -204,6 +237,12 @@ export default function GuardianBookHub() {
       ) : (
         <>
           {ReserveCTA}
+          {LowHoursNudge ? (
+            <>
+              <View style={{ height: spacing.md }} />
+              {LowHoursNudge}
+            </>
+          ) : null}
           <View style={{ height: spacing.md }} />
           {StudentsStrip}
           <View style={{ height: spacing.md }} />
@@ -346,4 +385,39 @@ const styles = StyleSheet.create({
   movTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   movMeta: { fontSize: 12, color: colors.textSubtle },
   movAmount: { fontSize: 17, fontWeight: '700', color: colors.text },
+
+  // Nudge de saldo bajo (paridad con rol estudiante).
+  lowNudge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  lowNudgeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  lowNudgeSubtitle: {
+    fontSize: 11,
+    color: colors.textSubtle,
+    marginTop: 1,
+    fontWeight: '500',
+  },
+  lowNudgeBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.warning,
+  },
+  lowNudgeBtnText: {
+    color: colors.textOnPrimary,
+    fontWeight: '700',
+    fontSize: 12,
+  },
 });
