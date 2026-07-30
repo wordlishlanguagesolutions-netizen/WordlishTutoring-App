@@ -13,6 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { PaymentMethods } from '@/components/booking/PaymentMethods';
 import { createNotification } from '@/services/notificationService';
+import { getUsersByRole, hydrateUsers } from '@/services/usersService';
+import { useAuth } from '@/hooks/useAuth';
+import { useEffect } from 'react';
 
 // ============================================================================
 // Pantalla unica de compra de plan / recarga. Se abre al tocar "Adquirir
@@ -22,31 +25,37 @@ import { createNotification } from '@/services/notificationService';
 
 export default function BookingPay() {
   const router = useRouter();
+  const { user } = useAuth();
   const [proof, setProof] = useState<{ name: string; at: number } | null>(null);
 
-  const handleUploadProof = (name: string) => {
+  // Cierre final MVP: los userIds hardcodeados ('u-admin' / 'u-sup')
+  // fueron eliminados. Reutilizamos exactamente el mismo mecanismo que
+  // BookingsContext.submitPaymentProof: resolver los admins y
+  // supervisores activos desde Cloud via getUsersByRole().
+  useEffect(() => {
+    hydrateUsers().catch(() => undefined);
+  }, []);
+
+  const handleUploadProof = (payload: { name: string; method?: any; receiptPath?: string | null }) => {
     const at = Date.now();
-    createNotification({
-      userId: 'u-admin',
-      type: 'payment_pending',
-      title: 'Comprobante recibido',
-      message: 'Compra de plan/recarga · Revisar en pagos',
-      refType: 'payment',
-      refId: `manual-${at}`,
-      actionRoute: '/(admin)/finance',
-      actionLabel: 'Revisar pago',
+    const staff = [
+      ...getUsersByRole('admin'),
+      ...getUsersByRole('supervisor'),
+    ].filter((u) => u.active !== false);
+    const targets = staff.length > 0 ? staff.map((u) => u.id) : [];
+    targets.forEach((uid) => {
+      createNotification({
+        userId: uid,
+        type: 'payment_pending',
+        title: 'Comprobante recibido',
+        message: `Compra de plan/recarga - ${user?.email ?? 'usuario'} - Revisar en pagos`,
+        refType: 'payment',
+        refId: `manual-${at}`,
+        actionRoute: '/(admin)/finance',
+        actionLabel: 'Revisar pago',
+      });
     });
-    createNotification({
-      userId: 'u-sup',
-      type: 'payment_pending',
-      title: 'Comprobante recibido',
-      message: 'Compra de plan/recarga · Revisar en pagos',
-      refType: 'payment',
-      refId: `manual-${at}`,
-      actionRoute: '/(admin)/finance',
-      actionLabel: 'Revisar pago',
-    });
-    setProof({ name, at });
+    setProof({ name: payload.name, at });
   };
 
   const handleReplaceProof = () => setProof(null);
@@ -72,6 +81,7 @@ export default function BookingPay() {
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
         <PaymentMethods
+          receiptPathPrefix={`plans/${user?.id ?? 'anon'}`}
           onUploadProof={handleUploadProof}
           uploadedProof={proof}
           onReplaceProof={handleReplaceProof}

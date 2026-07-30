@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Avatar, StatusBadge, ZoomButton } from '@/components/ui';
 import { PaymentMethods } from '@/components/booking/PaymentMethods';
+import type { PaymentMethod } from '@/types';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { BOOKING_STATUS, dateUtils, Booking } from '@/services/mockData';
 import {
@@ -29,6 +30,11 @@ export default function BookingDetail() {
   const { user } = useAuth();
   const b = getById(id ?? '');
   const [rOpen, setROpen] = useState(false);
+  // Cierre final MVP: al aprobar manualmente sin comprobante previo,
+  // el admin elige el metodo real (yappy/transfer/card/cuanto/other)
+  // en vez de que el sistema fuerce 'other'.
+  const [methodOpen, setMethodOpen] = useState(false);
+  const [methodBusy, setMethodBusy] = useState<PaymentMethod | null>(null);
 
   // Refresco reactivo del cache de payments (aprobar/rechazar sin recargar).
   const [paymentsVersion, setPaymentsVersion] = useState<number>(getPaymentsVersion());
@@ -97,20 +103,35 @@ export default function BookingDetail() {
 
   function handleApprovePayment() {
     if (!b) return;
-    Alert.alert(
-      'Aprobar pago',
-      `Confirmas que recibiste el pago de ${b.studentName} por ${b.subject}? Se marcara la reserva como confirmada y se cerrara la revision.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Aprobar',
-          onPress: () => {
-            markPaid(b.id);
-            Alert.alert('Pago aprobado', 'La reserva quedo confirmada y el estudiante fue notificado.');
+    // Si el pagador ya subio comprobante con metodo, mantenemos ese.
+    if (pendingPayment && pendingPayment.method && pendingPayment.method !== 'other') {
+      Alert.alert(
+        'Aprobar pago',
+        `Confirmas que recibiste el pago de ${b.studentName} por ${b.subject}? Se marcara la reserva como confirmada.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Aprobar',
+            onPress: () => {
+              markPaid(b.id, pendingPayment.method);
+              Alert.alert('Pago aprobado', 'La reserva quedo confirmada y el estudiante fue notificado.');
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+      return;
+    }
+    // Sin comprobante previo o metodo generico: pedimos el metodo real.
+    setMethodOpen(true);
+  }
+
+  function confirmMethod(method: PaymentMethod) {
+    if (!b || methodBusy) return;
+    setMethodBusy(method);
+    markPaid(b.id, method);
+    setMethodOpen(false);
+    setTimeout(() => setMethodBusy(null), 1500);
+    Alert.alert('Pago aprobado', `Registrado como ${method}. Estudiante notificado.`);
   }
 
   function handleRejectPayment() {
@@ -352,6 +373,13 @@ export default function BookingDetail() {
         </View>
       </ScrollView>
 
+      <PaymentMethodPickerModal
+        visible={methodOpen}
+        busy={methodBusy}
+        onClose={() => setMethodOpen(false)}
+        onPick={confirmMethod}
+      />
+
       <RescheduleModal
         visible={rOpen}
         booking={b}
@@ -443,6 +471,69 @@ function RescheduleModal({ visible, booking, bookings, holds, onClose, onConfirm
           >
             <Text style={s.primaryText}>Confirmar cambio</Text>
           </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function PaymentMethodPickerModal({
+  visible,
+  busy,
+  onClose,
+  onPick,
+}: {
+  visible: boolean;
+  busy: PaymentMethod | null;
+  onClose: () => void;
+  onPick: (m: PaymentMethod) => void;
+}) {
+  const OPTIONS: Array<{ key: PaymentMethod; label: string; icon: string }> = [
+    { key: 'yappy', label: 'Yappy', icon: 'phone-portrait' },
+    { key: 'transfer', label: 'Transferencia ACH', icon: 'business' },
+    { key: 'card', label: 'Tarjeta / Cuanto', icon: 'card' },
+    { key: 'cuanto', label: 'Efectivo', icon: 'cash' },
+    { key: 'other', label: 'Otro', icon: 'ellipsis-horizontal' },
+  ];
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={s.modalBg}>
+        <View style={s.modalCard}>
+          <View style={s.modalHead}>
+            <Text style={typography.h2}>Metodo de pago</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+          <Text style={[typography.caption, { marginTop: spacing.sm }]}>
+            Selecciona como recibiste el pago para dejar trazabilidad real.
+          </Text>
+          <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+            {OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.key}
+                disabled={busy !== null}
+                onPress={() => onPick(opt.key)}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: spacing.md,
+                    padding: spacing.md,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: busy === opt.key ? colors.primary : colors.border,
+                    backgroundColor: busy === opt.key ? colors.primarySoft : colors.surface,
+                  },
+                  pressed && { opacity: 0.9 },
+                ]}
+              >
+                <Ionicons name={opt.icon as any} size={20} color={colors.primaryDark} />
+                <Text style={{ flex: 1, fontWeight: '700', color: colors.text, fontSize: 15 }}>{opt.label}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </Pressable>
+            ))}
+          </View>
         </View>
       </View>
     </Modal>

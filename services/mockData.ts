@@ -547,8 +547,14 @@ export const dateUtils = {
 };
 
 // ============= RESERVAS INICIALES =============
+// Cierre final MVP: purga de seed de reservas mock. En produccion
+// (__DEV__ === false) INITIAL_BOOKINGS es un arreglo vacio para que
+// solo aparezcan reservas reales creadas via Cloud. En desarrollo
+// (__DEV__ === true) se conserva la demo bk1..bk4 para poder navegar
+// la app sin datos reales. Sigue el mismo patron aplicado a
+// seedFromMock en paymentsService.
 const _now = new Date().toISOString();
-export const INITIAL_BOOKINGS: Booking[] = [
+const _DEV_BOOKINGS: Booking[] = [
   {
     id: 'bk1',
     studentId: 's1',
@@ -630,6 +636,9 @@ export const INITIAL_BOOKINGS: Booking[] = [
     hourConsumed: true,
   },
 ];
+
+export const INITIAL_BOOKINGS: Booking[] =
+  typeof __DEV__ !== 'undefined' && __DEV__ ? _DEV_BOOKINGS : [];
 
 // ============= PRÓXIMO PAGO =============
 export const nextPayment = {

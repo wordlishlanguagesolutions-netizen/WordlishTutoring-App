@@ -83,6 +83,14 @@ export function PaymentMethods({
   const beneficiary = getSetting<string>('payment.beneficiary_name', 'Maristella Florian');
   const yappyNumber = getSetting<string>('payment.yappy_number', '+507 6216-4495');
   const achAccount = getSetting<string>('payment.ach_account', '04-72-99-558451-2');
+  const pricePerHour = getSetting<number>('payment.price_per_hour_usd', 0);
+
+  // Cierre final MVP: validacion runtime (no silenciar fallos).
+  // Si falta checkout_url o price_per_hour_usd, mostramos banner claro
+  // al usuario en lugar de dejarlo con un checkout que no abre o un
+  // monto en $0. Solo se muestra a pagadores (no bloquea otros metodos).
+  const missingCheckout = !checkoutUrl;
+  const missingPrice = !pricePerHour || pricePerHour <= 0;
 
   const amountText = amount && amount > 0 ? `$${amount.toFixed(2)}` : 'el monto';
   const isRejected = uploadedProof?.status === 'rejected';
@@ -98,10 +106,10 @@ export function PaymentMethods({
   };
 
   const handleCardPay = () => {
-    if (!checkoutUrl) {
+    if (missingCheckout) {
       Alert.alert(
         'Enlace de pago no configurado',
-        'El administrador aun no habilito la pasarela. Envia tu comprobante o contacta soporte.',
+        'La pasarela de tarjeta aun no esta habilitada. Elige Yappy o Transferencia, o contacta a soporte.',
       );
       return;
     }
@@ -186,6 +194,14 @@ export function PaymentMethods({
 
   return (
     <View style={s.paySection}>
+      {missingPrice ? (
+        <View style={s.configWarn}>
+          <Ionicons name="warning" size={16} color={colors.warning} />
+          <Text style={s.configWarnText}>
+            Configuracion incompleta: falta el valor por hora. Contacta a soporte antes de pagar.
+          </Text>
+        </View>
+      ) : null}
       {isRejected ? (
         <View style={s.rejectedBanner}>
           <Ionicons name="close-circle" size={18} color={colors.danger} />
@@ -539,4 +555,20 @@ const s = StyleSheet.create({
     backgroundColor: colors.dangerSoft,
   },
   errorText: { flex: 1, color: colors.danger, fontSize: 12, fontWeight: '600' },
+  configWarn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  configWarnText: {
+    flex: 1,
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

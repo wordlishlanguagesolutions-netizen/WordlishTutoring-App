@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
@@ -127,6 +127,10 @@ export default function StudentMyPlan() {
   const { isDesktop } = useResponsive();
 
   const [catalogOpen, setCatalogOpen] = React.useState<boolean>(false);
+  // Cierre final MVP: filtro 'Soportes de Pago' en el historial.
+  // Muestra solo movimientos con status === 'paid' (los que ya
+  // generaron soporte via soporteService.buildClientSoporte).
+  const [historyFilter, setHistoryFilter] = React.useState<'all' | 'soportes'>('all');
 
   const remainingHours = studentAcademic.hoursAvailable;
   const showLowHoursNudge = remainingHours <= 1;
@@ -286,15 +290,70 @@ export default function StudentMyPlan() {
     </View>
   ) : null;
 
+  const filteredMovements = useMemo(
+    () =>
+      historyFilter === 'soportes'
+        ? movements.filter((m) => m.status === 'paid')
+        : movements,
+    [movements, historyFilter],
+  );
+
   const HistoryBlock = (
     <View>
       <View style={styles.sectionHead}>
         <Text style={typography.h3}>Historial</Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+          <Pressable
+            onPress={() => setHistoryFilter('all')}
+            style={[
+              styles.filterChip,
+              historyFilter === 'all' && styles.filterChipOn,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                historyFilter === 'all' && { color: colors.textOnPrimary },
+              ]}
+            >
+              Todos
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setHistoryFilter('soportes')}
+            style={[
+              styles.filterChip,
+              historyFilter === 'soportes' && styles.filterChipOn,
+            ]}
+          >
+            <Ionicons
+              name="ribbon-outline"
+              size={12}
+              color={
+                historyFilter === 'soportes'
+                  ? colors.textOnPrimary
+                  : colors.primaryDark
+              }
+            />
+            <Text
+              style={[
+                styles.filterChipText,
+                historyFilter === 'soportes' && { color: colors.textOnPrimary },
+              ]}
+            >
+              Soportes de Pago
+            </Text>
+          </Pressable>
+        </View>
       </View>
-      {movements.length === 0 ? (
+      {filteredMovements.length === 0 ? (
         <View style={styles.emptyCard}>
           <Ionicons name="time-outline" size={24} color={colors.textMuted} />
-          <Text style={typography.caption}>Aquí verás todos tus movimientos.</Text>
+          <Text style={typography.caption}>
+            {historyFilter === 'soportes'
+              ? 'Aun no hay Soportes de Pago. Se generan al aprobarse un pago.'
+              : 'Aqui veras todos tus movimientos.'}
+          </Text>
         </View>
       ) : isDesktop ? (
         // Tabla compacta desktop
@@ -306,7 +365,7 @@ export default function StudentMyPlan() {
             <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}>Monto</Text>
             <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}> </Text>
           </View>
-          {movements.map((m) => {
+          {filteredMovements.map((m) => {
             const info = PAYMENT_STATUS[m.status];
             const t = TONE_MAP[info.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
             return (
@@ -339,7 +398,7 @@ export default function StudentMyPlan() {
         </View>
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {movements.map((m) => (
+          {filteredMovements.map((m) => (
             <MovementRow key={m.kind + m.id} m={m} onPress={() => openDetail(m)} />
           ))}
         </View>
@@ -652,5 +711,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.text,
     paddingHorizontal: 4,
+  },
+
+  // Filtro Soportes de Pago
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  filterChipOn: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
   },
 });

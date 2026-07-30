@@ -99,7 +99,7 @@ export interface BookingsContextType {
     newDate: string,
     newTime: string,
   ) => { ok: boolean; error?: string };
-  markPaid: (id: string) => void;
+  markPaid: (id: string, method?: PaymentMethod) => void;
   submitPaymentProof: (bookingId: string, proof: SubmitProofArgs | string) => void;
   rejectPayment: (bookingId: string, reason?: string) => void;
   getById: (id: string) => Booking | undefined;
@@ -565,7 +565,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   );
 
   const markPaid = useCallback(
-    (id: string) => {
+    (id: string, method?: PaymentMethod) => {
       // ── QA fix (idempotencia) ─────────────────────────────────────
       // Lectura fresca del cache: evita que un doble clic aprovado
       // aún con el mismo `b` capturado del render dispare dos
@@ -582,16 +582,21 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         hourConsumed: consumed,
       });
 
-      // ── QA fix (Payments Cloud) ──────────────────────────────────
+      // ── QA fix (Payments Cloud + método real) ─────────────────────
       // Cerrar el pago asociado. Si el estudiante había subido
       // comprobante, movemos ese Payment de 'pending' a 'paid'
-      // (una sola vez). Si no existe, generamos uno 'paid' para
-      // dejar trazabilidad completa en el historial.
+      // (una sola vez). Si no existe, generamos uno 'paid'.
+      // Cierre final MVP: si el admin proporciona `method`, se aplica
+      // al Payment para no perder trazabilidad del canal real
+      // (yappy/transfer/card/cuanto/other). Antes se forzaba 'other'.
       const linked = getPaymentsForBooking(id);
       const pending = linked.find((p) => p.status === 'pending');
       const alreadyPaid = linked.find((p) => p.status === 'paid');
+      const chosenMethod: PaymentMethod = method ?? 'other';
       if (pending) {
-        paymentsRepo.markStatus(pending.id, 'paid');
+        const patch: any = { status: 'paid', paidAt: new Date().toISOString() };
+        if (method) patch.method = method;
+        paymentsRepo.update(pending.id, patch);
       } else if (!alreadyPaid) {
         const price = getSetting<number>('payment.price_per_hour_usd', 18);
         const amount = (price * ((b.durationMin ?? 60) / 60));
@@ -604,7 +609,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
           amount,
           currency: 'USD',
           status: 'paid',
-          method: 'other',
+          method: chosenMethod,
           paidAt: new Date().toISOString(),
           externalReference: null,
           receiptUrl: null,
