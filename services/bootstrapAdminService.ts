@@ -21,6 +21,21 @@ export interface BootstrapAdminResult {
   passwordEmailSent?: boolean;
 }
 
+/**
+ * Consulta rapida (RPC publica) para saber si ya existe un admin principal.
+ * Se usa para ocultar la opcion de bootstrap en la UI cuando ya esta hecha.
+ */
+export async function primaryAdminExists(): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.rpc('primary_admin_exists');
+    if (error) return false;
+    return Boolean(data);
+  } catch {
+    return false;
+  }
+}
+
 function translate(code: string, fallback?: string): string {
   switch (code) {
     case 'invalid_email':          return 'El correo no es valido.';
@@ -56,11 +71,16 @@ export async function bootstrapPrimaryAdmin(email: string): Promise<BootstrapAdm
   }
 
   // Bootstrap correcto. Enviar correo para establecer contrasena segura.
+  // Timeout defensivo: si el proveedor SMTP no responde, no bloqueamos la UI.
   let passwordEmailSent = false;
   try {
-    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(normalized);
-    if (!resetErr) passwordEmailSent = true;
-    else console.warn('[bootstrapAdminService] reset email warn', resetErr.message);
+    const resetPromise = supabase.auth.resetPasswordForEmail(normalized);
+    const timeout = new Promise<{ error: { message: string } }>((resolve) =>
+      setTimeout(() => resolve({ error: { message: 'timeout' } }), 8000),
+    );
+    const res: any = await Promise.race([resetPromise, timeout]);
+    if (res && !res.error) passwordEmailSent = true;
+    else if (res?.error?.message) console.warn('[bootstrapAdminService] reset email warn', res.error.message);
   } catch (e: any) {
     console.warn('[bootstrapAdminService] reset email exception', e?.message);
   }

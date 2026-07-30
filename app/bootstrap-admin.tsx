@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
-import { bootstrapPrimaryAdmin } from '@/services/bootstrapAdminService';
+import { bootstrapPrimaryAdmin, primaryAdminExists } from '@/services/bootstrapAdminService';
 import { colors, radius, spacing, shadow } from '@/constants/theme';
 import { PageContainer } from '@/components/ui/PageContainer';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -38,10 +38,23 @@ export default function BootstrapAdminScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
+  const [alreadyConfigured, setAlreadyConfigured] = useState(false);
   const [result, setResult] = useState<{
     email: string;
     passwordEmailSent: boolean;
   } | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const exists = await primaryAdminExists();
+      if (!alive) return;
+      setAlreadyConfigured(exists);
+      setChecking(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const handleSubmit = async () => {
     setError('');
@@ -94,7 +107,31 @@ export default function BootstrapAdminScreen() {
               </Text>
             </View>
 
-            {result ? (
+            {checking ? (
+              <View style={styles.successCard}>
+                <Text style={styles.successBody}>Verificando estado...</Text>
+              </View>
+            ) : alreadyConfigured ? (
+              <View style={styles.successCard}>
+                <Ionicons name="lock-closed" size={22} color={colors.primaryDark} />
+                <Text style={styles.successTitle}>
+                  Administrador principal ya configurado
+                </Text>
+                <Text style={styles.successBody}>
+                  Este paso ya se completo. Si necesitas transferir el rol, contacta al administrador actual.
+                </Text>
+                <Pressable
+                  onPress={() => router.replace('/login')}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    pressed && { opacity: 0.9 },
+                  ]}
+                >
+                  <Text style={styles.primaryBtnText}>Volver al inicio</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.textOnPrimary} />
+                </Pressable>
+              </View>
+            ) : result ? (
               <View style={styles.successCard}>
                 <Ionicons name="checkmark-circle" size={22} color={colors.success} />
                 <Text style={styles.successTitle}>

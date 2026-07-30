@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { authService } from '@/services/authService';
 import { contactLoginSupport } from '@/services/supportService';
+import { primaryAdminExists } from '@/services/bootstrapAdminService';
 import { getRoleInfo } from '@/constants/roles';
 import { colors, radius, spacing, typography, shadow } from '@/constants/theme';
 import { PageContainer } from '@/components/ui/PageContainer';
@@ -34,6 +35,16 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [showBootstrap, setShowBootstrap] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const exists = await primaryAdminExists();
+      if (alive) setShowBootstrap(!exists);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const accounts = accountType ? authService.getTestAccounts(accountType) : [];
   const showTestAccounts = accounts.length > 0; // solo modo mock
@@ -170,15 +181,17 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
-              {/* Bootstrap del admin principal (solo se completa una vez) */}
-              <Pressable
-                onPress={() => router.push('/bootstrap-admin' as any)}
-                hitSlop={8}
-                style={({ pressed }) => [styles.bootstrapLink, pressed && { opacity: 0.6 }]}
-              >
-                <Ionicons name="shield-checkmark" size={14} color={colors.textMuted} />
-                <Text style={styles.bootstrapLinkText}>Configurar Administrador principal</Text>
-              </Pressable>
+              {/* Bootstrap del admin principal (solo si aun no existe uno) */}
+              {showBootstrap ? (
+                <Pressable
+                  onPress={() => router.push('/bootstrap-admin' as any)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.bootstrapLink, pressed && { opacity: 0.6 }]}
+                >
+                  <Ionicons name="shield-checkmark" size={14} color={colors.textMuted} />
+                  <Text style={styles.bootstrapLinkText}>Configurar Administrador principal</Text>
+                </Pressable>
+              ) : null}
 
               {/* Soporte al final · discreto, tipográfico, sin FAB ni burbujas */}
               <View style={styles.supportBlock}>
