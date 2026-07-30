@@ -247,7 +247,7 @@ export default function ClassManagementScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={typography.h2}>Class File</Text>
+          <Text style={typography.h2}>Clase</Text>
           <Text style={styles.headerSub}>Archivo de la clase</Text>
         </View>
         <View style={{ width: 42 }} />

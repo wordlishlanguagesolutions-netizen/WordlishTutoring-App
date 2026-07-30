@@ -32,16 +32,55 @@ import { emitBookingCreated } from '@/services/bookingFlash';
 // ============================================================================
 // Reserva · Paso 3 de 3: resumen + método de pago inline.
 //
-// Filosofía "una necesidad = un solo flujo": el estudiante no sale a otra
-// pantalla para pagar. Si tiene horas disponibles, se salta el bloque de
-// pagos y confirma directamente. Si no, elige un método (tarjeta, Yappy,
-// ACH, comprobante, WhatsApp) sin abandonar el resumen.
+// Fase venta inteligente (integrada en la MISMA pantalla, sin crear
+// nuevas rutas):
+//   - Si el estudiante TIENE horas: va directo al resumen limpio
+//     (Clase / Profesor / Fecha / Estado). Sin promos.
+//   - Si NO tiene horas: antes del resumen se muestra un selector
+//     sencillo con 3 opciones (clase individual, plan mensual, banco de
+//     horas) y etiquetas de valor solo aqui. Al continuar, aparece el
+//     resumen limpio con el total elegido y metodo de pago.
 //
-// La arquitectura de pagos es 100% escalable: el catálogo vive en
-// `services/paymentConfig.ts`. Cuando se conecte una pasarela real
-// (Stripe / PagueloFacil / Wompi / Yappy) basta con marcar `enabled: true`
-// y proveer credenciales — la UI no cambia.
+// La confirmacion final nunca vende: solo confirma.
 // ============================================================================
+
+// Catalogo de opciones de compra · valores reflejan el catalogo mock ya
+// definido en app/(student)/payments.tsx (ACTIVE_PLANS + ACTIVE_TOPUPS).
+// No se modifican precios ni reglas comerciales.
+type CheckoutOption = 'individual' | 'plan' | 'hours-bank';
+interface CheckoutChoice {
+  id: CheckoutOption;
+  name: string;
+  subtitle: string;
+  hours: number;
+  price: number;
+  tag?: string;
+}
+const buildCheckoutOptions = (unitPrice: number): CheckoutChoice[] => [
+  {
+    id: 'individual',
+    name: 'Clase individual',
+    subtitle: 'Paga solo la clase que vas a reservar.',
+    hours: 1,
+    price: unitPrice,
+  },
+  {
+    id: 'plan',
+    name: 'Plan mensual',
+    subtitle: '8 horas para el mes · ahorra $20',
+    hours: 8,
+    price: 100,
+    tag: 'Mejor precio por hora',
+  },
+  {
+    id: 'hours-bank',
+    name: 'Banco de horas',
+    subtitle: '3 horas para usar cuando quieras',
+    hours: 3,
+    price: 40,
+    tag: 'Mas popular',
+  },
+];
 
 export default function BookingSummary() {
   const router = useRouter();
@@ -60,6 +99,21 @@ export default function BookingSummary() {
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
   const requiresPayment = hoursLeft === 0;
   const PRICE_PER_HOUR = getSetting<number>('payment.price_per_hour_usd', 18);
+
+  // Fase venta inteligente: solo se activa si no hay horas.
+  const CHECKOUT_OPTIONS = useMemo(
+    () => buildCheckoutOptions(PRICE_PER_HOUR),
+    [PRICE_PER_HOUR],
+  );
+  const [selectedOption, setSelectedOption] =
+    useState<CheckoutOption | null>(null);
+  const [optionConfirmed, setOptionConfirmed] = useState<boolean>(false);
+  const chosenOption = useMemo(
+    () => CHECKOUT_OPTIONS.find((o) => o.id === selectedOption) ?? null,
+    [CHECKOUT_OPTIONS, selectedOption],
+  );
+  const purchaseAmount = chosenOption?.price ?? PRICE_PER_HOUR;
+  const isSalesPhase = requiresPayment && !optionConfirmed;
 
   const role = (user as any)?.role ?? 'student';
   // Grupo de rutas segun rol. Se usa tanto para navegacion via router
@@ -254,7 +308,18 @@ export default function BookingSummary() {
     >
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <WizardHeader step={2} title="Resumen" onBack={() => router.back()} />
+      <WizardHeader
+        step={2}
+        title={isSalesPhase ? 'Elige tu opcion' : 'Resumen'}
+        onBack={() => {
+          if (requiresPayment && optionConfirmed) {
+            // Permitir volver del resumen al selector sin salir del wizard.
+            setOptionConfirmed(false);
+            return;
+          }
+          router.back();
+        }}
+      />
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
@@ -276,6 +341,71 @@ export default function BookingSummary() {
           </View>
         )}
 
+        {isSalesPhase ? (
+          <>
+            <View style={s.salesIntro}>
+              <View style={s.salesIcon}>
+                <Ionicons name="hourglass" size={22} color={colors.primaryDark} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.salesTitle}>No tienes horas disponibles</Text>
+                <Text style={s.salesSubtitle}>
+                  Escoge como deseas continuar para reservar tu clase.
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+              {CHECKOUT_OPTIONS.map((opt) => {
+                const on = selectedOption === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => setSelectedOption(opt.id)}
+                    style={({ pressed }) => [
+                      s.optionCard,
+                      on && s.optionCardOn,
+                      pressed && { opacity: 0.9 },
+                    ]}
+                  >
+                    <View style={[s.optionRadio, on && s.optionRadioOn]}>
+                      {on ? <View style={s.optionRadioDot} /> : null}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={s.optionHead}>
+                        <Text style={s.optionName}>{opt.name}</Text>
+                        {opt.tag ? (
+                          <View style={s.optionTag}>
+                            <Text style={s.optionTagText}>{opt.tag}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={s.optionSubtitle}>{opt.subtitle}</Text>
+                      <Text style={s.optionPrice}>${opt.price.toFixed(2)}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              onPress={() => selectedOption && setOptionConfirmed(true)}
+              disabled={!selectedOption}
+              style={({ pressed }) => [
+                s.primaryBtn,
+                !selectedOption && { opacity: 0.5 },
+                pressed && selectedOption && { opacity: 0.9 },
+              ]}
+            >
+              <Text style={s.primaryText}>Continuar</Text>
+            </Pressable>
+
+            <Pressable onPress={onChangeSchedule} style={s.secondaryBtn}>
+              <Text style={s.secondaryText}>Cambiar horario</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
         <View style={s.hero}>
           <View style={s.serviceTag}>
             <Ionicons name="person" size={11} color={colors.primaryDark} />
@@ -310,7 +440,7 @@ export default function BookingSummary() {
             <InfoLine
               icon="pricetag-outline"
               label="Precio"
-              value={`$${PRICE_PER_HOUR.toFixed(2)}`}
+              value={`$${purchaseAmount.toFixed(2)}`}
             />
           ) : null}
           <InfoLine
@@ -326,10 +456,12 @@ export default function BookingSummary() {
           <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
             <Text style={typography.h3}>Metodo de pago</Text>
             <Text style={typography.caption}>
-              Sin horas disponibles · Valor ${PRICE_PER_HOUR.toFixed(2)}. Elige un metodo y sube tu comprobante aqui mismo (opcional, puedes hacerlo despues desde la reserva).
+              {chosenOption
+                ? `${chosenOption.name} · Total $${purchaseAmount.toFixed(2)}. Elige un metodo y sube tu comprobante.`
+                : `Valor $${purchaseAmount.toFixed(2)}. Elige un metodo y sube tu comprobante.`}
             </Text>
             <PaymentMethods
-              amount={PRICE_PER_HOUR}
+              amount={purchaseAmount}
               onUploadProof={(name) =>
                 setUploadedProof({ name, at: Date.now() })
               }
@@ -419,6 +551,8 @@ export default function BookingSummary() {
         <Pressable onPress={onChangeSchedule} style={s.secondaryBtn}>
           <Text style={s.secondaryText}>Cambiar horario</Text>
         </Pressable>
+          </>
+        )}
       </ScrollView>
 
       <Modal
@@ -1134,4 +1268,106 @@ const s = StyleSheet.create({
     borderRadius: radius.pill,
   },
   chipText: { fontSize: 12, fontWeight: '700' },
+
+  // Fase venta inteligente
+  salesIntro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+  },
+  salesIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  salesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  salesSubtitle: {
+    fontSize: 13,
+    color: colors.textSubtle,
+    marginTop: 2,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  optionCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  optionCardOn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  optionRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  optionRadioOn: {
+    borderColor: colors.primary,
+  },
+  optionRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  optionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  optionName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  optionTag: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  optionTagText: {
+    color: colors.textOnPrimary,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  optionSubtitle: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    marginTop: 4,
+    fontWeight: '500',
+    lineHeight: 17,
+  },
+  optionPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
 });

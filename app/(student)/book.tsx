@@ -68,6 +68,24 @@ export default function StudentBookHub() {
           para que la unica accion dominante de esta pantalla sea
           "Reservar clase". Mi plan vive en Perfil (via Perfil > Mi plan)
           como unico punto de acceso administrativo. */}
+      {hoursLeft > 0 && hoursLeft <= 2 ? (
+        <View style={styles.lowNudge}>
+          <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.lowNudgeTitle}>Te quedan pocas horas</Text>
+            <Text style={styles.lowNudgeSubtitle}>
+              Puedes renovarlas antes de que se agoten.
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => router.push('/(student)/payments' as any)}
+            style={({ pressed }) => [styles.lowNudgeBtn, pressed && { opacity: 0.85 }]}
+            hitSlop={6}
+          >
+            <Text style={styles.lowNudgeBtnText}>Ver planes</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -224,6 +242,43 @@ const styles = StyleSheet.create({
   },
   acquireLinkText: {
     display: 'none',
+  },
+
+  // Nudge discreto cuando el saldo es bajo (Fase venta inteligente,
+  // Caso 3). No interrumpe el flujo principal de reserva.
+  lowNudge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  lowNudgeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  lowNudgeSubtitle: {
+    fontSize: 11,
+    color: colors.textSubtle,
+    marginTop: 1,
+    fontWeight: '500',
+  },
+  lowNudgeBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.warning,
+  },
+  lowNudgeBtnText: {
+    color: colors.textOnPrimary,
+    fontWeight: '700',
+    fontSize: 12,
   },
 
   sectionRow: { marginBottom: spacing.md },
