@@ -92,7 +92,7 @@ const TONE_MAP = {
   primary: { bg: colors.primarySoft, fg: colors.primaryDark },
 } as const;
 
-type CatalogMode = 'plans' | 'bank' | 'topup' | 'invoices' | null;
+type CatalogMode = 'plans' | 'bank' | 'topup' | 'soportes' | null;
 
 export default function GuardianDashboard() {
   const router = useRouter();
@@ -420,10 +420,10 @@ export default function GuardianDashboard() {
         onPress={() => openCatalog('topup')}
       />
       <ActionBtn
-        icon="receipt"
-        label="Facturas"
-        active={catalogMode === 'invoices'}
-        onPress={() => openCatalog('invoices')}
+        icon="ribbon"
+        label="Soportes de Pago"
+        active={catalogMode === 'soportes'}
+        onPress={() => openCatalog('soportes')}
       />
     </View>
   );
@@ -497,31 +497,35 @@ export default function GuardianDashboard() {
         </View>
       ) : null}
 
-      {catalogMode === 'invoices' ? (
+      {catalogMode === 'soportes' ? (
         <View style={{ gap: spacing.sm }}>
-          <Text style={styles.topUpsTitle}>Facturas de {activeStudent.firstName}</Text>
-          {studentHistory.length === 0 ? (
-            <Text style={styles.methodsFoot}>
-              Aún no hay facturas emitidas.
-            </Text>
-          ) : (
-            studentHistory.map((p) => (
+          <Text style={styles.topUpsTitle}>Soportes de Pago de {activeStudent.firstName}</Text>
+          {(() => {
+            const soportes = studentHistory.filter((p) => p.status === 'paid');
+            if (soportes.length === 0) {
+              return (
+                <Text style={styles.methodsFoot}>
+                  Aun no hay soportes emitidos. Se generan al aprobarse un pago.
+                </Text>
+              );
+            }
+            return soportes.map((p) => (
               <Pressable
                 key={p.id}
                 onPress={() => openDetail(p.id)}
                 style={({ pressed }) => [styles.invoiceRow, pressed && { opacity: 0.9 }]}
               >
                 <View style={styles.invoiceIcon}>
-                  <Ionicons name="receipt-outline" size={14} color={colors.primaryDark} />
+                  <Ionicons name="ribbon-outline" size={14} color={colors.primaryDark} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.invoiceTitle} numberOfLines={1}>{p.concept}</Text>
-                  <Text style={styles.invoiceMeta}>{p.date} · ${p.amount}</Text>
+                  <Text style={styles.invoiceMeta}>{p.date} - ${p.amount}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
               </Pressable>
-            ))
-          )}
+            ));
+          })()}
         </View>
       ) : null}
 
