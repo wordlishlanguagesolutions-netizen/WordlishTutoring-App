@@ -6,29 +6,32 @@ import { Screen, Header, WebTwoColumn, Avatar } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import {
-  guardianPaymentsHistory,
   PAYMENT_STATUS,
   linkedStudents,
+  reportsHistory,
+  BOOKING_STATUS,
 } from '@/services/mockData';
+import { getGuardianPaymentsHistory } from '@/services/paymentsService';
 import { useBookings } from '@/hooks/useBookings';
 
 // ============================================================================
-// Mi plan · dashboard del acudiente (P2 · MVP Ready).
+// Dashboard del Acudiente · centro de gestión del estudiante.
 //
-// Único punto de administración financiera por estudiante:
-//   · Resumen (plan activo, estado, horas, próximo vencimiento)
-//   · Acciones rápidas (comprar plan / banco / recarga / métodos de pago)
-//   · Último pago + historial de pagos e "invoice" (recibo por pago)
+// Un único lugar desde donde el acudiente puede administrar completamente
+// a cada estudiante: estado, plan, horas, próxima clase, pagos, reportes
+// y compras. Toda la información de otras pantallas confluye aquí.
 //
-// Reutiliza el catálogo mock existente (mismos precios que estudiante)
-// y filtra el historial por el estudiante seleccionado. Cambia según
-// el selector superior si el acudiente tiene varios estudiantes. Todo
-// vive en una sola pantalla, con dos columnas en desktop.
+// Estructura:
+//   1. Selector de estudiante (si >1)
+//   2. Tarjeta perfil: foto, nombre, plan, estado, horas, renovación, próx.
+//   3. Acciones rápidas: Reservar · Plan · Banco · Adicional · Facturas
+//   4. Info: último pago · próximas clases · último reporte
+//   5. Historial de pagos (compacto)
 //
-// Compatibilidad Cloud: la fuente de datos hoy son mocks (linkedStudents +
-// guardianPaymentsHistory + useBookings.remainingHours); cuando se migre
-// Payments a Cloud basta con inyectar los mismos shapes desde el servicio,
-// sin cambios en la UI.
+// Cambia por completo según el estudiante seleccionado. Todo el catálogo
+// vive en un panel colapsable (compra sin reservar). Compatible con
+// futuras migraciones Payments → Cloud y Notifications → Cloud sin
+// cambios en la UI (solo se inyecta la fuente de datos).
 // ============================================================================
 
 type PlanOffer = {
@@ -75,16 +78,15 @@ const TONE_MAP = {
   danger: { bg: colors.dangerSoft, fg: colors.danger },
   info: { bg: colors.infoSoft, fg: colors.info },
   muted: { bg: colors.surfaceAlt, fg: colors.textMuted },
+  primary: { bg: colors.primarySoft, fg: colors.primaryDark },
 } as const;
 
-// Modo del panel de catálogo. El botón de accion rápida abre el panel
-// directamente en la sección elegida, sin crear pantallas nuevas.
-type CatalogMode = 'plans' | 'bank' | 'topup' | 'methods' | null;
+type CatalogMode = 'plans' | 'bank' | 'topup' | 'invoices' | null;
 
-export default function GuardianMyPlan() {
+export default function GuardianDashboard() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
-  const { remainingHours } = useBookings();
+  const { remainingHours, bookings } = useBookings();
 
   const [activeStudentId, setActiveStudentId] = useState<string>(
     linkedStudents[0]?.id ?? '',
@@ -103,16 +105,37 @@ export default function GuardianMyPlan() {
   const isEmpty = remaining === 0;
   const nextRenewal = '15 Ago 2026'; // Mock · reemplazable por Cloud
 
-  // Historial filtrado por el estudiante activo. Filtra por firstName
-  // dentro del concepto (patrón "Paquete X horas · Lucía").
+  // Historial filtrado por el estudiante activo (búsqueda por firstName).
+  // Cloud-ready: consumimos la lista desde el service facade, que
+  // hoy sirve el mock y mañana servirá datos hidratados desde Cloud
+  // manteniendo la misma forma legacy.
   const studentHistory = useMemo(
     () =>
-      guardianPaymentsHistory.filter((p) =>
+      getGuardianPaymentsHistory().filter((p) =>
         p.concept.toLowerCase().includes(activeStudent.firstName.toLowerCase()),
       ),
     [activeStudent.id],
   );
   const lastPayment = studentHistory[0];
+
+  // Próximas clases del estudiante seleccionado.
+  const today = new Date().toISOString().split('T')[0];
+  const upcomingClasses = useMemo(
+    () =>
+      bookings
+        .filter(
+          (b) =>
+            b.studentId === activeStudent.id &&
+            b.date >= today &&
+            !['cancelled', 'completed'].includes(b.status),
+        )
+        .sort((a, b) => (a.date + a.time > b.date + b.time ? 1 : -1))
+        .slice(0, 3),
+    [bookings, activeStudent.id],
+  );
+
+  // Último reporte del estudiante (mock global · reportsHistory[0]).
+  const lastReport = reportsHistory[0];
 
   const featuredPlan = useMemo(
     () => ACTIVE_PLANS.find((p) => p.active && p.featured),
@@ -143,6 +166,8 @@ export default function GuardianMyPlan() {
   const openCatalog = (mode: CatalogMode) => {
     setCatalogMode((prev) => (prev === mode ? null : mode));
   };
+
+  const goReserve = () => router.push('/booking/type' as any);
 
   // ══════════════════ Bloques ══════════════════
   const StudentSelector = linkedStudents.length > 1 ? (
@@ -187,54 +212,62 @@ export default function GuardianMyPlan() {
     </ScrollView>
   ) : null;
 
-  const SummaryCard = (
-    <View style={styles.summaryCard}>
-      <View style={styles.summaryHead}>
+  const ProfileCard = (
+    <View style={styles.profileCard}>
+      <View style={styles.profileHead}>
         <Avatar
           name={activeStudent.name}
           uri={activeStudent.avatar}
-          size={44}
+          size={64}
         />
         <View style={{ flex: 1 }}>
-          <Text style={styles.summaryName}>{activeStudent.name}</Text>
-          <Text style={styles.summaryPlan}>{planName}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusPill,
-            isEmpty
-              ? { backgroundColor: colors.dangerSoft }
-              : isLow
-              ? { backgroundColor: colors.warningSoft }
-              : { backgroundColor: colors.successSoft },
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor: isEmpty
-                  ? colors.danger
-                  : isLow
-                  ? colors.warning
-                  : colors.success,
-              },
-            ]}
-          />
-          <Text
-            style={[
-              styles.statusPillText,
-              {
-                color: isEmpty
-                  ? colors.danger
-                  : isLow
-                  ? colors.warning
-                  : colors.success,
-              },
-            ]}
-          >
-            {isEmpty ? 'Sin horas' : isLow ? 'Saldo bajo' : 'Activo'}
+          <Text style={styles.profileName}>{activeStudent.name}</Text>
+          <Text style={styles.profileGrade}>
+            {activeStudent.grade} · {activeStudent.school}
           </Text>
+          <View style={styles.profileBadges}>
+            <View
+              style={[
+                styles.statusPill,
+                isEmpty
+                  ? { backgroundColor: colors.dangerSoft }
+                  : isLow
+                  ? { backgroundColor: colors.warningSoft }
+                  : { backgroundColor: colors.successSoft },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: isEmpty
+                      ? colors.danger
+                      : isLow
+                      ? colors.warning
+                      : colors.success,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusPillText,
+                  {
+                    color: isEmpty
+                      ? colors.danger
+                      : isLow
+                      ? colors.warning
+                      : colors.success,
+                  },
+                ]}
+              >
+                {isEmpty ? 'Sin horas' : isLow ? 'Saldo bajo' : 'Plan activo'}
+              </Text>
+            </View>
+            <View style={styles.planBadge}>
+              <Ionicons name="pricetag" size={10} color={colors.primaryDark} />
+              <Text style={styles.planBadgeText}>{planName}</Text>
+            </View>
+          </View>
         </View>
       </View>
 
@@ -259,15 +292,31 @@ export default function GuardianMyPlan() {
         </View>
       </View>
 
-      <View style={styles.renewalRow}>
-        <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
-        <Text style={styles.renewalText}>Próxima renovación · {nextRenewal}</Text>
+      <View style={styles.profileFoot}>
+        <View style={styles.footRow}>
+          <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
+          <Text style={styles.footText}>Renovación · {nextRenewal}</Text>
+        </View>
+        {activeStudent.next ? (
+          <View style={styles.footRow}>
+            <Ionicons name="time-outline" size={13} color={colors.primaryDark} />
+            <Text style={[styles.footText, { color: colors.primaryDark, fontWeight: '700' }]}>
+              Próxima · {activeStudent.next}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 
   const QuickActions = (
     <View style={styles.actionsGrid}>
+      <ActionBtn
+        icon="add-circle"
+        label="Reservar clase"
+        emphasis
+        onPress={goReserve}
+      />
       <ActionBtn
         icon="pricetags"
         label="Comprar plan"
@@ -281,16 +330,16 @@ export default function GuardianMyPlan() {
         onPress={() => openCatalog('bank')}
       />
       <ActionBtn
-        icon="add-circle"
+        icon="flash"
         label="Horas adicionales"
         active={catalogMode === 'topup'}
         onPress={() => openCatalog('topup')}
       />
       <ActionBtn
-        icon="card"
-        label="Métodos de pago"
-        active={catalogMode === 'methods'}
-        onPress={() => openCatalog('methods')}
+        icon="receipt"
+        label="Facturas"
+        active={catalogMode === 'invoices'}
+        onPress={() => openCatalog('invoices')}
       />
     </View>
   );
@@ -364,15 +413,31 @@ export default function GuardianMyPlan() {
         </View>
       ) : null}
 
-      {catalogMode === 'methods' ? (
+      {catalogMode === 'invoices' ? (
         <View style={{ gap: spacing.sm }}>
-          <Text style={styles.topUpsTitle}>Métodos aceptados</Text>
-          <MethodRow icon="phone-portrait" label="Yappy" hint="Pago instantáneo" />
-          <MethodRow icon="business" label="ACH" hint="Transferencia bancaria" />
-          <MethodRow icon="card" label="Tarjeta" hint="Débito o crédito" />
-          <Text style={styles.methodsFoot}>
-            Los métodos se aplican al confirmar la reserva o la compra.
-          </Text>
+          <Text style={styles.topUpsTitle}>Facturas de {activeStudent.firstName}</Text>
+          {studentHistory.length === 0 ? (
+            <Text style={styles.methodsFoot}>
+              Aún no hay facturas emitidas.
+            </Text>
+          ) : (
+            studentHistory.map((p) => (
+              <Pressable
+                key={p.id}
+                onPress={() => openDetail(p.id)}
+                style={({ pressed }) => [styles.invoiceRow, pressed && { opacity: 0.9 }]}
+              >
+                <View style={styles.invoiceIcon}>
+                  <Ionicons name="receipt-outline" size={14} color={colors.primaryDark} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.invoiceTitle} numberOfLines={1}>{p.concept}</Text>
+                  <Text style={styles.invoiceMeta}>{p.date} · ${p.amount}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+              </Pressable>
+            ))
+          )}
         </View>
       ) : null}
 
@@ -389,32 +454,106 @@ export default function GuardianMyPlan() {
       return (
         <Pressable
           onPress={() => openDetail(lastPayment.id)}
-          style={({ pressed }) => [styles.lastPayCard, pressed && { opacity: 0.95 }]}
+          style={({ pressed }) => [styles.infoCard, pressed && { opacity: 0.95 }]}
         >
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.lastPayLabel}>Último pago</Text>
-            <Text style={styles.lastPayConcept} numberOfLines={1}>
-              {lastPayment.concept}
-            </Text>
-            <Text style={styles.lastPayMeta}>{lastPayment.date}</Text>
-          </View>
-          <View style={{ alignItems: 'flex-end', gap: 6 }}>
-            <Text style={styles.lastPayAmount}>${lastPayment.amount}</Text>
+          <View style={styles.infoHead}>
+            <Text style={styles.infoLabel}>Último pago</Text>
             <View style={[styles.badgeSmall, { backgroundColor: t.bg }]}>
               <Text style={[styles.badgeText, { color: t.fg }]}>{st.label}</Text>
             </View>
           </View>
+          <View style={styles.infoBody}>
+            <Text style={styles.infoConcept} numberOfLines={1}>
+              {lastPayment.concept}
+            </Text>
+            <Text style={styles.infoMeta}>
+              {lastPayment.date} · {lastPayment.method}
+            </Text>
+          </View>
+          <Text style={styles.infoAmount}>${lastPayment.amount}</Text>
         </Pressable>
       );
     })()
   ) : (
-    <View style={styles.emptyPay}>
-      <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+    <View style={styles.infoEmpty}>
+      <Ionicons name="time-outline" size={20} color={colors.textMuted} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.emptyPayTitle}>Sin pagos registrados</Text>
-        <Text style={styles.emptyPaySubtitle}>
-          Al comprar un plan aparecerá aquí.
+        <Text style={styles.infoLabel}>Último pago</Text>
+        <Text style={styles.infoEmptyText}>Sin pagos registrados</Text>
+      </View>
+    </View>
+  );
+
+  const UpcomingCard = (
+    <View style={styles.infoCard}>
+      <View style={styles.infoHead}>
+        <Text style={styles.infoLabel}>Próximas clases</Text>
+        <Text style={styles.infoCount}>{upcomingClasses.length}</Text>
+      </View>
+      {upcomingClasses.length === 0 ? (
+        <Text style={styles.infoEmptyText}>Sin clases próximas</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {upcomingClasses.map((b) => {
+            const info = BOOKING_STATUS[b.status];
+            const t = TONE_MAP[info.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
+            return (
+              <Pressable
+                key={b.id}
+                onPress={() => router.push(`/booking/${b.id}` as any)}
+                style={({ pressed }) => [styles.upcomingRow, pressed && { opacity: 0.9 }]}
+              >
+                <View style={styles.upcomingDate}>
+                  <Text style={styles.upcomingDateText}>{b.date.slice(5)}</Text>
+                  <Text style={styles.upcomingTime}>{b.time}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.upcomingSubject} numberOfLines={1}>{b.subject}</Text>
+                  <Text style={styles.upcomingTeacher} numberOfLines={1}>{b.teacherName}</Text>
+                </View>
+                <View style={[styles.badgeSmall, { backgroundColor: t.bg }]}>
+                  <Text style={[styles.badgeText, { color: t.fg }]}>{info.label}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+
+  const LastReportCard = lastReport ? (
+    <Pressable
+      onPress={() => router.push(`/reports/${lastReport.id}` as any)}
+      style={({ pressed }) => [styles.infoCard, pressed && { opacity: 0.95 }]}
+    >
+      <View style={styles.infoHead}>
+        <Text style={styles.infoLabel}>Último reporte</Text>
+        <View style={styles.reportBadge}>
+          <Ionicons name="document-text" size={10} color={colors.primaryDark} />
+          <Text style={styles.reportBadgeText}>Disponible</Text>
+        </View>
+      </View>
+      <View style={styles.infoBody}>
+        <Text style={styles.infoConcept} numberOfLines={1}>{lastReport.topic}</Text>
+        <Text style={styles.infoMeta}>
+          {lastReport.teacher} · {lastReport.date}
         </Text>
+        <Text style={styles.reportSummary} numberOfLines={2}>
+          {lastReport.progress}
+        </Text>
+      </View>
+      <View style={styles.reportOpen}>
+        <Text style={styles.reportOpenText}>Ver bitácora</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.primaryDark} />
+      </View>
+    </Pressable>
+  ) : (
+    <View style={styles.infoEmpty}>
+      <Ionicons name="document-text-outline" size={20} color={colors.textMuted} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.infoLabel}>Último reporte</Text>
+        <Text style={styles.infoEmptyText}>Sin reportes aún</Text>
       </View>
     </View>
   );
@@ -422,7 +561,7 @@ export default function GuardianMyPlan() {
   const HistoryBlock = (
     <View>
       <View style={styles.sectionHead}>
-        <Text style={typography.h3}>Historial</Text>
+        <Text style={typography.h3}>Historial de pagos</Text>
         <Text style={styles.sectionCount}>{studentHistory.length}</Text>
       </View>
       {studentHistory.length === 0 ? (
@@ -470,8 +609,8 @@ export default function GuardianMyPlan() {
         title="Mi plan"
         subtitle={
           linkedStudents.length > 1
-            ? `Administra el plan de ${activeStudent.firstName}`
-            : 'Plan, horas y pagos'
+            ? `Gestión de ${activeStudent.firstName}`
+            : 'Centro de gestión del estudiante'
         }
       />
 
@@ -483,7 +622,7 @@ export default function GuardianMyPlan() {
           rightFlex={7}
           left={
             <View style={{ gap: spacing.md }}>
-              {SummaryCard}
+              {ProfileCard}
               {QuickActions}
               {CatalogPanel}
             </View>
@@ -491,13 +630,15 @@ export default function GuardianMyPlan() {
           right={
             <View style={{ gap: spacing.md }}>
               {LastPaymentCard}
+              {UpcomingCard}
+              {LastReportCard}
               {HistoryBlock}
             </View>
           }
         />
       ) : (
         <>
-          {SummaryCard}
+          {ProfileCard}
           <View style={{ height: spacing.md }} />
           {QuickActions}
           {CatalogPanel ? (
@@ -508,6 +649,10 @@ export default function GuardianMyPlan() {
           ) : null}
           <View style={{ height: spacing.lg }} />
           {LastPaymentCard}
+          <View style={{ height: spacing.md }} />
+          {UpcomingCard}
+          <View style={{ height: spacing.md }} />
+          {LastReportCard}
           <View style={{ height: spacing.lg }} />
           {HistoryBlock}
         </>
@@ -520,11 +665,13 @@ function ActionBtn({
   icon,
   label,
   active,
+  emphasis,
   onPress,
 }: {
   icon: string;
   label: string;
-  active: boolean;
+  active?: boolean;
+  emphasis?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -533,6 +680,7 @@ function ActionBtn({
       style={({ pressed }) => [
         styles.actionBtn,
         active && styles.actionBtnOn,
+        emphasis && styles.actionBtnEmphasis,
         pressed && { opacity: 0.9 },
       ]}
     >
@@ -540,46 +688,32 @@ function ActionBtn({
         style={[
           styles.actionIcon,
           active && { backgroundColor: colors.primary },
+          emphasis && { backgroundColor: colors.textOnPrimary },
         ]}
       >
         <Ionicons
           name={icon as any}
           size={16}
-          color={active ? colors.textOnPrimary : colors.primaryDark}
+          color={
+            emphasis
+              ? colors.primary
+              : active
+              ? colors.textOnPrimary
+              : colors.primaryDark
+          }
         />
       </View>
       <Text
         style={[
           styles.actionLabel,
           active && { color: colors.primaryDark },
+          emphasis && { color: colors.textOnPrimary },
         ]}
         numberOfLines={1}
       >
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-function MethodRow({
-  icon,
-  label,
-  hint,
-}: {
-  icon: string;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <View style={styles.methodRow}>
-      <View style={styles.methodIcon}>
-        <Ionicons name={icon as any} size={16} color={colors.primaryDark} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.methodLabel}>{label}</Text>
-        <Text style={styles.methodHint}>{hint}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -611,8 +745,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
-  // ─── Summary Card ───────────────────────────────────────────────────
-  summaryCard: {
+  // ─── Profile Card ────────────────────────────────────────────────────
+  profileCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
@@ -620,22 +754,28 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadow.sm,
   },
-  summaryHead: {
+  profileHead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  summaryName: {
-    fontSize: 17,
+  profileName: {
+    fontSize: 18,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.2,
   },
-  summaryPlan: {
-    fontSize: 13,
+  profileGrade: {
+    fontSize: 12,
     color: colors.textSubtle,
     marginTop: 2,
     fontWeight: '500',
+  },
+  profileBadges: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    flexWrap: 'wrap',
   },
   statusPill: {
     flexDirection: 'row',
@@ -647,6 +787,16 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
   statusPillText: { fontSize: 11, fontWeight: '700' },
+  planBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  planBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primaryDark },
 
   metricsRow: {
     flexDirection: 'row',
@@ -677,13 +827,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
 
-  renewalRow: {
+  profileFoot: {
+    marginTop: spacing.md,
+    gap: 6,
+  },
+  footRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: spacing.md,
   },
-  renewalText: {
+  footText: {
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '500',
@@ -711,6 +864,10 @@ const styles = StyleSheet.create({
   actionBtnOn: {
     borderColor: colors.primary,
     backgroundColor: colors.primarySoft,
+  },
+  actionBtnEmphasis: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   actionIcon: {
     width: 32,
@@ -743,7 +900,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Plan destacado
   featuredCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -822,14 +978,16 @@ const styles = StyleSheet.create({
   topUpHours: { fontSize: 13, fontWeight: '700', color: colors.text },
   topUpPrice: { fontSize: 12, color: colors.primaryDark, fontWeight: '700' },
 
-  // Methods
-  methodRow: {
+  invoiceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: 8,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
   },
-  methodIcon: {
+  invoiceIcon: {
     width: 32,
     height: 32,
     borderRadius: 10,
@@ -837,38 +995,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  methodLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
-  methodHint: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  invoiceTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+  invoiceMeta: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
   methodsFoot: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
     fontStyle: 'italic',
-    marginTop: 4,
   },
 
-  // ─── Último pago + historial ────────────────────────────────────────
-  lastPayCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  // ─── Info cards (último pago · próximas · reporte) ──────────────────
+  infoCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.primaryLight,
+    borderColor: colors.border,
+    gap: spacing.sm,
   },
-  lastPayLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  lastPayConcept: { fontSize: 15, fontWeight: '700', color: colors.text },
-  lastPayMeta: { fontSize: 12, color: colors.textSubtle, fontWeight: '500' },
-  lastPayAmount: { fontSize: 22, fontWeight: '700', color: colors.text },
-
-  emptyPay: {
+  infoEmpty: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -878,9 +1022,84 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  emptyPayTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
-  emptyPaySubtitle: { fontSize: 12, color: colors.textSubtle, marginTop: 2 },
+  infoHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  infoCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  infoBody: { gap: 2 },
+  infoConcept: { fontSize: 15, fontWeight: '700', color: colors.text },
+  infoMeta: { fontSize: 12, color: colors.textSubtle, fontWeight: '500' },
+  infoAmount: { fontSize: 22, fontWeight: '700', color: colors.text },
+  infoEmptyText: { fontSize: 13, color: colors.textSubtle, fontWeight: '500', marginTop: 2 },
 
+  upcomingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 6,
+  },
+  upcomingDate: {
+    width: 52,
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    paddingVertical: 4,
+  },
+  upcomingDateText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+  upcomingTime: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
+  },
+  upcomingSubject: { fontSize: 13, fontWeight: '700', color: colors.text },
+  upcomingTeacher: { fontSize: 11, color: colors.textSubtle, marginTop: 1 },
+
+  reportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  reportBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primaryDark },
+  reportSummary: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    lineHeight: 17,
+    marginTop: 6,
+  },
+  reportOpen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  reportOpenText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
+
+  // ─── Historial ──────────────────────────────────────────────────────
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',

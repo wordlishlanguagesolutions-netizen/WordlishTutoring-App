@@ -11,6 +11,7 @@ export { screenshotsRepo } from '@/services/screenshotsService';
 export { reportsRepo } from '@/services/reportsService';
 export { classEventsRepo } from './classEvents';
 export { notificationsRepo } from './notifications';
-export { paymentsRepo } from './payments';
+// Módulo #13 (Payments) migrado: facade sincrónico sobre paymentsCloudRepo.
+export { paymentsRepo } from '@/services/paymentsService';
 export { availabilityRepo } from './availability';
 export { payrollsRepo } from './payrolls';
