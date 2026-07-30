@@ -1,13 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Switch,
-  TextInput,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, Switch, TextInput, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, Card, SupportRow, Modal, StatusBadge } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
@@ -19,6 +11,7 @@ import {
   type PaymentMethodOption,
 } from '@/services/paymentConfig';
 import {
+  getSetting,
   hydrateAppSettings,
   subscribeSettings,
 } from '@/services/appSettingsService';
@@ -53,6 +46,63 @@ const OPERATIONAL = [
   { icon: 'time-outline', title: 'Tolerancia estudiante', value: '15 minutos' },
 ];
 
+// ---------------------------------------------------------------------------
+// Production readiness · claves criticas de app_settings.
+// Si alguna falta o queda vacia, se muestra un banner solo al admin.
+// No rompe la app: los defaults del service cubren el caso offline.
+// ---------------------------------------------------------------------------
+interface ReadinessCheck { key: string; label: string; kind: 'string' | 'number' | 'list'; }
+const READINESS_CHECKS: ReadinessCheck[] = [
+  { key: 'payment.yappy_number',        label: 'Numero Yappy',              kind: 'string' },
+  { key: 'payment.ach_account',         label: 'Cuenta ACH',                kind: 'string' },
+  { key: 'payment.beneficiary_name',    label: 'Beneficiario',              kind: 'string' },
+  { key: 'payment.checkout_url',        label: 'URL checkout (Cuanto)',     kind: 'string' },
+  { key: 'payment.price_per_hour_usd',  label: 'Precio por hora (USD)',     kind: 'number' },
+  { key: 'payment.methods_enabled',     label: 'Metodos de pago activos',   kind: 'list'   },
+  { key: 'whatsapp.official_number',    label: 'WhatsApp oficial',          kind: 'string' },
+  { key: 'zoom.official_link',          label: 'Enlace de Zoom',            kind: 'string' },
+];
+
+function collectMissingSettings(): ReadinessCheck[] {
+  const missing: ReadinessCheck[] = [];
+  READINESS_CHECKS.forEach((c) => {
+    const v = getSetting<unknown>(c.key, undefined as unknown);
+    if (c.kind === 'string') {
+      if (typeof v !== 'string' || v.trim().length === 0) missing.push(c);
+    } else if (c.kind === 'number') {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(n) || n <= 0) missing.push(c);
+    } else {
+      if (!Array.isArray(v) || v.length === 0) missing.push(c);
+    }
+  });
+  return missing;
+}
+
+function ReadinessBanner({ missing }: { missing: ReadinessCheck[] }) {
+  if (missing.length === 0) return null;
+  return (
+    <View style={readinessStyles.wrap}>
+      <View style={readinessStyles.head}>
+        <Ionicons name="warning" size={18} color={colors.warning} />
+        <Text style={readinessStyles.title}>Configuracion pendiente para produccion</Text>
+      </View>
+      <Text style={readinessStyles.desc}>
+        Faltan {missing.length} {missing.length === 1 ? 'ajuste' : 'ajustes'} para habilitar cobros reales. Solo tu (admin) ves este aviso; la app sigue funcionando con valores por defecto.
+      </Text>
+      <View style={{ gap: 6, marginTop: spacing.sm }}>
+        {missing.map((m) => (
+          <View key={m.key} style={readinessStyles.row}>
+            <Ionicons name="ellipse" size={6} color={colors.warning} />
+            <Text style={readinessStyles.rowLabel}>{m.label}</Text>
+            <Text style={readinessStyles.rowKey}>{m.key}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   // Re-render reactivo cuando cambia cualquier valor de app_settings.
   const [settingsTick, setSettingsTick] = useState(0);
@@ -65,6 +115,11 @@ export default function SettingsScreen() {
 
   // Valor live desde app_settings (nunca cacheado en estado local).
   const waEnabled = paymentConfig.whatsappProofEnabled;
+  const missingSettings = useMemo(
+    () => collectMissingSettings(),
+    // settingsTick fuerza reevaluacion cuando cualquier valor cambia.
+    [settingsTick],
+  );
 
   const toggleWhatsapp = (v: boolean) => {
     // Optimistic + rollback los maneja el servicio; el subscribe repinta.
@@ -74,6 +129,8 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <Header title="Ajustes" subtitle="Configuración global" />
+
+      <ReadinessBanner missing={missingSettings} />
 
       <Text style={styles.section}>Comunicación</Text>
       <Text style={typography.caption}>
@@ -510,6 +567,24 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '600',
   },
+});
+
+const readinessStyles = StyleSheet.create({
+  wrap: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    gap: 4,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  title: { color: colors.warning, fontWeight: '700', fontSize: 14 },
+  desc: { color: colors.textSubtle, fontSize: 12, lineHeight: 17 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rowLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.text },
+  rowKey: { fontSize: 11, color: colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });
 
 const ratesStyles = StyleSheet.create({

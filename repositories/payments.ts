@@ -58,6 +58,7 @@ function toModel(row: DbPaymentRow): Payment {
     method: row.method,
     paidAt: row.paid_at,
     externalReference: row.external_reference,
+    receiptUrl: row.receipt_url ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -104,6 +104,9 @@ export default function GuardianDashboard() {
     linkedStudents[0]?.id ?? '',
   );
   const [catalogMode, setCatalogMode] = useState<CatalogMode>(null);
+  // QA fix: bloquea doble clic accidental en compras (plan/topup) para
+  // evitar Payments duplicados. Se libera automaticamente tras 2s.
+  const [purchaseBusy, setPurchaseBusy] = useState<boolean>(false);
 
   // QA fix: reactivo al cache de payments (compras/aprobaciones
   // deben aparecer sin recargar). subscribePayments dispara un
@@ -191,6 +194,9 @@ export default function GuardianDashboard() {
     router.push(`/payments/${id}?kind=guardianPayment` as any);
 
   const choosePlan = (plan: PlanOffer) => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
+    setTimeout(() => setPurchaseBusy(false), 2000);
     // QA fix (Payments Cloud): persistir la compra como Payment
     // 'pending' con guardianId REAL resuelto desde Auth (no null) y
     // createdBy = user.id para trazabilidad.
@@ -216,6 +222,9 @@ export default function GuardianDashboard() {
   };
 
   const chooseTopUp = (t: QuickTopUp) => {
+    if (purchaseBusy) return;
+    setPurchaseBusy(true);
+    setTimeout(() => setPurchaseBusy(false), 2000);
     // QA fix (Payments Cloud): idem para recargas.
     paymentsRepo.create({
       studentId: activeStudent.id,
