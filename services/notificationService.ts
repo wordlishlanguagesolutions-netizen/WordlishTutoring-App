@@ -1,15 +1,52 @@
-// Wordlish · Notification service
-// Fase 1: entrega in_app únicamente.
-// Preparado para despachar por push/whatsapp/email en Fase 2
-// vía Supabase Edge Functions.
+// ============================================================================
+// Wordlish · Notification service (Cloud real).
+//
+// Cache in-memory + suscripciones para el UI + persistencia async en
+// `public.notifications` (Cloud). Sin dependencia de mockDb: en
+// produccion todas las notificaciones viven en Cloud y RLS garantiza
+// que cada usuario solo lea las propias.
+//
+// Contrato publico se mantiene identico a la version previa para no
+// romper consumidores (BookingsContext, classService, payrollService,
+// etc.):
+//   · createNotification(args)   -> Notification (sincronico)
+//   · listNotifications(userId)  -> Notification[]
+//   · markAsRead(id)             -> void
+//   · markAllAsRead(userId)      -> void
+//   · unreadCount(userId)        -> number
+//
+// Anadido para la migracion:
+//   · hydrateNotifications(userId, force?) -> Promise<Notification[]>
+//   · subscribeNotifications(cb)           -> unsubscribe
+//   · resetNotificationsCache()            -> void
+// ============================================================================
 
-import type { Notification, NotificationType, NotificationChannel } from '@/types';
-import { mockDb, makeId } from './mockDb';
+import type {
+  Notification,
+  NotificationType,
+  NotificationChannel,
+} from '@/types';
+import {
+  notificationsCloudRepo,
+  type NotificationCreateArgs as CloudNotificationCreateArgs,
+} from '@/repositories/notifications';
 import { pushService } from './pushService';
+
+// ---------------------------------------------------------------------------
+// Helpers.
+// ---------------------------------------------------------------------------
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(id: string | null | undefined): boolean {
+  return typeof id === 'string' && UUID_RE.test(id);
+}
+function localId(): string {
+  return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+}
 
 type Tone = Notification['tone'];
 
-// Templates centralizados (i18n-ready)
+// Templates centralizados (i18n-ready).
 const TEMPLATES: Record<
   NotificationType,
   { title: string; tone: Tone; icon: string; channel: NotificationChannel }
@@ -32,6 +69,9 @@ const TEMPLATES: Record<
   system: { title: 'Notificación del sistema', tone: 'info', icon: 'notifications', channel: 'in_app' },
 };
 
+// ---------------------------------------------------------------------------
+// Contrato publico (identico al anterior).
+// ---------------------------------------------------------------------------
 export interface CreateNotificationArgs {
   userId: string;
   type: NotificationType;
@@ -44,11 +84,89 @@ export interface CreateNotificationArgs {
   scheduledFor?: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Cache + subscripciones.
+// ---------------------------------------------------------------------------
+let cache: Notification[] = [];
+const hydratedUsers = new Set<string>();
+const inflightHydration = new Map<string, Promise<Notification[]>>();
+let version = 0;
+const listeners = new Set<() => void>();
+
+function notify() {
+  version += 1;
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (err) {
+      console.warn('[notificationService] listener error', err);
+    }
+  });
+}
+
+export function subscribeNotifications(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+export function getNotificationsVersion(): number {
+  return version;
+}
+
+// Hidrata el buzon del usuario indicado desde Cloud. Reemplaza en
+// cache las filas propias de ese userId. Es idempotente y deduplica
+// llamadas concurrentes.
+export function hydrateNotifications(
+  userId: string,
+  force = false,
+): Promise<Notification[]> {
+  if (!userId) return Promise.resolve([]);
+  // Solo hidrata contra Cloud si el userId es un UUID real. En modo
+  // mock (ids 'u-admin', 'u-s1', ...) no hay filas en Cloud y no
+  // queremos limpiar el cache local.
+  if (!isUuid(userId)) return Promise.resolve(listNotifications(userId));
+  if (hydratedUsers.has(userId) && !force) {
+    return Promise.resolve(listNotifications(userId));
+  }
+  const existing = inflightHydration.get(userId);
+  if (existing) return existing;
+  const p = (async () => {
+    const rows = await notificationsCloudRepo.listForUser(userId);
+    // Reemplaza las notificaciones de ese usuario en el cache; deja
+    // el resto (otros usuarios) intactas para no romper vistas admin.
+    cache = [...cache.filter((n) => n.userId !== userId), ...rows];
+    hydratedUsers.add(userId);
+    inflightHydration.delete(userId);
+    notify();
+    return rows;
+  })();
+  inflightHydration.set(userId, p);
+  return p;
+}
+
+// ---------------------------------------------------------------------------
+// Reads sincronicos sobre el cache.
+// ---------------------------------------------------------------------------
+export function listNotifications(userId: string): Notification[] {
+  return cache
+    .filter((n) => n.userId === userId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export function unreadCount(userId: string): number {
+  return cache.filter((n) => n.userId === userId && !n.read).length;
+}
+
+// ---------------------------------------------------------------------------
+// Mutaciones (optimistic + fire-and-forget Cloud).
+// ---------------------------------------------------------------------------
 export function createNotification(args: CreateNotificationArgs): Notification {
   const template = TEMPLATES[args.type];
   const nowIso = new Date().toISOString();
   const n: Notification = {
-    id: makeId('n'),
+    id: localId(),
     userId: args.userId,
     type: args.type,
     title: args.title ?? template.title,
@@ -67,80 +185,100 @@ export function createNotification(args: CreateNotificationArgs): Notification {
     createdAt: nowIso,
     updatedAt: nowIso,
   };
-  mockDb.notifications.unshift(n);
+  cache = [n, ...cache];
+  notify();
 
-  // Encolar despacho por push (stub Fase 1)
+  // Persistir en Cloud solo si el destinatario es un usuario real.
+  // En modo mock (auth mock) los IDs no son UUID y la fila fallaria
+  // por la FK a auth.users. En Cloud real user_id es UUID y RLS
+  // garantiza aislamiento por auth.uid().
+  if (isUuid(args.userId)) {
+    const cloudArgs: CloudNotificationCreateArgs = {
+      userId: args.userId,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      channel: n.channel,
+      deliveryStatus: n.deliveryStatus,
+      actionRoute: n.actionRoute,
+      actionLabel: n.actionLabel,
+      refType: n.refType,
+      // ref_id es uuid en la DB. Solo enviamos si es UUID valido.
+      refId: isUuid(n.refId) ? n.refId : null,
+      scheduledFor: n.scheduledFor,
+      tone: n.tone,
+      icon: n.icon,
+    };
+    notificationsCloudRepo
+      .insert(cloudArgs)
+      .then(({ notification, error }) => {
+        if (error || !notification) {
+          console.warn('[notificationService.createNotification] Cloud fallo:', error);
+          return;
+        }
+        cache = cache.map((x) => (x.id === n.id ? notification : x));
+        notify();
+      })
+      .catch((err) =>
+        console.warn('[notificationService.createNotification] excepcion:', err),
+      );
+  }
+
+  // Push channel (stub Fase 1)
   if (template.channel === 'push' && !args.scheduledFor) {
     pushService.send(args.userId, args.type, { title: n.title, body: n.message });
   }
   return n;
 }
 
-export function listNotifications(userId: string): Notification[] {
-  return mockDb.notifications.filter((n) => n.userId === userId);
-}
-
 export function markAsRead(id: string): void {
-  const n = mockDb.notifications.find((x) => x.id === id);
-  if (!n) return;
-  n.read = true;
-  n.readAt = new Date().toISOString();
-  n.deliveryStatus = 'read';
-  n.updatedAt = n.readAt;
+  const target = cache.find((x) => x.id === id);
+  if (!target) return;
+  const nowIso = new Date().toISOString();
+  cache = cache.map((x) =>
+    x.id === id
+      ? {
+          ...x,
+          read: true,
+          readAt: nowIso,
+          deliveryStatus: 'read',
+          updatedAt: nowIso,
+        }
+      : x,
+  );
+  notify();
+  if (isUuid(id)) {
+    notificationsCloudRepo.markRead(id).catch((err) =>
+      console.warn('[notificationService.markAsRead] Cloud fallo:', err),
+    );
+  }
 }
 
 export function markAllAsRead(userId: string): void {
   const nowIso = new Date().toISOString();
-  mockDb.notifications
-    .filter((n) => n.userId === userId && !n.read)
-    .forEach((n) => {
-      n.read = true;
-      n.readAt = nowIso;
-      n.deliveryStatus = 'read';
-      n.updatedAt = nowIso;
-    });
+  cache = cache.map((x) =>
+    x.userId === userId && !x.read
+      ? {
+          ...x,
+          read: true,
+          readAt: nowIso,
+          deliveryStatus: 'read',
+          updatedAt: nowIso,
+        }
+      : x,
+  );
+  notify();
+  if (isUuid(userId)) {
+    notificationsCloudRepo.markAllReadForUser(userId).catch((err) =>
+      console.warn('[notificationService.markAllAsRead] Cloud fallo:', err),
+    );
+  }
 }
 
-export function unreadCount(userId: string): number {
-  return mockDb.notifications.filter((n) => n.userId === userId && !n.read).length;
+// Uso interno para logout / cambio de sesion.
+export function resetNotificationsCache(): void {
+  cache = [];
+  hydratedUsers.clear();
+  inflightHydration.clear();
+  notify();
 }
-
-// Seed inicial mínimo (una por rol)
-function seedInitialNotifications() {
-  if (mockDb.notifications.length > 0) return;
-  createNotification({
-    userId: 'u-s1',
-    type: 'class_reminder_24h',
-    message: 'Inglés básico con Prof. Carlos mañana a las 10:00.',
-    refType: 'booking',
-    refId: 'bk1',
-    actionRoute: '/(student)',
-  });
-  createNotification({
-    userId: 'u-g1',
-    type: 'payment_pending',
-    message: 'Pago pendiente de Pablo (Paquete 4 horas).',
-    refType: 'payment',
-    actionRoute: '/(guardian)/payments',
-  });
-  createNotification({
-    userId: 'u-t1',
-    type: 'availability_pending',
-    message: 'Publica tu disponibilidad antes del viernes.',
-    actionRoute: '/(teacher)/agenda',
-  });
-  createNotification({
-    userId: 'u-sup',
-    type: 'teacher_absent',
-    message: 'Prof. Ana Vega tardó 6 minutos en conectar.',
-    actionRoute: '/(supervisor)/alerts',
-  });
-  createNotification({
-    userId: 'u-admin',
-    type: 'system',
-    message: '2 incidencias activas en el día.',
-    actionRoute: '/(admin)',
-  });
-}
-
-seedInitialNotifications();

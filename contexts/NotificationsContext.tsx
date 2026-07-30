@@ -14,6 +14,8 @@ import {
   markAllAsRead as svcMarkAll,
   unreadCount as svcUnread,
   createNotification as svcCreate,
+  hydrateNotifications,
+  subscribeNotifications,
   CreateNotificationArgs,
 } from '@/services/notificationService';
 
@@ -30,18 +32,16 @@ export const NotificationsContext = createContext<
   NotificationsContextType | undefined
 >(undefined);
 
-// Resolucion de userId para el buzon de notificaciones.
-// QA fix (Production): en modo real el user.id es el UUID de
-// auth.users. Si venimos de auth mock (id 'mock-<role>') mapeamos al
-// slot canonico usado por el seed. Priorizamos el UUID real para que
-// las notificaciones creadas por otros usuarios (dirigidas a un
-// userId concreto) lleguen a su destinatario legitimo.
+// Resolucion de userId para el buzon.
+// En Cloud real (Auth real) el user.id ya es UUID y coincide 1:1 con
+// notifications.user_id, por lo que RLS entrega solo las suyas. En
+// modo mock (auth mock) mapeamos a los slots canonicos del seed.
 function userIdFromAuth(
   user: { id?: string; role?: string } | null | undefined,
 ): string | null {
   if (!user) return null;
   const id = user.id ?? '';
-  if (id && !id.startsWith('mock-')) return id; // UUID real
+  if (id && !id.startsWith('mock-')) return id;
   switch (user.role) {
     case 'admin':
       return 'u-admin';
@@ -62,40 +62,49 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const userId = userIdFromAuth(user);
 
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unread, setUnread] = useState<number>(0);
+  // Tick reactivo: se incrementa cada vez que el cache del service
+  // notifica (create / markRead / hydrate). Fuerza a los useMemo a
+  // recomputar sin polling.
   const [tick, setTick] = useState<number>(0);
 
-  const refresh = useCallback(() => {
-    if (!userId) {
-      setNotifications([]);
-      setUnread(0);
-      return;
+  useEffect(() => {
+    if (userId) {
+      hydrateNotifications(userId).catch(() => undefined);
     }
-    setNotifications(listNotifications(userId));
-    setUnread(svcUnread(userId));
+    const unsub = subscribeNotifications(() => setTick((t) => t + 1));
+    return unsub;
   }, [userId]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh, tick]);
+  const notifications = useMemo<Notification[]>(() => {
+    if (!userId) return [];
+    void tick;
+    return listNotifications(userId);
+  }, [userId, tick]);
+
+  const unread = useMemo<number>(() => {
+    if (!userId) return 0;
+    void tick;
+    return svcUnread(userId);
+  }, [userId, tick]);
+
+  const refresh = useCallback(() => {
+    if (!userId) return;
+    hydrateNotifications(userId, true).catch(() => undefined);
+  }, [userId]);
 
   const markAsRead = useCallback((id: string) => {
     svcMarkRead(id);
-    setTick((t) => t + 1);
   }, []);
 
   const markAllAsRead = useCallback(() => {
     if (!userId) return;
     svcMarkAll(userId);
-    setTick((t) => t + 1);
   }, [userId]);
 
   const create = useCallback(
     (args: Omit<CreateNotificationArgs, 'userId'>) => {
       if (!userId) return;
       svcCreate({ ...args, userId });
-      setTick((t) => t + 1);
     },
     [userId],
   );
