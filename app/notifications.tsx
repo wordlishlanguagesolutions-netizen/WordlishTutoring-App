@@ -106,6 +106,14 @@ export default function NotificationsScreen() {
         <Pressable onPress={refresh} hitSlop={10} style={s.iconBtn}>
           <Ionicons name="refresh" size={18} color={colors.primaryDark} />
         </Pressable>
+        <Pressable
+          onPress={() => router.push('/settings/notifications' as any)}
+          hitSlop={10}
+          style={s.iconBtn}
+          accessibilityLabel="Preferencias de notificaciones"
+        >
+          <Ionicons name="settings-outline" size={18} color={colors.primaryDark} />
+        </Pressable>
       </View>
 
       <View style={s.summaryRow}>

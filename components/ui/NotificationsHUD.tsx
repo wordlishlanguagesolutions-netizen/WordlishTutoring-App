@@ -36,6 +36,7 @@ import {
   listNotifications,
   getNotificationPriority,
 } from '@/services/notificationService';
+import { isSoundWebEnabled } from '@/services/notificationPrefsService';
 import type { Notification } from '@/types';
 
 const HIDE_ON_ROUTES = new Set<string>([
@@ -144,9 +145,9 @@ export function NotificationsHUD() {
       }
       if (fresh.length === 0) return;
 
-      const shouldBeep = fresh.some(
-        (n) => getNotificationPriority(n.type) !== 'info',
-      );
+      const shouldBeep =
+        isSoundWebEnabled(uid) &&
+        fresh.some((n) => getNotificationPriority(n.type) !== 'info');
       if (shouldBeep) playBeep();
 
       const created: ToastItem[] = fresh.map((n) => ({
