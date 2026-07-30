@@ -295,6 +295,10 @@ export interface Payment extends BaseEntity {
   method: PaymentMethod;
   paidAt: string | null;
   externalReference: string | null;
+  // Ruta del comprobante dentro del bucket `payment-receipts`
+  // (por ejemplo `bookings/<id>/<ts>-<archivo>.pdf`). Se persiste en
+  // `payments.receipt_url` en Cloud. `null` cuando no hay comprobante.
+  receiptUrl: string | null;
 }
 
 // ============= HISTORIAL (audit log) =============

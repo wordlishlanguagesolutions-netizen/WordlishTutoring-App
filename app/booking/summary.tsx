@@ -140,7 +140,12 @@ export default function BookingSummary() {
     policiesAck.hasViewed(draft.studentId),
   );
   const [policiesAccepted, setPoliciesAccepted] = useState<boolean>(false);
-  const [uploadedProof, setUploadedProof] = useState<{ name: string; at: number } | null>(null);
+  const [uploadedProof, setUploadedProof] = useState<{
+    name: string;
+    at: number;
+    method?: import('@/types').PaymentMethod;
+    receiptPath?: string | null;
+  } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
     bookingId: string;
@@ -231,7 +236,11 @@ export default function BookingSummary() {
     let mode: 'hours' | 'proof' | 'pending' = 'hours';
     if (requiresPayment) {
       if (uploadedProof) {
-        submitPaymentProof(id, uploadedProof.name);
+        submitPaymentProof(id, {
+          name: uploadedProof.name,
+          method: uploadedProof.method,
+          receiptPath: uploadedProof.receiptPath ?? null,
+        });
         mode = 'proof';
       } else {
         mode = 'pending';
@@ -462,8 +471,14 @@ export default function BookingSummary() {
             </Text>
             <PaymentMethods
               amount={purchaseAmount}
-              onUploadProof={(name) =>
-                setUploadedProof({ name, at: Date.now() })
+              receiptPathPrefix={`bookings/pending-${draft.studentId}-${Date.now()}`}
+              onUploadProof={(payload) =>
+                setUploadedProof({
+                  name: payload.name,
+                  at: Date.now(),
+                  method: payload.method,
+                  receiptPath: payload.receiptPath,
+                })
               }
               uploadedProof={uploadedProof}
               onReplaceProof={() => setUploadedProof(null)}

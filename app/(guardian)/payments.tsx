@@ -18,6 +18,12 @@ import {
   getPaymentsVersion,
 } from '@/services/paymentsService';
 import { useBookings } from '@/hooks/useBookings';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  getGuardianByUserId,
+  hydrateGuardians,
+  subscribeGuardians,
+} from '@/services/guardiansService';
 
 // ============================================================================
 // Dashboard del Acudiente · centro de gestión del estudiante.
@@ -92,6 +98,7 @@ export default function GuardianDashboard() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const { remainingHours, bookings } = useBookings();
+  const { user } = useAuth();
 
   const [activeStudentId, setActiveStudentId] = useState<string>(
     linkedStudents[0]?.id ?? '',
@@ -110,6 +117,22 @@ export default function GuardianDashboard() {
     });
     return unsub;
   }, []);
+
+  // Hidrata acudientes para resolver el guardianId real (UUID) del
+  // usuario logueado. Sin esto, las compras se persistian con
+  // guardianId=null (bug reportado en el QA de Payments -> Cloud).
+  const [guardiansVersion, setGuardiansVersion] = useState<number>(0);
+  useEffect(() => {
+    hydrateGuardians().catch(() => undefined);
+    const unsub = subscribeGuardians(() => setGuardiansVersion((v) => v + 1));
+    return unsub;
+  }, []);
+
+  const currentGuardianId = useMemo<string | null>(() => {
+    void guardiansVersion;
+    if (!user) return null;
+    return getGuardianByUserId(user.id)?.id ?? null;
+  }, [user, guardiansVersion]);
 
   const activeStudent =
     linkedStudents.find((s) => s.id === activeStudentId) ?? linkedStudents[0];
@@ -169,11 +192,11 @@ export default function GuardianDashboard() {
 
   const choosePlan = (plan: PlanOffer) => {
     // QA fix (Payments Cloud): persistir la compra como Payment
-    // 'pending'. Antes solo se mostraba un Alert y la compra nunca
-    // llegaba al historial (→ test 'compra de plan' fallaba).
+    // 'pending' con guardianId REAL resuelto desde Auth (no null) y
+    // createdBy = user.id para trazabilidad.
     paymentsRepo.create({
       studentId: activeStudent.id,
-      guardianId: null,
+      guardianId: currentGuardianId,
       packageId: null,
       bookingId: null,
       concept: `${plan.name} · ${plan.hours} h para ${activeStudent.firstName}`,
@@ -183,7 +206,9 @@ export default function GuardianDashboard() {
       method: 'card',
       paidAt: null,
       externalReference: null,
-    });
+      receiptUrl: null,
+      createdBy: user?.id ?? null,
+    } as any);
     Alert.alert(
       plan.name,
       `Confirmarás ${plan.hours} horas por $${plan.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,
@@ -194,7 +219,7 @@ export default function GuardianDashboard() {
     // QA fix (Payments Cloud): idem para recargas.
     paymentsRepo.create({
       studentId: activeStudent.id,
-      guardianId: null,
+      guardianId: currentGuardianId,
       packageId: null,
       bookingId: null,
       concept: `Recarga de ${t.hours} h para ${activeStudent.firstName}`,
@@ -204,7 +229,9 @@ export default function GuardianDashboard() {
       method: 'card',
       paidAt: null,
       externalReference: null,
-    });
+      receiptUrl: null,
+      createdBy: user?.id ?? null,
+    } as any);
     Alert.alert(
       `Recarga rápida · ${t.hours} h`,
       `Total $${t.price} para ${activeStudent.firstName}. Se abrirá la pasarela de pago.`,

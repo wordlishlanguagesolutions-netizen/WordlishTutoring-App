@@ -7,34 +7,64 @@ import {
   Platform,
   Alert,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@/components/ui/Icon';
 import { colors, spacing, radius, shadow } from '@/constants/theme';
 import { getSetting } from '@/services/appSettingsService';
+import type { PaymentMethod } from '@/types';
+import { uploadPaymentReceipt } from '@/services/paymentsService';
 
 // ============================================================================
-// PaymentMethods · componente unico de metodos de pago Wordlish.
+// PaymentMethods - componente unico de metodos de pago Wordlish.
 //
-// Consumido por:
-//   - app/booking/success.tsx (Paso 4 del wizard cuando faltan horas)
-//   - app/booking/pay.tsx (compra directa de plan/recarga desde Reservas)
+// Cambios QA (Payments -> Cloud):
+//   1. Propaga el metodo real seleccionado (yappy/transfer/card) en
+//      onUploadProof (antes se persistia 'other').
+//   2. Usa DocumentPicker real (imagen o PDF) y sube el archivo al
+//      bucket privado payment-receipts. El path se envia al caller para
+//      persistirlo en payments.receipt_url. Antes el archivo vivia en
+//      memoria y se perdia al recargar.
+//   3. Permite reintentar tras rechazo (uploading state controlable).
 //
-// Fuente unica: elimina la duplicacion de PayRadio, Yappy/ACH/Cuanto, copy
-// y upload que antes vivia en 3 archivos.
+// La UI sigue siendo la misma tarjeta con 3 radios + detalle + upload;
+// no se agregan pantallas nuevas.
 // ============================================================================
 
 type PayKey = 'yappy' | 'ach' | 'cuanto';
 
+const PAY_KEY_TO_METHOD: Record<PayKey, PaymentMethod> = {
+  yappy: 'yappy',
+  ach: 'transfer',
+  cuanto: 'card',
+};
+
+export interface UploadedProofDisplay {
+  name: string;
+  at: number;
+  status?: 'submitted' | 'reviewing' | 'approved' | 'rejected';
+}
+
+export interface UploadedProofPayload {
+  name: string;
+  method: PaymentMethod;
+  receiptPath: string | null;
+  size?: number | null;
+  mimeType?: string | null;
+}
+
 interface PaymentMethodsProps {
-  /** Monto a mostrar en el paso "1 · Envia $X". Si es 0 muestra "el monto". */
   amount?: number;
-  /** Callback cuando el usuario elige subir comprobante. */
-  onUploadProof: (name: string) => void;
-  /** Si existe, se muestra el estado "Comprobante enviado" en vez del selector. */
-  uploadedProof?: { name: string; at: number } | null;
+  /** Callback cuando el comprobante fue subido (o se opto por seguir en mock si falla). */
+  onUploadProof: (payload: UploadedProofPayload) => void;
+  /** Muestra el estado "Comprobante enviado" cuando existe. */
+  uploadedProof?: UploadedProofDisplay | null;
   /** Callback para reemplazar el comprobante ya enviado. */
   onReplaceProof?: () => void;
+  /** Prefijo bajo el que se sube el archivo (p.ej. `bookings/<id>` o `plans/<userId>`). */
+  receiptPathPrefix: string;
 }
 
 export function PaymentMethods({
@@ -42,9 +72,12 @@ export function PaymentMethods({
   onUploadProof,
   uploadedProof,
   onReplaceProof,
+  receiptPathPrefix,
 }: PaymentMethodsProps) {
   const [method, setMethod] = useState<PayKey | null>(null);
   const [copied, setCopied] = useState<string>('');
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string>('');
 
   const checkoutUrl = getSetting<string>('payment.checkout_url', '');
   const beneficiary = getSetting<string>('payment.beneficiary_name', 'Maristella Florian');
@@ -52,6 +85,7 @@ export function PaymentMethods({
   const achAccount = getSetting<string>('payment.ach_account', '04-72-99-558451-2');
 
   const amountText = amount && amount > 0 ? `$${amount.toFixed(2)}` : 'el monto';
+  const isRejected = uploadedProof?.status === 'rejected';
 
   const copy = async (value: string, label: string) => {
     try {
@@ -76,22 +110,69 @@ export function PaymentMethods({
     );
   };
 
-  const promptUpload = () => {
-    Alert.alert('Subir comprobante', 'Selecciona el tipo de archivo', [
-      { text: 'Imagen', onPress: () => onUploadProof('comprobante.jpg') },
-      { text: 'PDF', onPress: () => onUploadProof('comprobante.pdf') },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+  const doUpload = async () => {
+    if (!method) return;
+    setUploadError('');
+    try {
+      const pick = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      // Compat con la forma antigua ({type:'success'}) y la nueva ({assets}).
+      const asset: any =
+        (pick as any).assets?.[0] ??
+        ((pick as any).type === 'success' ? pick : null);
+      if ((pick as any).canceled || !asset) return;
+
+      const fileName = asset.name ?? 'comprobante';
+      const mimeType = asset.mimeType ?? null;
+      const size = typeof asset.size === 'number' ? asset.size : null;
+
+      setUploading(true);
+      const { path, error } = await uploadPaymentReceipt(receiptPathPrefix, {
+        uri: asset.uri,
+        name: fileName,
+        mimeType,
+        size,
+      });
+      setUploading(false);
+
+      if (error) {
+        setUploadError(error);
+        // Aun asi propagamos el nombre para mantener la UI de "en revision"
+        // pero sin URL persistente. El admin vera el mensaje de error.
+        onUploadProof({
+          name: fileName,
+          method: PAY_KEY_TO_METHOD[method],
+          receiptPath: null,
+          size,
+          mimeType,
+        });
+        return;
+      }
+
+      onUploadProof({
+        name: fileName,
+        method: PAY_KEY_TO_METHOD[method],
+        receiptPath: path,
+        size,
+        mimeType,
+      });
+    } catch (err: any) {
+      setUploading(false);
+      setUploadError(err?.message ?? 'No se pudo subir el archivo.');
+    }
   };
 
-  if (uploadedProof) {
+  if (uploadedProof && !isRejected) {
     return (
       <View style={s.proofBox}>
         <Ionicons name="checkmark-circle" size={20} color={colors.success} />
         <View style={{ flex: 1 }}>
           <Text style={s.proofTitle}>Comprobante enviado</Text>
           <Text style={s.proofHint}>
-            {uploadedProof.name} · en revision por el equipo Wordlish
+            {uploadedProof.name} - en revision por el equipo Wordlish
           </Text>
         </View>
         {onReplaceProof ? (
@@ -105,6 +186,15 @@ export function PaymentMethods({
 
   return (
     <View style={s.paySection}>
+      {isRejected ? (
+        <View style={s.rejectedBanner}>
+          <Ionicons name="close-circle" size={18} color={colors.danger} />
+          <Text style={s.rejectedText}>
+            Comprobante rechazado. Sube uno nuevo para continuar.
+          </Text>
+        </View>
+      ) : null}
+
       <PayRadio
         active={method === 'yappy'}
         icon="phone-portrait"
@@ -123,13 +213,13 @@ export function PaymentMethods({
         active={method === 'cuanto'}
         icon="card"
         label="Tarjeta con Cuanto"
-        hint="Visa · Mastercard · Amex"
+        hint="Visa - Mastercard - Amex"
         onPress={() => setMethod('cuanto')}
       />
 
       {method === 'yappy' ? (
         <View style={s.detail}>
-          <Text style={s.detailStep}>1 · Envia {amountText} via Yappy</Text>
+          <Text style={s.detailStep}>1 - Envia {amountText} via Yappy</Text>
           <View style={s.copyRow}>
             <Text style={s.copyValue}>{yappyNumber}</Text>
             <Pressable
@@ -153,20 +243,14 @@ export function PaymentMethods({
             </Pressable>
           </View>
           <Text style={s.detailBene}>Beneficiario: {beneficiary}</Text>
-          <Text style={s.detailStep}>2 · Sube tu comprobante</Text>
-          <Pressable
-            onPress={promptUpload}
-            style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Ionicons name="cloud-upload-outline" size={18} color={colors.primaryDark} />
-            <Text style={s.uploadText}>Subir comprobante</Text>
-          </Pressable>
+          <Text style={s.detailStep}>2 - Sube tu comprobante</Text>
+          <UploadCta uploading={uploading} onPress={doUpload} />
         </View>
       ) : null}
 
       {method === 'ach' ? (
         <View style={s.detail}>
-          <Text style={s.detailStep}>1 · Transfiere {amountText} por ACH</Text>
+          <Text style={s.detailStep}>1 - Transfiere {amountText} por ACH</Text>
           <View style={s.copyRow}>
             <Text style={s.copyValue}>{achAccount}</Text>
             <Pressable
@@ -190,21 +274,15 @@ export function PaymentMethods({
             </Pressable>
           </View>
           <Text style={s.detailBene}>Beneficiario: {beneficiary}</Text>
-          <Text style={s.detailStep}>2 · Sube tu comprobante</Text>
-          <Pressable
-            onPress={promptUpload}
-            style={({ pressed }) => [s.uploadBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Ionicons name="cloud-upload-outline" size={18} color={colors.primaryDark} />
-            <Text style={s.uploadText}>Subir comprobante</Text>
-          </Pressable>
+          <Text style={s.detailStep}>2 - Sube tu comprobante</Text>
+          <UploadCta uploading={uploading} onPress={doUpload} />
         </View>
       ) : null}
 
       {method === 'cuanto' ? (
         <View style={s.detail}>
           <Text style={s.detailStep}>
-            Pago en linea con Cuanto · confirmacion inmediata.
+            Pago en linea con Cuanto - confirmacion inmediata.
           </Text>
           <Pressable
             onPress={handleCardPay}
@@ -214,6 +292,10 @@ export function PaymentMethods({
             <Text style={s.cardBtnText}>Pagar con tarjeta</Text>
             <Ionicons name="open-outline" size={16} color={colors.textOnPrimary} />
           </Pressable>
+          <Text style={s.detailBene}>
+            Si prefieres, tambien puedes subir un comprobante de la tarjeta.
+          </Text>
+          <UploadCta uploading={uploading} onPress={doUpload} />
         </View>
       ) : null}
 
@@ -222,7 +304,43 @@ export function PaymentMethods({
           Selecciona un metodo para ver las instrucciones.
         </Text>
       ) : null}
+
+      {uploadError ? (
+        <View style={s.errorRow}>
+          <Ionicons name="alert-circle" size={14} color={colors.danger} />
+          <Text style={s.errorText}>{uploadError}</Text>
+        </View>
+      ) : null}
     </View>
+  );
+}
+
+function UploadCta({
+  uploading,
+  onPress,
+}: {
+  uploading: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={uploading}
+      style={({ pressed }) => [
+        s.uploadBtn,
+        pressed && !uploading && { opacity: 0.9 },
+        uploading && { opacity: 0.7 },
+      ]}
+    >
+      {uploading ? (
+        <ActivityIndicator size="small" color={colors.primaryDark} />
+      ) : (
+        <Ionicons name="cloud-upload-outline" size={18} color={colors.primaryDark} />
+      )}
+      <Text style={s.uploadText}>
+        {uploading ? 'Subiendo...' : 'Subir comprobante'}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -276,6 +394,17 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     ...shadow.sm,
   },
+  rejectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  rejectedText: { flex: 1, color: colors.danger, fontWeight: '700', fontSize: 13 },
   radioRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,4 +530,13 @@ const s = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.dangerSoft,
+  },
+  errorText: { flex: 1, color: colors.danger, fontSize: 12, fontWeight: '600' },
 });

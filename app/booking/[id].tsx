@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, StatusBar, Alert, Modal } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView, StatusBar, Alert, Modal, Linking } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,14 +14,25 @@ import { useBookings } from '@/hooks/useBookings';
 import { useAuth } from '@/hooks/useAuth';
 import { getZoomUrlForBooking, getMeetingIdDisplay } from '@/services/zoomService';
 import { getSetting } from '@/services/appSettingsService';
+import {
+  getPaymentsForBooking,
+  getReceiptSignedUrl,
+  paymentMethodLabel,
+  subscribePayments,
+  getPaymentsVersion,
+} from '@/services/paymentsService';
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getById, cancelBooking, rescheduleBooking, markPaid, remainingHours, bookings, holds, paymentProofs, submitPaymentProof } = useBookings();
+  const { getById, cancelBooking, rescheduleBooking, markPaid, rejectPayment, remainingHours, bookings, holds, paymentProofs, submitPaymentProof } = useBookings();
   const { user } = useAuth();
   const b = getById(id ?? '');
   const [rOpen, setROpen] = useState(false);
+
+  // Refresco reactivo del cache de payments (aprobar/rechazar sin recargar).
+  const [paymentsVersion, setPaymentsVersion] = useState<number>(getPaymentsVersion());
+  useEffect(() => subscribePayments(() => setPaymentsVersion(getPaymentsVersion())), []);
 
   if (!b) {
     return (
@@ -55,11 +66,34 @@ export default function BookingDetail() {
   const role = (user as any)?.role ?? 'student';
   const isReviewer = role === 'admin' || role === 'supervisor';
   const proof = paymentProofs[b.id];
+
+  // Pagos Cloud vinculados a esta reserva. Fuente de verdad para admin.
+  const linkedPayments = getPaymentsForBooking(b.id);
+  void paymentsVersion;
+  const pendingPayment = linkedPayments.find((p) => p.status === 'pending');
+  const failedPayment = linkedPayments.find((p) => p.status === 'failed');
+
+  const isRejectedForPayer = proof?.status === 'rejected';
   const canApprovePayment =
-    isReviewer && b.status === 'pending_payment' && !!proof && proof.status !== 'approved';
-  const showPaymentPanel =
-    b.status === 'pending_payment' && !isReviewer;
+    isReviewer && b.status === 'pending_payment' && !!pendingPayment;
+  const canRejectPayment = canApprovePayment;
+  const showPaymentPanel = b.status === 'pending_payment' && !isReviewer;
   const priceUsd = getSetting<number>('payment.price_per_hour_usd', 18);
+
+  async function openReceipt() {
+    if (!pendingPayment?.receiptUrl) {
+      Alert.alert('Sin comprobante', 'Este pago aun no tiene comprobante adjunto.');
+      return;
+    }
+    const url = await getReceiptSignedUrl(pendingPayment.receiptUrl);
+    if (!url) {
+      Alert.alert('Comprobante', 'No se pudo generar el enlace del comprobante.');
+      return;
+    }
+    Linking.openURL(url).catch(() =>
+      Alert.alert('Comprobante', 'No se pudo abrir el archivo.'),
+    );
+  }
 
   function handleApprovePayment() {
     if (!b) return;
@@ -73,6 +107,25 @@ export default function BookingDetail() {
           onPress: () => {
             markPaid(b.id);
             Alert.alert('Pago aprobado', 'La reserva quedo confirmada y el estudiante fue notificado.');
+          },
+        },
+      ],
+    );
+  }
+
+  function handleRejectPayment() {
+    if (!b) return;
+    Alert.alert(
+      'Rechazar comprobante',
+      'El pago quedara marcado como rechazado y se pedira al pagador subir un nuevo comprobante. No se acreditaran horas.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Rechazar',
+          style: 'destructive',
+          onPress: () => {
+            rejectPayment(b.id, 'Comprobante no valido');
+            Alert.alert('Comprobante rechazado', 'El pagador fue notificado para reintentar.');
           },
         },
       ],
@@ -182,40 +235,104 @@ export default function BookingDetail() {
         {showPaymentPanel ? (
           <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
             <Text style={typography.h3}>
-              {proof ? 'Pago en revisión' : 'Completar pago'}
+              {isRejectedForPayer
+                ? 'Comprobante rechazado'
+                : proof
+                ? 'Pago en revisión'
+                : 'Completar pago'}
             </Text>
             <Text style={typography.caption}>
-              {proof
+              {isRejectedForPayer
+                ? 'Tu comprobante fue rechazado. Sube uno nuevo para reactivar la reserva.'
+                : proof
                 ? 'Recibimos tu comprobante. Te avisaremos apenas el equipo Wordlish lo valide.'
                 : `Sin horas disponibles · Valor $${priceUsd.toFixed(2)}. Elige un método y sube tu comprobante.`}
             </Text>
             <PaymentMethods
               amount={priceUsd}
-              onUploadProof={(name) => submitPaymentProof(b.id, name)}
-              uploadedProof={proof ? { name: proof.name, at: proof.at } : null}
+              receiptPathPrefix={`bookings/${b.id}`}
+              onUploadProof={(payload) =>
+                submitPaymentProof(b.id, {
+                  name: payload.name,
+                  method: payload.method,
+                  receiptPath: payload.receiptPath,
+                })
+              }
+              uploadedProof={
+                proof
+                  ? { name: proof.name, at: proof.at, status: proof.status }
+                  : null
+              }
+              onReplaceProof={() => submitPaymentProof(b.id, { name: '' })}
             />
           </View>
         ) : null}
 
-        {canApprovePayment ? (
+        {canApprovePayment || canRejectPayment ? (
           <View style={s.reviewCard}>
             <View style={s.reviewHeader}>
               <Ionicons name="receipt" size={18} color={colors.warning} />
               <Text style={s.reviewTitle}>Comprobante en revisión</Text>
             </View>
-            <Text style={s.reviewMeta}>
-              {proof!.name} · enviado {new Date(proof!.at).toLocaleString('es-PA')}
-            </Text>
+            {pendingPayment ? (
+              <>
+                <Text style={s.reviewMeta}>
+                  Método: {paymentMethodLabel(pendingPayment.method)}
+                  {pendingPayment.externalReference
+                    ? ` · ${pendingPayment.externalReference}`
+                    : ''}
+                </Text>
+                <Text style={s.reviewMeta}>
+                  Actualizado: {new Date(pendingPayment.updatedAt).toLocaleString('es-PA')}
+                </Text>
+              </>
+            ) : null}
             <Text style={s.reviewHint}>
               Verifica en Yappy o el banco antes de aprobar. Al aprobar, la reserva pasa a Confirmada y se notifica al estudiante.
             </Text>
-            <Pressable
-              onPress={handleApprovePayment}
-              style={({ pressed }) => [s.approveBtn, pressed && { opacity: 0.9 }]}
-            >
-              <Ionicons name="checkmark-circle" size={18} color={colors.textOnPrimary} />
-              <Text style={s.approveText}>Aprobar pago</Text>
-            </Pressable>
+            {pendingPayment?.receiptUrl ? (
+              <Pressable
+                onPress={openReceipt}
+                style={({ pressed }) => [s.receiptBtn, pressed && { opacity: 0.9 }]}
+              >
+                <Ionicons name="document-attach" size={16} color={colors.primaryDark} />
+                <Text style={s.receiptBtnText}>Ver comprobante</Text>
+              </Pressable>
+            ) : (
+              <Text style={s.reviewHint}>Sin comprobante adjunto en Cloud.</Text>
+            )}
+            <View style={s.reviewActionsRow}>
+              {canRejectPayment ? (
+                <Pressable
+                  onPress={handleRejectPayment}
+                  style={({ pressed }) => [s.rejectBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.danger} />
+                  <Text style={s.rejectText}>Rechazar</Text>
+                </Pressable>
+              ) : null}
+              {canApprovePayment ? (
+                <Pressable
+                  onPress={handleApprovePayment}
+                  style={({ pressed }) => [s.approveBtn, pressed && { opacity: 0.9 }]}
+                >
+                  <Ionicons name="checkmark-circle" size={18} color={colors.textOnPrimary} />
+                  <Text style={s.approveText}>Aprobar pago</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {isReviewer && failedPayment && !pendingPayment ? (
+          <View style={[s.reviewCard, { backgroundColor: colors.dangerSoft, borderColor: colors.danger }]}>
+            <View style={s.reviewHeader}>
+              <Ionicons name="close-circle" size={18} color={colors.danger} />
+              <Text style={[s.reviewTitle, { color: colors.danger }]}>Pago rechazado</Text>
+            </View>
+            <Text style={s.reviewMeta}>
+              El pagador debe subir un nuevo comprobante para reactivar la reserva.
+            </Text>
           </View>
         ) : null}
 
@@ -435,7 +552,21 @@ const s = StyleSheet.create({
   approveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
     backgroundColor: colors.success, paddingVertical: 14, borderRadius: radius.md,
-    marginTop: spacing.sm,
+    marginTop: spacing.sm, flex: 1,
   },
   approveText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 15 },
+  rejectBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    backgroundColor: colors.dangerSoft, paddingVertical: 14, borderRadius: radius.md,
+    marginTop: spacing.sm, flex: 1,
+    borderWidth: 1, borderColor: colors.danger,
+  },
+  rejectText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
+  reviewActionsRow: { flexDirection: 'row', gap: spacing.sm },
+  receiptBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    backgroundColor: colors.surface, paddingVertical: 12, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  receiptBtnText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
 });

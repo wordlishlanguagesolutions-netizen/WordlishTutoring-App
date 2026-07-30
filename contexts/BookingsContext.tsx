@@ -6,7 +6,7 @@ import React, {
   useMemo,
   ReactNode,
 } from 'react';
-import type { Booking, BookingStatus } from '@/types';
+import type { Booking, BookingStatus, PaymentMethod } from '@/types';
 import {
   Hold,
   hasStudentConflict,
@@ -27,6 +27,7 @@ import {
 } from '@/services/studentsService';
 import {
   getGuardianById,
+  getGuardianByUserId,
   hydrateGuardians,
 } from '@/services/guardiansService';
 import {
@@ -45,6 +46,7 @@ import {
 } from '@/services/paymentsService';
 import { getSetting } from '@/services/appSettingsService';
 import { mockDb } from '@/services/mockDb';
+import { useAuth } from '@/hooks/useAuth';
 
 const HOLD_MS = 5 * 60 * 1000; // 5 minutos
 
@@ -63,7 +65,16 @@ interface CreateBookingArgs {
 export interface PaymentProof {
   name: string;
   at: number;
-  status: 'submitted' | 'reviewing' | 'approved';
+  status: 'submitted' | 'reviewing' | 'approved' | 'rejected';
+  method?: PaymentMethod;
+  receiptPath?: string | null;
+  rejectionReason?: string | null;
+}
+
+export interface SubmitProofArgs {
+  name: string;
+  method?: PaymentMethod;
+  receiptPath?: string | null;
 }
 
 export interface BookingsContextType {
@@ -84,7 +95,8 @@ export interface BookingsContextType {
     newTime: string,
   ) => { ok: boolean; error?: string };
   markPaid: (id: string) => void;
-  submitPaymentProof: (bookingId: string, fileName: string) => void;
+  submitPaymentProof: (bookingId: string, proof: SubmitProofArgs | string) => void;
+  rejectPayment: (bookingId: string, reason?: string) => void;
   getById: (id: string) => Booking | undefined;
   getForStudent: (studentId: string) => Booking[];
   getForTeacher: (teacherId: string) => Booking[];
@@ -129,12 +141,21 @@ function computeRemainingHours(): Record<string, number> {
 }
 
 export function BookingsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>(() => getBookings());
   const [holds, setHolds] = useState<Hold[]>([]);
   const [remainingHours, setRemainingHours] = useState<Record<string, number>>(
     computeRemainingHours(),
   );
   const [paymentProofs, setPaymentProofs] = useState<Record<string, PaymentProof>>({});
+
+  // Resolucion del guardian real desde Auth. Cuando el usuario logueado
+  // es un acudiente, mapeamos su user.id -> guardian.id via cache Cloud.
+  const resolveGuardianIdForCurrentUser = useCallback((): string | null => {
+    if (!user) return null;
+    if ((user as any).role !== 'guardian') return null;
+    return getGuardianByUserId(user.id)?.id ?? null;
+  }, [user]);
 
   // Hidratación Cloud + suscripción reactiva al cache del service.
   useEffect(() => {
@@ -373,45 +394,71 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   );
 
   const submitPaymentProof = useCallback(
-    (bookingId: string, fileName: string) => {
+    (bookingId: string, proof: SubmitProofArgs | string) => {
       const b = bookingsRepo.findById(bookingId);
       if (!b) return;
+      const args: SubmitProofArgs =
+        typeof proof === 'string' ? { name: proof } : proof;
       const at = Date.now();
+      const proofMethod: PaymentMethod = args.method ?? 'other';
+      const receiptPath = args.receiptPath ?? null;
       setPaymentProofs((prev) => ({
         ...prev,
-        [bookingId]: { name: fileName, at, status: 'reviewing' },
+        [bookingId]: {
+          name: args.name,
+          at,
+          status: 'reviewing',
+          method: proofMethod,
+          receiptPath,
+          rejectionReason: null,
+        },
       }));
 
       // ── QA fix (Payments Cloud) ────────────────────────────────────
-      // Persistir un Payment 'pending' asociado a la reserva.
-      // Guard idempotente: si ya existe uno pending/paid, solo
-      // actualizamos externalReference (reemplazo de comprobante).
-      const existing = getPaymentsForBooking(bookingId).find(
-        (p) => p.status === 'pending' || p.status === 'paid',
+      // Un unico Payment por reserva. Ciclo posible:
+      //   pending -> failed -> pending -> paid.
+      // Al reenviar, se reutiliza el registro existente en vez de crear
+      // duplicados. Solo se ignora si ya esta 'paid' (idempotencia).
+      const linked = getPaymentsForBooking(bookingId).filter(
+        (p) => p.status !== 'refunded',
       );
+      const existing =
+        linked.find((p) => p.status === 'paid') ??
+        linked.find((p) => p.status === 'pending') ??
+        linked.find((p) => p.status === 'failed');
+      if (existing?.status === 'paid') {
+        return; // ya pagado, no reabrimos
+      }
       if (existing) {
-        paymentsRepo.update(existing.id, { externalReference: fileName });
+        paymentsRepo.update(existing.id, {
+          status: 'pending',
+          method: proofMethod,
+          externalReference: args.name,
+          receiptUrl: receiptPath,
+        });
       } else {
         const price = getSetting<number>('payment.price_per_hour_usd', 18);
-        const amount = (price * ((b.durationMin ?? 60) / 60));
+        const amount = price * ((b.durationMin ?? 60) / 60);
+        const guardianId =
+          b.guardianId ?? resolveGuardianIdForCurrentUser();
         paymentsRepo.create({
           studentId: b.studentId,
-          guardianId: b.guardianId ?? null,
+          guardianId,
           packageId: null,
           bookingId: b.id,
           concept: `${b.subject} · ${b.date} ${b.time}`,
           amount,
           currency: 'USD',
           status: 'pending',
-          method: 'other',
+          method: proofMethod,
           paidAt: null,
-          externalReference: fileName,
-        });
+          externalReference: args.name,
+          receiptUrl: receiptPath,
+          createdBy: user?.id ?? null,
+        } as any);
       }
 
-      // Notificaciones internas: admin + supervisor pueden abrir la reserva
-      // directamente desde el aviso. Preparado para futura integracion con
-      // WhatsApp API sin cambiar el consumidor.
+      // Notificaciones internas para admin y supervisor.
       const meta = `${b.studentName} · ${b.subject} · ${b.date} ${b.time}`;
       createNotification({
         userId: 'u-admin',
@@ -434,6 +481,74 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         actionLabel: 'Revisar pago',
       });
     },
+    [resolveGuardianIdForCurrentUser, user?.id],
+  );
+
+  const rejectPayment = useCallback(
+    (bookingId: string, reason?: string) => {
+      const b = bookingsRepo.findById(bookingId);
+      if (!b) return;
+      if (b.status === 'confirmed') return; // no rechazar aprobados
+
+      // Marca el Payment 'pending' asociado como 'failed'. Idempotente:
+      // si ya esta 'failed' o no existe pending, no hace nada.
+      const linked = getPaymentsForBooking(bookingId);
+      const pending = linked.find((p) => p.status === 'pending');
+      if (pending) {
+        paymentsRepo.update(pending.id, {
+          status: 'failed',
+          paidAt: null,
+          externalReference: reason
+            ? `rechazo: ${reason}`
+            : pending.externalReference,
+        });
+      }
+
+      // Deja el comprobante local en estado 'rejected' para que la UI del
+      // estudiante/acudiente muestre el banner y el picker vuelva a
+      // aparecer para reemplazarlo.
+      setPaymentProofs((prev) => {
+        const cur = prev[bookingId];
+        return {
+          ...prev,
+          [bookingId]: {
+            name: cur?.name ?? '',
+            at: Date.now(),
+            status: 'rejected',
+            method: cur?.method,
+            receiptPath: cur?.receiptPath ?? null,
+            rejectionReason: reason ?? null,
+          },
+        };
+      });
+
+      // Avisar al estudiante y al acudiente que deben reintentar.
+      const studentUserId = studentToUserId(b.studentId);
+      const detail = reason ? ` Motivo: ${reason}` : '';
+      createNotification({
+        userId: studentUserId,
+        type: 'payment_pending',
+        title: 'Comprobante rechazado',
+        message: `${b.subject} · ${b.date} ${b.time}.${detail} Sube uno nuevo para continuar.`,
+        refType: 'booking',
+        refId: bookingId,
+        actionRoute: `/booking/${bookingId}`,
+        actionLabel: 'Reintentar pago',
+      });
+      const guardianUserId = guardianToUserId(b.guardianId ?? null);
+      if (guardianUserId && guardianUserId !== studentUserId) {
+        createNotification({
+          userId: guardianUserId,
+          type: 'payment_pending',
+          title: 'Comprobante rechazado',
+          message: `${b.studentName} · ${b.subject}.${detail}`,
+          refType: 'booking',
+          refId: bookingId,
+          actionRoute: `/booking/${bookingId}`,
+          actionLabel: 'Reintentar pago',
+        });
+      }
+    },
     [],
   );
 
@@ -446,7 +561,6 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       const b = bookingsRepo.findById(id);
       if (!b) return;
       if (b.status === 'confirmed') return; // ya aprobada
-
       let consumed = b.hourConsumed;
       if (!consumed) {
         consumed = packagesRepo.consumeHour(b.studentId);
@@ -471,7 +585,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         const amount = (price * ((b.durationMin ?? 60) / 60));
         paymentsRepo.create({
           studentId: b.studentId,
-          guardianId: b.guardianId ?? null,
+          guardianId: b.guardianId ?? resolveGuardianIdForCurrentUser(),
           packageId: null,
           bookingId: b.id,
           concept: `${b.subject} · ${b.date} ${b.time}`,
@@ -481,7 +595,9 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
           method: 'other',
           paidAt: new Date().toISOString(),
           externalReference: null,
-        });
+          receiptUrl: null,
+          createdBy: user?.id ?? null,
+        } as any);
       }
 
       createNotification({
@@ -514,6 +630,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       rescheduleBooking,
       markPaid,
       submitPaymentProof,
+      rejectPayment,
       getById: (id) => bookingsRepo.findById(id),
       getForStudent: (sid) => bookingsRepo.listForStudent(sid),
       getForTeacher: (tid) => bookingsRepo.listForTeacher(tid),
@@ -530,6 +647,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       rescheduleBooking,
       markPaid,
       submitPaymentProof,
+      rejectPayment,
     ],
   );
 

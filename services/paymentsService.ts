@@ -27,6 +27,7 @@ import {
   guardianPaymentsHistory as _seedGuardian,
   paymentsHistory as _seedStudent,
 } from './mockData';
+import { getSupabaseClient } from '@/template';
 
 // ---------------------------------------------------------------------------
 // Helpers.
@@ -109,6 +110,7 @@ function seedFromMock(): InternalPayment[] {
       method: parseMethodLabel(m.method),
       paidAt: m.status === 'paid' ? nowIso : null,
       externalReference: null,
+      receiptUrl: null,
       createdAt: nowIso,
       updatedAt: nowIso,
       _displayDate: m.date,
@@ -129,6 +131,7 @@ function seedFromMock(): InternalPayment[] {
       method: parseMethodLabel(m.method),
       paidAt: m.status === 'paid' ? nowIso : null,
       externalReference: null,
+      receiptUrl: null,
       createdAt: nowIso,
       updatedAt: nowIso,
       _displayDate: m.date,
@@ -272,10 +275,16 @@ export const paymentsRepo = {
     return getPaymentById(id);
   },
 
-  create(p: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>): Payment {
+  create(
+    p: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'> & {
+      createdBy?: string | null;
+    },
+  ): Payment {
     const nowIso = new Date().toISOString();
+    const { createdBy: _cb, ...clean } = p as Omit<Payment, 'id' | 'createdAt' | 'updatedAt'> & { createdBy?: string | null };
     const created: InternalPayment = {
-      ...p,
+      ...(clean as Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>),
+      receiptUrl: clean.receiptUrl ?? null,
       id: localId(),
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -301,6 +310,8 @@ export const paymentsRepo = {
         method: p.method,
         paidAt: p.paidAt,
         externalReference: p.externalReference,
+        receiptUrl: p.receiptUrl ?? null,
+        createdBy: (p as any).createdBy ?? null,
       };
       paymentsCloudRepo
         .insert(cloudArgs)
@@ -342,6 +353,8 @@ export const paymentsRepo = {
       if (patch.concept !== undefined) cloudPatch.concept = patch.concept;
       if (patch.externalReference !== undefined)
         cloudPatch.externalReference = patch.externalReference;
+      if (patch.receiptUrl !== undefined)
+        cloudPatch.receiptUrl = patch.receiptUrl;
       if (Object.keys(cloudPatch).length > 0) {
         paymentsCloudRepo
           .update(id, cloudPatch)
@@ -383,6 +396,101 @@ export const paymentsRepo = {
     } as Partial<Payment>);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Storage: comprobantes de pago.
+//
+// Bucket privado `payment-receipts` (RLS ya configurado en Cloud). El
+// path se guarda en `payments.receipt_url`. Para mostrar el comprobante
+// se genera un signed URL de corta duracion.
+// ---------------------------------------------------------------------------
+const RECEIPTS_BUCKET = 'payment-receipts';
+
+function sanitizeFileName(name: string): string {
+  const trimmed = String(name || 'comprobante').trim();
+  return trimmed.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'comprobante';
+}
+
+export interface UploadReceiptInput {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+}
+
+export interface UploadReceiptResult {
+  path: string | null;
+  error?: string;
+}
+
+// Sube el archivo al bucket `payment-receipts` bajo el prefijo indicado
+// (por ejemplo `bookings/<id>` o `plans/<userId>`). Valida tipo/tamano
+// razonables (10 MB max, imagenes o PDF). Devuelve la ruta relativa al
+// bucket, que se guarda en Payment.receiptUrl.
+export async function uploadPaymentReceipt(
+  pathPrefix: string,
+  file: UploadReceiptInput,
+): Promise<UploadReceiptResult> {
+  try {
+    const mime = (file.mimeType || '').toLowerCase();
+    const isAllowed =
+      mime.startsWith('image/') || mime === 'application/pdf' || mime === '';
+    if (!isAllowed) {
+      return { path: null, error: 'Tipo de archivo no permitido. Usa imagen o PDF.' };
+    }
+    if (typeof file.size === 'number' && file.size > 10 * 1024 * 1024) {
+      return { path: null, error: 'El archivo supera 10 MB.' };
+    }
+
+    const res = await fetch(file.uri);
+    if (!res.ok) {
+      return { path: null, error: 'No se pudo leer el archivo.' };
+    }
+    const blob = await res.blob();
+
+    const safe = sanitizeFileName(file.name);
+    const cleanPrefix = pathPrefix.replace(/^\/+|\/+$/g, '');
+    const key = `${cleanPrefix}/${Date.now()}-${safe}`;
+
+    const sb = getSupabaseClient();
+    const { error } = await sb.storage
+      .from(RECEIPTS_BUCKET)
+      .upload(key, blob, {
+        contentType: mime || blob.type || 'application/octet-stream',
+        upsert: false,
+      });
+    if (error) {
+      console.warn('[paymentsService.uploadPaymentReceipt] error', error.message);
+      return { path: null, error: error.message };
+    }
+    return { path: key };
+  } catch (err: any) {
+    console.warn('[paymentsService.uploadPaymentReceipt] exception', err);
+    return { path: null, error: err?.message ?? 'upload_error' };
+  }
+}
+
+// Devuelve un URL firmado de corta duracion (10 min) para abrir el
+// comprobante desde el detalle de reserva o el panel de admin.
+export async function getReceiptSignedUrl(
+  path: string | null | undefined,
+): Promise<string | null> {
+  if (!path) return null;
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb.storage
+      .from(RECEIPTS_BUCKET)
+      .createSignedUrl(path, 60 * 10);
+    if (error) {
+      console.warn('[paymentsService.getReceiptSignedUrl] error', error.message);
+      return null;
+    }
+    return data?.signedUrl ?? null;
+  } catch (err) {
+    console.warn('[paymentsService.getReceiptSignedUrl] exception', err);
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Utilities.
