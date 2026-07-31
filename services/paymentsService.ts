@@ -423,8 +423,9 @@ export async function uploadPaymentReceipt(
   }
 }
 
-// Devuelve un URL firmado de corta duracion (10 min) para abrir el
-// comprobante desde el detalle de reserva o el panel de admin.
+// Devuelve un URL firmado de corta duracion (3 min) para abrir el
+// comprobante desde el detalle de reserva o el panel de admin. La ventana
+// corta reduce el riesgo de fugas si el enlace se copia o registra en logs.
 export async function getReceiptSignedUrl(
   path: string | null | undefined,
 ): Promise<string | null> {
@@ -433,7 +434,7 @@ export async function getReceiptSignedUrl(
     const sb = getSupabaseClient();
     const { data, error } = await sb.storage
       .from(RECEIPTS_BUCKET)
-      .createSignedUrl(path, 60 * 10);
+      .createSignedUrl(path, 60 * 3);
     if (error) {
       console.warn('[paymentsService.getReceiptSignedUrl] error', error.message);
       return null;

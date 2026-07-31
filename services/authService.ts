@@ -50,12 +50,28 @@ export interface SignUpArgs {
 
 type AuthMode = 'mock' | 'real';
 
+// Guard de produccion: si el bundle se compila en release (__DEV__ === false)
+// y alguien dejo EXPO_PUBLIC_AUTH_MODE=mock, forzamos 'real' y avisamos.
+// Esto evita publicar accidentalmente una app con cuentas de prueba en memoria.
+let __authModeProdWarned = false;
+
 function resolveAuthMode(): AuthMode {
   const raw = (process.env.EXPO_PUBLIC_AUTH_MODE || '').trim().toLowerCase();
+  const isProd = typeof __DEV__ !== 'undefined' ? !__DEV__ : process.env.NODE_ENV === 'production';
+  if (isProd && raw && raw !== 'real') {
+    if (!__authModeProdWarned) {
+      __authModeProdWarned = true;
+      console.error(
+        '[authService] Produccion detectada con EXPO_PUBLIC_AUTH_MODE="' +
+          raw +
+          '". Se fuerza modo real para evitar publicar autenticacion mock.',
+      );
+    }
+    return 'real';
+  }
   // Preparación para lanzamiento web: por defecto usamos autenticación
   // real contra OnSpace Cloud. Solo cuando `EXPO_PUBLIC_AUTH_MODE=mock`
-  // esté explícito volvemos a la rama mock (para desarrollo local sin
-  // cuentas reales). Cualquier otro valor (incluido vacío) = real.
+  // esté explícito (y estemos en desarrollo) volvemos a la rama mock.
   if (raw === 'mock') return 'mock';
   return 'real';
 }

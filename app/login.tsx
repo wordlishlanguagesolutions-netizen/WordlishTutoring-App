@@ -35,7 +35,10 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [showBootstrap, setShowBootstrap] = useState<boolean>(false);
+  // `null` mientras se resuelve primaryAdminExists() para evitar el flash
+  // del enlace de bootstrap en la primera renderizacion. `true`/`false`
+  // solo despues de recibir respuesta.
+  const [showBootstrap, setShowBootstrap] = useState<boolean | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -182,7 +185,7 @@ export default function LoginScreen() {
               </View>
 
               {/* Bootstrap del admin principal (solo si aun no existe uno) */}
-              {showBootstrap ? (
+              {showBootstrap === true ? (
                 <Pressable
                   onPress={() => router.push('/bootstrap-admin' as any)}
                   hitSlop={8}

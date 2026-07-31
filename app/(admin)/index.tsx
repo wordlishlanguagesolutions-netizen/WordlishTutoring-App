@@ -771,14 +771,8 @@ function AdminDashboardMobile() {
       <View style={{ gap: spacing.md }}>
         <Module
           icon="people"
-          title="Estudiantes y Acudientes"
-          description="Perfiles y vínculos"
-          onPress={() => router.push('/(admin)/users' as any)}
-        />
-        <Module
-          icon="school"
-          title="Profesores"
-          description="Materias, disponibilidad, pagos"
+          title="Usuarios"
+          description="Estudiantes, acudientes, profesores y staff"
           onPress={() => router.push('/(admin)/users' as any)}
         />
         <Module
