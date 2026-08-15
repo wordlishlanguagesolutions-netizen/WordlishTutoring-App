@@ -24,19 +24,30 @@ interface WordlishLogoProps {
   accessibilityLabel?: string;
 }
 
-const ASPECT = 3 / 2; // width / height del asset oficial.
+// Aspect ratio original del asset (~3:2). Recortamos verticalmente para
+// mostrar solo hasta "WORDLISH EDUCATION" y ocultar la fila de iconos y
+// tagline inferior (esa info ya se comunica en el footer/tagline propios).
+const FULL_ASPECT = 3 / 2;
+const CROP_RATIO = 0.72; // porcion visible desde el borde superior.
 
 export function WordlishLogo({
   width = 240,
   style,
-  accessibilityLabel = 'Wordlish Education. Aprende. Conecta. Aplica.',
+  accessibilityLabel = 'Wordlish Education',
 }: WordlishLogoProps) {
-  const height = Math.round(width / ASPECT);
+  const fullHeight = Math.round(width / FULL_ASPECT);
+  const visibleHeight = Math.round(fullHeight * CROP_RATIO);
   return (
-    <View style={[styles.wrap, style]}>
+    <View
+      style={[
+        styles.wrap,
+        { width, height: visibleHeight, overflow: 'hidden' },
+        style,
+      ]}
+    >
       <Image
         source={require('@/assets/brand/wordlish-logo.png')}
-        style={{ width, height }}
+        style={{ width, height: fullHeight }}
         contentFit="contain"
         transition={150}
         accessibilityLabel={accessibilityLabel}
