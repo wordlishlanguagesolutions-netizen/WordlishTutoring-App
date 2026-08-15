@@ -19,6 +19,7 @@ import { primaryAdminExists } from '@/services/bootstrapAdminService';
 import { getRoleInfo } from '@/constants/roles';
 import { colors, radius, spacing, typography, shadow } from '@/constants/theme';
 import { PageContainer } from '@/components/ui/PageContainer';
+import { WordlishLogo } from '@/components/ui/WordlishLogo';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { AccountType } from '@/types';
 
@@ -111,11 +112,12 @@ export default function LoginScreen() {
           <PageContainer maxWidth="auth" center={isDesktop}>
           {step === 'type' ? (
             <>
-              {/* Placeholder discreto para el logotipo definitivo.
-                  Se reemplazará por el asset oficial cuando esté disponible. */}
-              <View style={styles.logoPlaceholder}>
-                <Text style={styles.logoPlaceholderText}>Logo Wordlish</Text>
-              </View>
+              {/* Marca oficial · Wordlish Education
+                  Aprende. Conecta. Aplica. */}
+              <WordlishLogo
+                width={280}
+                style={{ marginTop: spacing.md, marginBottom: spacing.xl }}
+              />
 
               <View style={styles.header}>
                 <Text style={styles.title}>¿Cómo deseas ingresar?</Text>
@@ -219,9 +221,10 @@ export default function LoginScreen() {
             </>
           ) : (
             <>
-              <View style={styles.logoPlaceholderSmall}>
-                <Text style={styles.logoPlaceholderTextSmall}>Logo Wordlish</Text>
-              </View>
+              <WordlishLogo
+                width={150}
+                style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
+              />
 
               <View style={styles.tierRow}>
                 <Pressable onPress={goBack} hitSlop={10} style={styles.backBtn}>

@@ -26,6 +26,9 @@ export { Input } from './Input';
 export { Modal } from './Modal';
 export { Skeleton, SkeletonCard } from './Skeleton';
 
+// Marca
+export { WordlishLogo } from './WordlishLogo';
+
 // Piezas atómicas
 export { Avatar } from './Avatar';
 export { StatusBadge } from './StatusBadge';
