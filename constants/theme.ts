@@ -10,56 +10,71 @@
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// PALETA OFICIAL
+// PALETA OFICIAL · Wordlish Education v2
 // ----------------------------------------------------------------------------
-// El morado se reserva para acciones principales y elementos destacados.
-// El grueso de la interfaz debe ser claro, con mucho blanco y espacio.
+// Regla de uso (Aprende. Conecta. Aplica.):
+//   · #1F1A4D (indigo-900) → titulos y texto principal.
+//   · #4B3DBD (violet-700) + #7B6CF6 (violet-500) → botones y elementos activos.
+//   · #D8C9FF (lavender-100) + #B79CFF (lavender-300) → fondos suaves,
+//     tarjetas y detalles.
+//   · Degradados → reservados a logo, CTAs y elementos importantes.
+//   · Predominio de blanco + espacios amplios; evitar saturar con morado.
 
 const brand = {
-  primary: '#5B2C83',       // acciones principales, CTAs, elementos destacados
-  primaryDark: '#3F1D5C',   // hover / pressed del primario
-  primaryLight: '#7C4EAF',  // acentos del primario
-  secondary: '#A78BFA',     // acciones secundarias, ilustraciones, gradientes
-  secondaryDark: '#8B6EF0', // hover del secundario
-  accent: '#E9D5FF',        // pills, tags, hovers muy suaves
-  accentSoft: '#F5EBFF',    // superficies teñidas mínimas
+  lavender100: '#D8C9FF', // fondos suaves, tarjetas, detalles
+  lavender300: '#B79CFF', // acentos suaves, ilustraciones
+  violet500: '#7B6CF6',   // acciones secundarias, hover del primario
+  violet700: '#4B3DBD',   // acciones principales, CTAs
+  indigo900: '#1F1A4D',   // titulos, texto principal, hover de CTAs
+  pinkLavender: '#E7C6FF',// acento opcional
+  goldSoft: '#E8C77A',    // acento opcional (metricas premium, badges)
+  bgSoft: '#F7F5FB',      // fondo general y superficies tenues
 };
 
 export const colors = {
   // Marca
-  primary: brand.primary,
-  primaryDark: brand.primaryDark,
-  primaryLight: brand.primaryLight,
-  secondary: brand.secondary,
-  secondaryDark: brand.secondaryDark,
-  accent: brand.accent,
+  primary: brand.violet700,
+  primaryDark: brand.indigo900,
+  primaryLight: brand.violet500,
+  secondary: brand.lavender300,
+  secondaryDark: brand.violet500,
+  accent: brand.lavender100,
+
+  // Alias directos a los tokens oficiales.
+  lavender100: brand.lavender100,
+  lavender300: brand.lavender300,
+  violet500: brand.violet500,
+  violet700: brand.violet700,
+  indigo900: brand.indigo900,
+  pinkLavender: brand.pinkLavender,
+  goldSoft: brand.goldSoft,
 
   // Alias de compatibilidad — el resto de la app ya consume estos nombres.
   // Se mapean a los tonos oficiales para propagar la nueva identidad sin
   // requerir cambios masivos en cada consumidor.
-  primarySoft: brand.accent,
+  primarySoft: brand.lavender100,
 
-  // Superficies · mayoritariamente claras
-  background: '#F8FAFC',
+  // Superficies · mayoritariamente claras, con bg suave lavanda-blanco.
+  background: brand.bgSoft,
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F5F9',
-  surfaceMuted: '#E2E8F0',
-  surfaceTinted: brand.accentSoft,
+  surfaceAlt: brand.bgSoft,
+  surfaceMuted: '#EDE7F6',
+  surfaceTinted: brand.lavender100,
   glass: 'rgba(255, 255, 255, 0.65)',
-  glassBorder: 'rgba(15, 23, 42, 0.06)',
-  overlay: 'rgba(15, 23, 42, 0.45)',
+  glassBorder: 'rgba(31, 26, 77, 0.06)',
+  overlay: 'rgba(31, 26, 77, 0.45)',
 
-  // Texto · slate (cálido, moderno, alta legibilidad)
-  text: '#334155',
-  textStrong: '#0F172A',
-  textSubtle: '#64748B',
-  textMuted: '#94A3B8',
+  // Texto · indigo profundo + gris lavanda secundario.
+  text: '#3C3652',
+  textStrong: brand.indigo900,
+  textSubtle: '#6E6A7A',
+  textMuted: '#9A94A8',
   textOnPrimary: '#FFFFFF',
 
-  // Bordes · muy suaves
-  border: '#E2E8F0',
-  borderStrong: '#CBD5E1',
-  borderSoft: '#F1F5F9',
+  // Bordes · muy suaves, ligeramente teñidos hacia lavanda.
+  border: '#E4DEF0',
+  borderStrong: '#C9BEE4',
+  borderSoft: '#F1EDF9',
 
   // Semánticos · matices claros, no saturados
   success: '#10B981',
@@ -70,6 +85,29 @@ export const colors = {
   dangerSoft: '#FEE2E2',
   info: '#3B82F6',
   infoSoft: '#DBEAFE',
+};
+
+// ----------------------------------------------------------------------------
+// GRADIENTES OFICIALES · uso reservado a logo, CTAs y elementos destacados.
+// Se exportan como arrays (compatibles con expo-linear-gradient) y como
+// string CSS (util para web o componentes con `background`).
+// ----------------------------------------------------------------------------
+export const gradients = {
+  main: {
+    colors: ['#D8C9FF', '#B79CFF', '#7B6CF6', '#4B3DBD', '#1F1A4D'] as const,
+    locations: [0, 0.25, 0.5, 0.75, 1] as const,
+    css: 'linear-gradient(135deg, #D8C9FF 0%, #B79CFF 25%, #7B6CF6 50%, #4B3DBD 75%, #1F1A4D 100%)',
+  },
+  soft: {
+    colors: ['#F7F5FB', '#D8C9FF'] as const,
+    locations: [0, 1] as const,
+    css: 'linear-gradient(135deg, #F7F5FB 0%, #D8C9FF 100%)',
+  },
+  button: {
+    colors: ['#7B6CF6', '#4B3DBD'] as const,
+    locations: [0, 1] as const,
+    css: 'linear-gradient(135deg, #7B6CF6 0%, #4B3DBD 100%)',
+  },
 };
 
 // ----------------------------------------------------------------------------
@@ -241,28 +279,28 @@ export const shadow = {
     elevation: 0,
   },
   xs: {
-    shadowColor: '#0F172A',
+    shadowColor: '#1F1A4D',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03,
     shadowRadius: 2,
     elevation: 1,
   },
   sm: {
-    shadowColor: '#0F172A',
+    shadowColor: '#1F1A4D',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
   },
   md: {
-    shadowColor: '#0F172A',
+    shadowColor: '#1F1A4D',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 4,
   },
   lg: {
-    shadowColor: '#0F172A',
+    shadowColor: '#1F1A4D',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.08,
     shadowRadius: 24,
@@ -270,7 +308,7 @@ export const shadow = {
   },
   // Sombra teñida para tarjetas destacadas con glassmorphism
   glass: {
-    shadowColor: '#5B2C83',
+    shadowColor: '#4B3DBD',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 20,
