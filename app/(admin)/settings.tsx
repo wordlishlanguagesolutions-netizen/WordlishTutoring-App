@@ -35,6 +35,11 @@ import { CommunicationBlock } from '@/components/admin/CommunicationBlock';
 import { ZoomBlock } from '@/components/admin/ZoomBlock';
 import { useAuth } from '@/hooks/useAuth';
 import { authService } from '@/services/authService';
+import {
+  pingAllEdgeFunctions,
+  type EdgeFunctionHealth,
+  type EdgeFunctionStatus,
+} from '@/services/edgeFunctionsHealth';
 
 // ============================================================================
 // Admin · Ajustes globales.
@@ -143,6 +148,14 @@ export default function SettingsScreen() {
         éxito o el error concreto devuelto por el proveedor.
       </Text>
       <SmtpDiagnosticBlock />
+
+      <Text style={styles.section}>Diagnóstico Edge Functions</Text>
+      <Text style={typography.caption}>
+        Verifica que las 3 edge functions esten desplegadas y respondan.
+        Ping no destructivo: no crea usuarios, no envia push, no consume
+        tokens de IA.
+      </Text>
+      <EdgeFunctionsHealthBlock />
 
       <Text style={styles.section}>Comunicación</Text>
       <Text style={typography.caption}>
@@ -676,6 +689,162 @@ function SmtpDiagnosticBlock() {
   );
 }
 
+// ============================================================================
+// Diagnóstico Edge Functions · ping ligero a las 3 functions desplegadas
+// para confirmar que responden. No dispara logica destructiva.
+// ============================================================================
+type EdgeHealthState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'ready'; results: EdgeFunctionHealth[]; at: string };
+
+function EdgeFunctionsHealthBlock() {
+  const [state, setState] = useState<EdgeHealthState>({ kind: 'idle' });
+
+  const runCheck = async () => {
+    setState({ kind: 'checking' });
+    try {
+      const results = await pingAllEdgeFunctions();
+      setState({ kind: 'ready', results, at: new Date().toISOString() });
+    } catch (err: any) {
+      setState({
+        kind: 'ready',
+        results: [
+          {
+            id: 'create-staff-user',
+            label: 'Alta de staff',
+            status: 'error',
+            latencyMs: null,
+            message: err?.message || 'Excepcion al invocar el diagnostico.',
+          },
+        ],
+        at: new Date().toISOString(),
+      });
+    }
+  };
+
+  const formatAt = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  };
+
+  const statusColor = (s: EdgeFunctionStatus) => {
+    if (s === 'healthy') return colors.success;
+    if (s === 'unauthorized') return colors.warning;
+    return colors.danger;
+  };
+  const statusBg = (s: EdgeFunctionStatus) => {
+    if (s === 'healthy') return colors.successSoft;
+    if (s === 'unauthorized') return colors.warningSoft;
+    return colors.dangerSoft;
+  };
+  const statusIcon = (s: EdgeFunctionStatus) => {
+    if (s === 'healthy') return 'checkmark-circle';
+    if (s === 'unauthorized') return 'shield-outline';
+    if (s === 'not_deployed') return 'close-circle';
+    return 'alert-circle';
+  };
+  const statusLabel = (s: EdgeFunctionStatus) => {
+    if (s === 'healthy') return 'Desplegada';
+    if (s === 'unauthorized') return 'Alcanza auth';
+    if (s === 'not_deployed') return 'No desplegada';
+    return 'Error';
+  };
+
+  const checking = state.kind === 'checking';
+
+  return (
+    <View style={edgeStyles.wrap}>
+      <View style={edgeStyles.head}>
+        <Ionicons name="pulse-outline" size={18} color={colors.primaryDark} />
+        <Text style={edgeStyles.title}>Estado de despliegue</Text>
+      </View>
+      <Text style={edgeStyles.desc}>
+        Envia un ping invalido a cada function para verificar que responde.
+        Cualquier respuesta HTTP (400, 401, 500...) confirma que esta
+        desplegada. Un fetch error o 404 indica que falta el deploy.
+      </Text>
+
+      <Pressable
+        onPress={runCheck}
+        disabled={checking}
+        style={({ pressed }) => [
+          edgeStyles.btn,
+          checking && edgeStyles.btnDisabled,
+          pressed && !checking && { opacity: 0.9 },
+        ]}
+      >
+        <Ionicons name="flash" size={14} color={colors.textOnPrimary} />
+        <Text style={edgeStyles.btnText}>
+          {checking ? 'Verificando...' : 'Ejecutar diagnostico'}
+        </Text>
+      </Pressable>
+
+      {state.kind === 'ready' ? (
+        <View style={{ gap: 8 }}>
+          {state.results.map((r) => (
+            <View key={r.id} style={edgeStyles.row}>
+              <View
+                style={[
+                  edgeStyles.rowIcon,
+                  { backgroundColor: statusBg(r.status) },
+                ]}
+              >
+                <Ionicons
+                  name={statusIcon(r.status) as any}
+                  size={16}
+                  color={statusColor(r.status)}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={edgeStyles.rowTitle}>{r.label}</Text>
+                <Text style={edgeStyles.rowSub} numberOfLines={1}>
+                  {r.id}
+                </Text>
+                {r.message ? (
+                  <Text style={edgeStyles.rowDetail} numberOfLines={2}>
+                    {r.message}
+                  </Text>
+                ) : null}
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <View
+                  style={[
+                    edgeStyles.pill,
+                    {
+                      backgroundColor: statusBg(r.status),
+                      borderColor: statusColor(r.status),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      edgeStyles.pillText,
+                      { color: statusColor(r.status) },
+                    ]}
+                  >
+                    {statusLabel(r.status)}
+                  </Text>
+                </View>
+                <Text style={edgeStyles.rowMeta}>
+                  {r.httpStatus ? `HTTP ${r.httpStatus}` : '—'}
+                  {r.latencyMs != null ? ` · ${r.latencyMs}ms` : ''}
+                </Text>
+              </View>
+            </View>
+          ))}
+          <Text style={edgeStyles.metaText}>
+            Verificado: {formatAt(state.at)}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function MethodRow({ method, active }: { method: PaymentMethodOption; active: boolean }) {
   return (
     <Card>
@@ -803,6 +972,85 @@ const smtpStyles = StyleSheet.create({
   resultTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
   resultDesc: { fontSize: 12, color: colors.textSubtle, marginTop: 2, lineHeight: 16 },
   resultMeta: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
+});
+
+const edgeStyles = StyleSheet.create({
+  wrap: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    gap: spacing.sm,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  title: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  desc: { color: colors.textSubtle, fontSize: 12, lineHeight: 17 },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+  },
+  btnDisabled: { backgroundColor: colors.textMuted, opacity: 0.6 },
+  btnText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 13 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+  },
+  rowIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+  rowSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  rowDetail: {
+    fontSize: 11,
+    color: colors.textSubtle,
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  rowMeta: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  pill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  pillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  metaText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    textAlign: 'right',
+    marginTop: 4,
+  },
 });
 
 const readinessStyles = StyleSheet.create({
