@@ -33,6 +33,8 @@ import {
 } from '@/services/teacherRatesConfig';
 import { CommunicationBlock } from '@/components/admin/CommunicationBlock';
 import { ZoomBlock } from '@/components/admin/ZoomBlock';
+import { useAuth } from '@/hooks/useAuth';
+import { authService } from '@/services/authService';
 
 // ============================================================================
 // Admin · Ajustes globales.
@@ -133,6 +135,14 @@ export default function SettingsScreen() {
       <Header title="Ajustes" subtitle="Configuración global" />
 
       <ReadinessBanner missing={missingSettings} />
+
+      <Text style={styles.section}>Diagnóstico SMTP</Text>
+      <Text style={typography.caption}>
+        Verifica que Resend puede entregar correos antes de invitar staff real.
+        Envía un correo de recuperación al correo del admin logueado y reporta
+        éxito o el error concreto devuelto por el proveedor.
+      </Text>
+      <SmtpDiagnosticBlock />
 
       <Text style={styles.section}>Comunicación</Text>
       <Text style={typography.caption}>
@@ -539,6 +549,133 @@ function TeacherRatesBlock() {
   );
 }
 
+// ============================================================================
+// Diagnóstico SMTP · envía un correo real (recovery OTP) al admin logueado
+// para validar la configuración de Resend antes de invitar staff.
+// No cambia contraseña; solo dispara el envío y reporta el resultado.
+// ============================================================================
+type SmtpTestResult =
+  | { kind: 'ok'; email: string; at: string }
+  | { kind: 'error'; email: string; message: string; at: string }
+  | null;
+
+function SmtpDiagnosticBlock() {
+  const { user } = useAuth();
+  const email = user?.email ?? '';
+  const [sending, setSending] = useState<boolean>(false);
+  const [result, setResult] = useState<SmtpTestResult>(null);
+
+  const canSend = !!email && !sending;
+
+  const sendTest = async () => {
+    if (!email) return;
+    setSending(true);
+    setResult(null);
+    try {
+      if (!authService.isReal()) {
+        setResult({
+          kind: 'error',
+          email,
+          message:
+            'Autenticación en modo mock. Activa EXPO_PUBLIC_AUTH_MODE=real para probar SMTP.',
+          at: new Date().toISOString(),
+        });
+        return;
+      }
+      const res = await authService.resetPassword(email);
+      const at = new Date().toISOString();
+      if (res.ok) {
+        setResult({ kind: 'ok', email, at });
+      } else {
+        setResult({
+          kind: 'error',
+          email,
+          message: res.error || 'Error desconocido al enviar el correo.',
+          at,
+        });
+      }
+    } catch (err: any) {
+      setResult({
+        kind: 'error',
+        email,
+        message:
+          err?.message || 'Fallo inesperado al invocar resetPasswordForEmail.',
+        at: new Date().toISOString(),
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const formatAt = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <View style={smtpStyles.wrap}>
+      <View style={smtpStyles.head}>
+        <Ionicons name="mail-outline" size={18} color={colors.primaryDark} />
+        <Text style={smtpStyles.title}>Envío de prueba</Text>
+      </View>
+      <Text style={smtpStyles.desc}>
+        Dispara un correo real de recuperación al admin logueado usando el SMTP
+        configurado (Resend). No cambia tu contraseña; solo valida entrega.
+      </Text>
+
+      <View style={smtpStyles.emailRow}>
+        <Ionicons name="person-outline" size={14} color={colors.textSubtle} />
+        <Text style={smtpStyles.emailText} numberOfLines={1}>
+          {email || 'Sin sesión activa'}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={sendTest}
+        disabled={!canSend}
+        style={({ pressed }) => [
+          smtpStyles.btn,
+          !canSend && smtpStyles.btnDisabled,
+          pressed && canSend && { opacity: 0.9 },
+        ]}
+      >
+        <Ionicons name="send" size={14} color={colors.textOnPrimary} />
+        <Text style={smtpStyles.btnText}>
+          {sending ? 'Enviando...' : 'Enviar correo de prueba'}
+        </Text>
+      </Pressable>
+
+      {result?.kind === 'ok' ? (
+        <View style={[smtpStyles.result, smtpStyles.resultOk]}>
+          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+          <View style={{ flex: 1 }}>
+            <Text style={smtpStyles.resultTitle}>Envío aceptado por Supabase Auth</Text>
+            <Text style={smtpStyles.resultDesc}>
+              Revisa {result.email} (bandeja principal y spam). Si no llega en
+              2 min, verifica SPF/DKIM/CNAME en Resend {'>'} Domains.
+            </Text>
+            <Text style={smtpStyles.resultMeta}>Enviado: {formatAt(result.at)}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {result?.kind === 'error' ? (
+        <View style={[smtpStyles.result, smtpStyles.resultErr]}>
+          <Ionicons name="alert-circle" size={16} color={colors.danger} />
+          <View style={{ flex: 1 }}>
+            <Text style={smtpStyles.resultTitle}>No se pudo enviar</Text>
+            <Text style={smtpStyles.resultDesc}>{result.message}</Text>
+            <Text style={smtpStyles.resultMeta}>Intento: {formatAt(result.at)}</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function MethodRow({ method, active }: { method: PaymentMethodOption; active: boolean }) {
   return (
     <Card>
@@ -612,6 +749,60 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '600',
   },
+});
+
+const smtpStyles = StyleSheet.create({
+  wrap: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    gap: spacing.sm,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  title: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  desc: { color: colors.textSubtle, fontSize: 12, lineHeight: 17 },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  emailText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSubtle,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+  },
+  btnDisabled: { backgroundColor: colors.textMuted, opacity: 0.6 },
+  btnText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 13 },
+  result: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  resultOk: { backgroundColor: colors.successSoft, borderColor: colors.success },
+  resultErr: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+  resultTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+  resultDesc: { fontSize: 12, color: colors.textSubtle, marginTop: 2, lineHeight: 16 },
+  resultMeta: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
 });
 
 const readinessStyles = StyleSheet.create({
