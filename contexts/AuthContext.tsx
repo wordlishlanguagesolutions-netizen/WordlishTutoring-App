@@ -25,6 +25,8 @@ import { resetNotificationsCache } from '@/services/notificationService';
 import { resetMaterialsCache } from '@/services/materialsService';
 import { resetScreenshotsCache } from '@/services/screenshotsService';
 import { resetClassRecordsCache } from '@/services/classRecordsService';
+import { resetSystemAlertsCache } from '@/services/systemAlertsService';
+import { resetSupportTicketsCache } from '@/services/supportTicketsService';
 import { invalidateRoleCapacityCache } from '@/services/userRolesPolicy';
 
 // Limpia todas las caches locales para evitar que un usuario nuevo
@@ -42,6 +44,8 @@ function clearAllLocalCaches() {
   try { resetMaterialsCache(); } catch {}
   try { resetScreenshotsCache(); } catch {}
   try { resetClassRecordsCache(); } catch {}
+  try { resetSystemAlertsCache(); } catch {}
+  try { resetSupportTicketsCache(); } catch {}
   try { invalidateRoleCapacityCache(); } catch {}
 }
 

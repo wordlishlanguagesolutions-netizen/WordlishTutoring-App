@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import {
@@ -15,42 +16,177 @@ import { colors, spacing, typography, radius } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { useBookings } from '@/hooks/useBookings';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAuth } from '@/hooks/useAuth';
 import { BOOKING_STATUS, dateUtils } from '@/services/mockData';
+import {
+  hydrateTeachers,
+  getTeacherByUserId,
+  subscribeTeachers,
+} from '@/services/teachersService';
+import { availabilityRepo } from '@/repositories/availability';
 
 // ============================================================================
 // Agenda del Profesor · fusiona Disponibilidad + Clases con toggle superior.
-// Reemplaza las tabs independientes "Disponibilidad" y "Clases".
-// El profesor decide entre gestionar su horario o revisar sus clases sin
-// cambiar de módulo.
+//
+// Cambio de infraestructura (beta): el tab "Mi horario" ahora publica y lee
+// directamente contra public.teacher_availability via availabilityRepo.
+// Ya no usa mock local; los cambios impactan inmediatamente a reservas
+// (bookingService lee del mismo cache) y a la web (que consume el mismo
+// backend). El tab "Mis clases" mantiene su comportamiento previo.
 // ============================================================================
 
 type AgendaTab = 'schedule' | 'classes';
 type ClassesFilter = 'today' | 'week' | 'past';
 
-const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const SLOTS = ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
+const DAYS = [
+  { label: 'Lun', weekday: 1 },
+  { label: 'Mar', weekday: 2 },
+  { label: 'Mié', weekday: 3 },
+  { label: 'Jue', weekday: 4 },
+  { label: 'Vie', weekday: 5 },
+  { label: 'Sáb', weekday: 6 },
+  { label: 'Dom', weekday: 0 },
+];
+
+// Franjas horarias permitidas. Manteniendo un set fijo para que el catalogo
+// sea consistente entre profesores y con el wizard de reservas.
+const SLOTS = [
+  '08:00',
+  '09:00',
+  '10:00',
+  '11:00',
+  '14:00',
+  '15:00',
+  '16:00',
+  '17:00',
+  '18:00',
+  '19:00',
+];
+
+// ---------------------------------------------------------------------------
+// Helpers de semana (ISO Monday-based).
+// ---------------------------------------------------------------------------
+function currentWeekStart(): string {
+  const today = new Date();
+  const dow = today.getDay(); // 0=Sun, 1=Mon...
+  const daysFromMon = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysFromMon);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const d = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatWeekRange(weekStartIso: string): string {
+  const [y, m, d] = weekStartIso.split('-').map(Number);
+  const monday = new Date(y, (m ?? 1) - 1, d);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${monday.getDate()} ${months[monday.getMonth()]} – ${sunday.getDate()} ${months[sunday.getMonth()]}`;
+}
 
 export default function AgendaScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { ctx } = usePermissions();
   const { bookings } = useBookings();
-  const { weekPublished, publishWeek, deadline } = useTeacherNotifications();
+  const { weekPublished, publishWeek } = useTeacherNotifications();
 
   const [tab, setTab] = useState<AgendaTab>('schedule');
 
-  // Estado del horario
-  const [selectedDay, setSelectedDay] = useState<string>('Lun');
-  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(
-    new Set(['09:00', '10:00', '14:00'])
-  );
+  // Semana ISO objetivo. Al momento la UI trabaja siempre con la semana
+  // actual; el diseno permite extender a proximas semanas mas adelante.
+  const weekStart = useMemo(() => currentWeekStart(), []);
+  const weekRange = useMemo(() => formatWeekRange(weekStart), [weekStart]);
 
-  // Estado del listado de clases
+  // Estado del horario: mapea weekday -> Set<string> de slots publicados.
+  const [slotsByWeekday, setSlotsByWeekday] = useState<Record<number, Set<string>>>({});
+  const [selectedWeekday, setSelectedWeekday] = useState<number>(1); // Lunes por defecto
+  const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [initialSignature, setInitialSignature] = useState<string>('');
+  const [hasPublishedData, setHasPublishedData] = useState<boolean>(false);
+
+  const buildSignature = useCallback((map: Record<number, Set<string>>): string => {
+    return Object.keys(map)
+      .map(Number)
+      .sort()
+      .map((wd) => `${wd}:${Array.from(map[wd] ?? []).sort().join(',')}`)
+      .join('|');
+  }, []);
+
+  const currentSignature = useMemo(
+    () => buildSignature(slotsByWeekday),
+    [slotsByWeekday, buildSignature],
+  );
+  const dirty = currentSignature !== initialSignature;
+
+  // ---------------------------------------------------------------------
+  // Carga inicial: resolver teacher del usuario logueado + disponibilidad
+  // publicada para la semana actual desde Cloud.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        await hydrateTeachers().catch(() => undefined);
+        if (!alive) return;
+        if (!user?.id) {
+          setLoadError('Sesion no valida. Vuelve a iniciar sesion.');
+          setLoading(false);
+          return;
+        }
+        const meTeacher = getTeacherByUserId(user.id);
+        if (!meTeacher) {
+          setLoadError('No encontramos tu perfil de profesor en el sistema. Contacta al administrador.');
+          setLoading(false);
+          return;
+        }
+        setTeacherId(meTeacher.id);
+        await availabilityRepo.warmCache(true);
+        const rows = await availabilityRepo.getForTeacher(meTeacher.id);
+        if (!alive) return;
+        const forThisWeek = rows.filter((r) => r.weekStart === weekStart);
+        const map: Record<number, Set<string>> = {};
+        for (const r of forThisWeek) {
+          map[r.weekday] = new Set(r.slots ?? []);
+        }
+        setSlotsByWeekday(map);
+        setInitialSignature(buildSignature(map));
+        setHasPublishedData(forThisWeek.some((r) => (r.slots ?? []).length > 0));
+      } catch (err: any) {
+        console.warn('[agenda.tsx] load error', err);
+        if (alive) setLoadError('No pudimos cargar tu disponibilidad. Reintenta en un momento.');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    const unsub = subscribeTeachers(() => {
+      if (!alive || teacherId || !user?.id) return;
+      const meTeacher = getTeacherByUserId(user.id);
+      if (meTeacher) setTeacherId(meTeacher.id);
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, [user?.id, weekStart, buildSignature, teacherId]); // Added buildSignature and teacherId to dependencies
+
+  // ---------------------------------------------------------------------
+  // Estado del listado de clases (tab "Mis clases") — sin cambios.
+  // ---------------------------------------------------------------------
   const [classesFilter, setClassesFilter] = useState<ClassesFilter>('today');
-  const teacherId = ctx?.teacherId ?? 't1';
+  const activeTeacherId = teacherId ?? ctx?.teacherId ?? 't1';
   const today = dateUtils.todayISO();
   const mine = useMemo(
-    () => bookings.filter((b) => b.teacherId === teacherId),
-    [bookings, teacherId],
+    () => bookings.filter((b) => b.teacherId === activeTeacherId),
+    [bookings, activeTeacherId],
   );
   const buckets = useMemo(() => {
     const todayList = mine.filter((b) => b.date === today);
@@ -71,36 +207,101 @@ export default function AgendaScreen() {
       ? buckets.week
       : buckets.past;
 
-  const toggleSlot = (slot: string) => {
-    const next = new Set(selectedSlots);
-    if (next.has(slot)) next.delete(slot);
-    else next.add(slot);
-    setSelectedSlots(next);
-  };
+  const selectedSlots = slotsByWeekday[selectedWeekday] ?? new Set<string>();
 
-  const handlePublish = () => {
-    if (selectedSlots.size === 0) {
+  const toggleSlot = useCallback(
+    (slot: string) => {
+      setSlotsByWeekday((prev) => {
+        const next: Record<number, Set<string>> = { ...prev };
+        const current = new Set(next[selectedWeekday] ?? []);
+        if (current.has(slot)) current.delete(slot);
+        else current.add(slot);
+        next[selectedWeekday] = current;
+        return next;
+      });
+    },
+    [selectedWeekday],
+  );
+
+  const totalSelected = useMemo(
+    () =>
+      Object.values(slotsByWeekday).reduce(
+        (acc, s) => acc + (s ? s.size : 0),
+        0,
+      ),
+    [slotsByWeekday],
+  );
+
+  const publish = useCallback(async () => {
+    if (!teacherId) {
+      Alert.alert('Sin perfil', loadError ?? 'No se identifica tu profesor.');
+      return;
+    }
+    // Convertir Set<string> -> string[] ordenado por hora.
+    const payload: Record<number, string[]> = {};
+    // Solo enviamos los weekdays que aparecen en el estado. Un weekday con
+    // Set vacio se envia como [] (publicacion explicita sin disponibilidad).
+    for (const [wdStr, set] of Object.entries(slotsByWeekday)) {
+      payload[Number(wdStr)] = Array.from(set ?? []).sort();
+    }
+    if (Object.keys(payload).length === 0) {
       Alert.alert(
         'Sin franjas',
         'Selecciona al menos una franja horaria antes de publicar.',
       );
       return;
     }
-    Alert.alert(
-      'Publicar disponibilidad',
-      `Semana ${deadline.weekRange}. Se enviará a los estudiantes.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Publicar',
-          onPress: () => {
-            publishWeek();
-            Alert.alert('Publicado', 'Tu disponibilidad ya es visible.');
-          },
-        },
-      ],
+    setSaving(true);
+    const result = await availabilityRepo.publishMany(
+      teacherId,
+      weekStart,
+      payload,
     );
-  };
+    setSaving(false);
+    if (!result.ok) {
+      Alert.alert('Error al publicar', result.error ?? 'Intenta nuevamente.');
+      return;
+    }
+    setInitialSignature(currentSignature);
+    setHasPublishedData(totalSelected > 0);
+    publishWeek();
+    Alert.alert(
+      'Publicado',
+      'Tu disponibilidad ya es visible para estudiantes y acudientes.',
+    );
+  }, [
+    teacherId,
+    weekStart,
+    slotsByWeekday,
+    currentSignature,
+    totalSelected,
+    publishWeek,
+    loadError,
+  ]);
+
+  const handlePublishPress = useCallback(() => {
+    if (saving) return;
+    if (!dirty && hasPublishedData) {
+      Alert.alert(
+        'Sin cambios',
+        'No hay cambios pendientes para publicar en esta semana.',
+      );
+      return;
+    }
+    const willOverwrite = hasPublishedData && dirty;
+    const title = willOverwrite ? 'Sobrescribir horarios' : 'Publicar disponibilidad';
+    const message = willOverwrite
+      ? `Semana ${weekRange}. Reemplazaras tu disponibilidad publicada. ¿Confirmas?`
+      : `Semana ${weekRange}. Total: ${totalSelected} franja(s). ¿Confirmas?`;
+    Alert.alert(title, message, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: willOverwrite ? 'Sobrescribir' : 'Publicar',
+        style: willOverwrite ? 'destructive' : 'default',
+        onPress: publish,
+      },
+    ]);
+  }, [dirty, hasPublishedData, weekRange, totalSelected, publish, saving]);
 
   return (
     <Screen>
@@ -108,7 +309,7 @@ export default function AgendaScreen() {
         title="Agenda"
         subtitle={
           tab === 'schedule'
-            ? `Semana ${deadline.weekRange}`
+            ? `Semana ${weekRange}`
             : `${classesList.length} clases`
         }
       />
@@ -155,91 +356,136 @@ export default function AgendaScreen() {
 
       {tab === 'schedule' ? (
         <>
-          {!weekPublished ? (
-            <View style={{ marginBottom: spacing.md }}>
-              <NotificationBanner
-                tone="danger"
-                icon="alarm"
-                title="Publicación pendiente"
-                message={`Debes publicar antes del ${deadline.label}. Los estudiantes no verán tu disponibilidad hasta que la publiques.`}
-              />
-            </View>
-          ) : (
-            <View style={{ marginBottom: spacing.md }}>
-              <NotificationBanner
-                tone="success"
-                icon="checkmark-circle"
-                title="Semana publicada"
-                message="Puedes editar y volver a publicar cuando quieras."
-              />
-            </View>
-          )}
-
-          <Text style={styles.section}>Selecciona día y franjas</Text>
-          <View style={styles.daysRow}>
-            {DAYS.map((d) => {
-              const active = selectedDay === d;
-              return (
-                <Pressable
-                  key={d}
-                  onPress={() => setSelectedDay(d)}
-                  style={[styles.dayChip, active && styles.dayChipActive]}
-                >
-                  <Text style={[styles.dayText, active && styles.dayTextActive]}>
-                    {d}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={{ height: spacing.md }} />
-          <Card>
-            <View style={styles.slotsGrid}>
-              {SLOTS.map((s) => {
-                const active = selectedSlots.has(s);
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => toggleSlot(s)}
-                    style={[styles.slot, active && styles.slotActive]}
-                  >
-                    <Text
-                      style={[styles.slotText, active && styles.slotTextActive]}
-                    >
-                      {s}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Card>
-
-          <Text
-            style={[
-              typography.caption,
-              { marginTop: spacing.md, textAlign: 'center' },
-            ]}
-          >
-            Toca para activar o desactivar franjas
-          </Text>
-
-          <Pressable
-            onPress={handlePublish}
-            style={({ pressed }) => [
-              styles.publishBtn,
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Ionicons
-              name="cloud-upload"
-              size={20}
-              color={colors.textOnPrimary}
+          {loading ? (
+            <Card>
+              <View style={styles.loadingBox}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={typography.caption}>
+                  Cargando tu disponibilidad...
+                </Text>
+              </View>
+            </Card>
+          ) : loadError ? (
+            <NotificationBanner
+              tone="danger"
+              icon="alert-circle"
+              title="No podemos cargar tu horario"
+              message={loadError}
             />
-            <Text style={styles.publishText}>
-              {weekPublished ? 'Actualizar publicación' : 'Publicar disponibilidad'}
-            </Text>
-          </Pressable>
+          ) : (
+            <>
+              {hasPublishedData ? (
+                <View style={{ marginBottom: spacing.md }}>
+                  <NotificationBanner
+                    tone={dirty ? 'warning' : 'success'}
+                    icon={dirty ? 'alert-circle' : 'checkmark-circle'}
+                    title={
+                      dirty
+                        ? 'Cambios sin publicar'
+                        : 'Disponibilidad publicada'
+                    }
+                    message={
+                      dirty
+                        ? 'Los estudiantes aun ven tu ultima publicacion hasta que confirmes.'
+                        : `Semana ${weekRange} · ${totalSelected} franja(s) visibles.`
+                    }
+                  />
+                </View>
+              ) : (
+                <View style={{ marginBottom: spacing.md }}>
+                  <NotificationBanner
+                    tone="danger"
+                    icon="alarm"
+                    title="Publicacion pendiente"
+                    message="Aun no publicas horarios para esta semana. Selecciona al menos una franja y publica."
+                  />
+                </View>
+              )}
+
+              <Text style={styles.section}>Selecciona dia y franjas</Text>
+              <View style={styles.daysRow}>
+                {DAYS.map((d) => {
+                  const active = selectedWeekday === d.weekday;
+                  const dayCount = (slotsByWeekday[d.weekday] ?? new Set()).size;
+                  return (
+                    <Pressable
+                      key={d.weekday}
+                      onPress={() => setSelectedWeekday(d.weekday)}
+                      style={[styles.dayChip, active && styles.dayChipActive]}
+                    >
+                      <Text style={[styles.dayText, active && styles.dayTextActive]}>
+                        {d.label}
+                      </Text>
+                      {dayCount > 0 ? (
+                        <View style={styles.dayCountDot}>
+                          <Text style={styles.dayCountText}>{dayCount}</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={{ height: spacing.md }} />
+              <Card>
+                <View style={styles.slotsGrid}>
+                  {SLOTS.map((s) => {
+                    const active = selectedSlots.has(s);
+                    return (
+                      <Pressable
+                        key={s}
+                        onPress={() => toggleSlot(s)}
+                        style={[styles.slot, active && styles.slotActive]}
+                      >
+                        <Text
+                          style={[styles.slotText, active && styles.slotTextActive]}
+                        >
+                          {s}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </Card>
+
+              <Text
+                style={[
+                  typography.caption,
+                  { marginTop: spacing.md, textAlign: 'center' },
+                ]}
+              >
+                Toca para activar o desactivar franjas · Total semana: {totalSelected}
+              </Text>
+
+              <Pressable
+                onPress={handlePublishPress}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.publishBtn,
+                  (pressed || saving) && { opacity: 0.85 },
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.textOnPrimary} />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="cloud-upload"
+                      size={20}
+                      color={colors.textOnPrimary}
+                    />
+                    <Text style={styles.publishText}>
+                      {hasPublishedData
+                        ? dirty
+                          ? 'Actualizar publicacion'
+                          : 'Republicar'
+                        : 'Publicar disponibilidad'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -250,7 +496,7 @@ export default function AgendaScreen() {
               onPress={() => setClassesFilter('today')}
             />
             <Chip
-              label={`Próximas (${buckets.week.length})`}
+              label={`Proximas (${buckets.week.length})`}
               active={classesFilter === 'week'}
               onPress={() => setClassesFilter('week')}
             />
@@ -303,7 +549,7 @@ export default function AgendaScreen() {
                             ? router.push(`/class/${b.classRecordId}` as any)
                             : Alert.alert(
                                 'Sin expediente',
-                                'La reserva aún no tiene expediente.',
+                                'La reserva aun no tiene expediente.',
                               )
                         }
                         style={({ pressed }) => [
@@ -389,10 +635,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   dayChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   dayText: { color: colors.textSubtle, fontWeight: '600', fontSize: 13 },
   dayTextActive: { color: colors.textOnPrimary },
+  dayCountDot: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayCountText: {
+    color: colors.textOnPrimary,
+    fontSize: 10,
+    fontWeight: '800',
+  },
   slotsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   slot: {
     width: '30%',
@@ -417,6 +680,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   publishText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 16 },
+
+  loadingBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
 
   chips: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   chip: {

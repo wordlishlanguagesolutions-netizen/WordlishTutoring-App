@@ -254,6 +254,28 @@ export default function SettingsScreen() {
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </Pressable>
 
+      <Text style={styles.section}>Tickets de soporte</Text>
+      <Text style={typography.caption}>
+        Cada vez que un usuario abre soporte (WhatsApp, in-app, correo) se
+        registra un ticket en Cloud. Aqui puedes revisarlos y marcarlos como
+        resueltos.
+      </Text>
+      <Pressable
+        onPress={() => router.push('/(admin)/support-tickets' as any)}
+        style={({ pressed }) => [notifStyles.entryRow, pressed && { opacity: 0.9 }]}
+      >
+        <View style={notifStyles.entryIcon}>
+          <Ionicons name="chatbubbles-outline" size={18} color={colors.primaryDark} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.bodyStrong}>Ver tickets</Text>
+          <Text style={typography.caption}>
+            Filtra por estado, marca resueltos o reabre casos cerrados.
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
       <Text style={[typography.h3, styles.section]}>Soporte</Text>
       <SupportRow role="admin" screen="Ajustes" />
     </Screen>

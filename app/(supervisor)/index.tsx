@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert, Platform } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import {
@@ -9,10 +9,18 @@ import {
   Avatar,
   ZoomButton,
   SupportRow,
+  StatusBadge,
 } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { liveClasses, supervisorStats } from '@/services/mockData';
 import { getScreenshotStatus } from '@/constants/policies';
+import {
+  getOpenSystemAlerts,
+  hydrateSystemAlerts,
+  subscribeSystemAlerts,
+  resolveSystemAlert,
+  type SystemAlertItem,
+} from '@/services/systemAlertsService';
 
 type Filter = 'all' | 'live' | 'alerts';
 
@@ -122,6 +130,46 @@ export default function SupervisorMonitor() {
   // Al subirse, la clase pasa a considerarse con evidencia y la alerta
   // 'Screenshot faltante' desaparece automaticamente.
   const [uploaded, setUploaded] = useState<Record<string, UploadedScreenshot>>({});
+
+  // Alertas del sistema · public.system_alerts (Cloud real).
+  // Se cargan y se suscriben para repintar cuando cambian.
+  const [systemAlerts, setSystemAlerts] = useState<SystemAlertItem[]>(() =>
+    getOpenSystemAlerts(),
+  );
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    hydrateSystemAlerts().catch(() => undefined);
+    const unsub = subscribeSystemAlerts(() => {
+      if (alive) setSystemAlerts(getOpenSystemAlerts());
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
+
+  const handleResolveAlert = (alert: SystemAlertItem) => {
+    Alert.alert(
+      'Resolver alerta',
+      `${alert.type}. ¿Confirmas que ya fue atendida?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Resolver',
+          style: 'default',
+          onPress: async () => {
+            setResolvingId(alert.id);
+            const res = await resolveSystemAlert(alert.id);
+            setResolvingId(null);
+            if (!res.ok) {
+              Alert.alert('No se pudo resolver', res.error ?? 'Intenta nuevamente.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const uploadScreenshot = (
     classId: string,
@@ -343,6 +391,79 @@ export default function SupervisorMonitor() {
         })}
       </View>
 
+      <Text style={styles.section}>Alertas del sistema ({systemAlerts.length})</Text>
+      {systemAlerts.length === 0 ? (
+        <Card>
+          <View style={styles.emptyAlerts}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Text style={styles.emptyAlertsText}>Sin alertas activas.</Text>
+          </View>
+        </Card>
+      ) : (
+        <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+          {systemAlerts.map((a) => {
+            const sevTone =
+              a.severity === 'critical' || a.severity === 'danger'
+                ? { bg: colors.dangerSoft, fg: colors.danger, label: 'Critica' as const }
+                : a.severity === 'warning'
+                ? { bg: colors.warningSoft, fg: colors.warning, label: 'Aviso' as const }
+                : { bg: colors.infoSoft, fg: colors.info, label: 'Info' as const };
+            const busy = resolvingId === a.id;
+            return (
+              <Card key={a.id}>
+                <View style={styles.sysAlertHead}>
+                  <View style={[styles.sysAlertIcon, { backgroundColor: sevTone.bg }]}>
+                    <Ionicons
+                      name={(a.icon as any) ?? 'warning'}
+                      size={16}
+                      color={sevTone.fg}
+                    />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={typography.bodyStrong} numberOfLines={1}>
+                      {a.type}
+                    </Text>
+                    {a.detail ? (
+                      <Text style={[typography.caption, { marginTop: 2 }]} numberOfLines={2}>
+                        {a.detail}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <StatusBadge
+                    label={sevTone.label}
+                    tone={
+                      a.severity === 'critical' || a.severity === 'danger'
+                        ? 'danger'
+                        : a.severity === 'warning'
+                        ? 'warning'
+                        : 'info'
+                    }
+                  />
+                </View>
+                <View style={styles.sysAlertMetaRow}>
+                  <Text style={styles.sysAlertMeta}>
+                    {new Date(a.createdAt).toLocaleString('es-PA')}
+                  </Text>
+                  <Pressable
+                    onPress={() => handleResolveAlert(a)}
+                    disabled={busy}
+                    style={({ pressed }) => [
+                      styles.sysAlertBtn,
+                      (pressed || busy) && { opacity: 0.85 },
+                    ]}
+                  >
+                    <Ionicons name="checkmark-done" size={12} color={colors.textOnPrimary} />
+                    <Text style={styles.sysAlertBtnText}>
+                      {busy ? 'Resolviendo...' : 'Marcar resuelto'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </Card>
+            );
+          })}
+        </View>
+      )}
+
       <Text style={styles.section}>Soporte</Text>
       <SupportRow role="supervisor" screen="Monitor" />
     </Screen>
@@ -493,6 +614,57 @@ const styles = StyleSheet.create({
   uploadedReplace: {
     color: colors.primaryDark,
     fontSize: 12,
+    fontWeight: '700',
+  },
+
+  emptyAlerts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+  },
+  emptyAlertsText: {
+    color: colors.textSubtle,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  sysAlertHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  sysAlertIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sysAlertMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  sysAlertMeta: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  sysAlertBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  sysAlertBtnText: {
+    color: colors.textOnPrimary,
+    fontSize: 11,
     fontWeight: '700',
   },
 });
