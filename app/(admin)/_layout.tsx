@@ -13,6 +13,7 @@ const ADMIN_NAV: SidebarItem[] = [
   { label: 'Usuarios', icon: 'people', route: '/(admin)/users' },
   { label: 'Pagos', icon: 'card', route: '/(admin)/finance' },
   { label: 'Paquetes', icon: 'cube', route: '/(admin)/packages' },
+  { label: 'Tickets', icon: 'chatbubbles', route: '/(admin)/support-tickets' },
   { label: 'Ajustes', icon: 'settings', route: '/(admin)/settings' },
 ];
 
@@ -66,6 +67,15 @@ export default function AdminLayout() {
             options={{
               title: 'Ajustes',
               tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
+            }}
+          />
+          <Tabs.Screen
+            name="support-tickets"
+            options={{
+              // Ruta accesible desde sidebar (desktop) y desde Ajustes (movil).
+              // href: null oculta la tab en la barra inferior movil.
+              href: null,
+              title: 'Tickets',
             }}
           />
         </Tabs>
