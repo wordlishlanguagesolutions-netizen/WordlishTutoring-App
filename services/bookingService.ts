@@ -1,12 +1,20 @@
 // Wordlish · Booking service (lógica pura, sin React)
-import {
-  Booking,
-  BookingStatus,
-  TEACHERS_FULL,
-  TEACHER_WEEK_AVAILABILITY,
-  dateUtils,
-} from './mockData';
-import { TeacherTier, getAllowedTiers } from '@/constants/policies';
+//
+// Cambio de infraestructura (Cloud):
+//   - La disponibilidad semanal por profesor + weekday ya NO se lee del
+//     mock `TEACHER_WEEK_AVAILABILITY`. Ahora se consulta contra
+//     `public.teacher_availability` via `availabilityRepo` (que mantiene
+//     un cache en memoria hidratado desde BookingsContext y refrescado
+//     mediante subscribeAvailability).
+//   - La lista de profesores por materia (getTeachersForSubject) tambien
+//     proviene de `availabilityRepo.getCachedTeachersForSubject`, que
+//     cruza `teacher_availability` con `public.teachers` + user_profiles.
+//   - La logica de bookings + holds + conflictos se mantiene identica:
+//     los slots publicados se filtran en memoria contra los bookings
+//     vigentes (BookingsContext) y los holds activos (BookingsContext).
+import { Booking, BookingStatus, dateUtils } from './mockData';
+import type { TeacherTier } from '@/constants/policies';
+import { availabilityRepo } from '@/repositories/availability';
 
 export interface Hold {
   id: string;
@@ -27,7 +35,10 @@ export function getTeacherAvailableSlots(
   now: number,
 ): string[] {
   const weekday = dateUtils.weekdayOf(date);
-  const base = TEACHER_WEEK_AVAILABILITY[teacherId]?.[weekday] ?? [];
+  // Base semanal viene del cache de teacher_availability (Cloud).
+  // Si el cache aun no esta hidratado, devuelve [] (el warm-up dispara
+  // en background y BookingsContext fuerza un re-render al llegar).
+  const base = availabilityRepo.getCachedSlots(teacherId, weekday);
   const booked = new Set(
     bookings
       .filter(
@@ -49,28 +60,20 @@ export function getTeacherAvailableSlots(
   return base.filter((s) => !booked.has(s) && !held.has(s));
 }
 
-// Filtra el catálogo por materia, nivel y (opcionalmente) por el plan del
-// estudiante. El subject viene en formato "Base · Nivel" (ej. "Inglés ·
-// Básico"). Se extrae la materia base para filtrar TEACHERS_FULL.subjects
-// y, si hay nivel, se filtra además contra TEACHERS_FULL.levels para que
-// solo aparezcan profesores compatibles con esa especialidad. El plan tier
-// se aplica al final: "special" ve ambos tiers, "essentials" solo essentials.
+// Filtra el catalogo real de profesores (Cloud) por materia, nivel y plan.
+// El subject viene en formato "Base . Nivel" (ej. "Ingles . Basico"). El
+// repo `availabilityRepo` hace el match normalizando mayusculas y tildes
+// contra `teachers.subjects` (text[]), y si hay nivel filtra tambien
+// contra `teachers.grades` reexpuesto como `levels`. El plan tier se
+// aplica al final: "special" ve ambos tiers, "essentials" solo essentials.
+// La firma de retorno preserva { id, name, avatar, tier, subjects, levels }
+// para no romper a los consumidores existentes (BookingWizard, booking/
+// teacher.tsx, booking/schedule.tsx).
 export function getTeachersForSubject(
   subject: string,
   planTier?: TeacherTier,
 ) {
-  const parts = subject.split(' · ');
-  const base = parts[0];
-  const level = parts[1];
-  let list = TEACHERS_FULL.filter((t) => t.subjects.includes(base));
-  if (level) {
-    list = list.filter(
-      (t) => Array.isArray(t.levels) && t.levels.includes(level),
-    );
-  }
-  if (!planTier) return list;
-  const allowed = getAllowedTiers(planTier);
-  return list.filter((t) => allowed.includes(t.tier));
+  return availabilityRepo.getCachedTeachersForSubject(subject, planTier);
 }
 
 // Regla: un estudiante no puede tener dos clases al mismo tiempo

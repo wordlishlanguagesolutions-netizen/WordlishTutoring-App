@@ -50,6 +50,10 @@ import {
   getUsersByRole,
 } from '@/services/usersService';
 import { getSetting } from '@/services/appSettingsService';
+import {
+  hydrateAvailability,
+  subscribeAvailability,
+} from '@/repositories/availability';
 import { mockDb } from '@/services/mockDb';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -175,6 +179,10 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     // enviaban a IDs mock que en produccion no existen.
     hydratePayments().catch(() => undefined);
     hydrateUsers().catch(() => undefined);
+    // Hidratacion de teacher_availability (Cloud). Reemplaza al mock
+    // TEACHER_WEEK_AVAILABILITY: el cache queda listo antes de que el
+    // usuario entre al wizard de reservas.
+    hydrateAvailability().catch(() => undefined);
     const unsubBookings = subscribeBookings(() => {
       setBookings(getBookings());
     });
@@ -184,10 +192,18 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     const unsubPackages = subscribePackages(() => {
       setRemainingHours(computeRemainingHours());
     });
+    // Cuando el cache de disponibilidad se refresca (warmCache/refresh),
+    // forzamos un re-render de consumidores empujando la lista de bookings
+    // vigente: es la senal mas barata para que useMemo de los wizards
+    // vuelva a computar slots contra la disponibilidad recien cargada.
+    const unsubAvailability = subscribeAvailability(() => {
+      setBookings(getBookings());
+    });
     return () => {
       unsubBookings();
       unsubStudents();
       unsubPackages();
+      unsubAvailability();
     };
   }, []);
 
