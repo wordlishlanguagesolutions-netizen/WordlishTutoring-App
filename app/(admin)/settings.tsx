@@ -40,6 +40,7 @@ import {
   type EdgeFunctionHealth,
   type EdgeFunctionStatus,
 } from '@/services/edgeFunctionsHealth';
+import { CloudIntegrityBlock } from '@/components/admin/CloudIntegrityBlock';
 
 // ============================================================================
 // Admin · Ajustes globales.
@@ -140,6 +141,14 @@ export default function SettingsScreen() {
       <Header title="Ajustes" subtitle="Configuración global" />
 
       <ReadinessBanner missing={missingSettings} />
+
+      <Text style={styles.section}>Integridad Cloud</Text>
+      <Text style={typography.caption}>
+        Snapshot en vivo de las tablas core: admins, profesores, materias
+        activas, disponibilidad publicada, reservas, pagos, reportes y
+        alertas. Cualquier item en rojo bloquea el beta.
+      </Text>
+      <CloudIntegrityBlock />
 
       <Text style={styles.section}>Diagnóstico SMTP</Text>
       <Text style={typography.caption}>
