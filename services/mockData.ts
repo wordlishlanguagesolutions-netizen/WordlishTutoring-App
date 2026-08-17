@@ -418,9 +418,12 @@ export const recentAlerts = [
 // ============= CATÁLOGOS =============
 // Materias base. Los niveles/especialidades se listan en SUBJECT_LEVELS.
 // Estructura administrable desde el panel: agregar/editar/desactivar sin tocar código.
+// Catálogo alineado con `public.subjects` en Cloud (10 materias activas).
+// Fuente única de verdad: docs/BETA_SUBJECTS.md.
 export const SUBJECTS_CATALOG = [
   'Inglés', 'Francés', 'Portugués', 'Español',
-  'Matemáticas', 'Física', 'Química', 'Sociales',
+  'Matemáticas', 'Física', 'Química',
+  'Ciencias', 'Historia', 'Sociales',
 ];
 
 // Niveles/programas reales por materia. Cada materia debe tener al menos un
@@ -435,6 +438,8 @@ export const SUBJECT_LEVELS: Record<string, string[]> = {
   'Matemáticas': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
   'Física': ['Secundaria', 'Universidad'],
   'Química': ['Secundaria', 'Universidad'],
+  'Ciencias': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
+  'Historia': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
   'Sociales': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
 };
 
@@ -446,7 +451,9 @@ export const SUBJECT_META: Record<string, { icon: string; desc: string }> = {
   'Matemáticas': { icon: 'calculator-outline', desc: 'Aritmética a cálculo' },
   'Física': { icon: 'flash-outline', desc: 'Mecánica y termodinámica' },
   'Química': { icon: 'flask-outline', desc: 'General y orgánica' },
-  'Sociales': { icon: 'earth-outline', desc: 'Historia y geografía' },
+  'Ciencias': { icon: 'leaf-outline', desc: 'Biología y ciencias naturales' },
+  'Historia': { icon: 'library-outline', desc: 'Historia universal y local' },
+  'Sociales': { icon: 'earth-outline', desc: 'Geografía y ciudadanía' },
 };
 
 export const TEACHERS_CATALOG = [
