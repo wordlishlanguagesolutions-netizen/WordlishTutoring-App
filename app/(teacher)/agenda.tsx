@@ -50,6 +50,7 @@ const DAYS = [
 
 // Franjas horarias permitidas. Manteniendo un set fijo para que el catalogo
 // sea consistente entre profesores y con el wizard de reservas.
+// 20:00 agregado para cubrir el bloque 8-9pm del turno de tarde noche.
 const SLOTS = [
   '08:00',
   '09:00',
@@ -61,6 +62,7 @@ const SLOTS = [
   '17:00',
   '18:00',
   '19:00',
+  '20:00',
 ];
 
 // ---------------------------------------------------------------------------
