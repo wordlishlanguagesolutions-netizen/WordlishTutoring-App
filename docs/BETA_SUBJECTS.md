@@ -121,6 +121,35 @@ order by s.name;
 
 ---
 
+## Diagnóstico automático de drift Backend ↔ Fallback local
+
+Script: `docs/migrations/016_diagnostic_subjects_drift.sql`
+
+Compara `public.subjects` (Cloud, `active = true`) contra `SUBJECTS_CATALOG`
+en `services/mockData.ts`. Devuelve tres bloques:
+
+1. **Diferencias fila por fila** (`missing_in_local`, `missing_in_cloud`) con
+   la acción exacta a tomar.
+2. **Resumen ejecutivo** con conteos + verdict `OK · paridad total` /
+   `DRIFT · revisar SUBJECTS_CATALOG`.
+3. **Snapshot completo Cloud** listo para copiar/pegar si hay que regenerar
+   el fallback local desde cero.
+
+Uso recomendado:
+
+- Ejecutar antes de cada release beta.
+- Ejecutar cada vez que se agregue, renombre o desactive una materia en
+  Cloud.
+- Si el verdict es `DRIFT`, aplicar la acción indicada por fila y volver a
+  correr hasta ver `OK · paridad total`.
+
+> Nota: el script es solo lectura, seguro para producción. El bloque
+> `local_catalog(name)` es una copia literal de `SUBJECTS_CATALOG`; cuando se
+> modifique el TS, actualizar el SQL el mismo día para que el diagnóstico
+> siga siendo confiable.
+
+---
+
 ## Historial
 
 - 1.0 (2026-08-17): Catálogo oficial con 10 materias, alineado con backend
