@@ -36,23 +36,21 @@ Todos con:
 
 ## Foto de perfil
 
-Estado actual: `avatar_url` esta NULL para los 5. La app muestra iniciales
-sobre fondo lavanda (default de `components/ui/Avatar.tsx`).
+Estado actual: `avatar_url` apunta a las imagenes enviadas por Mary
+(hospedadas en `cdn-ai.onspace.ai`). Copia local de respaldo en
+`assets/teachers/`.
 
-**Por que no se cargaron automaticamente**: las imagenes enviadas son
-tarjetas compuestas (2 profesores por imagen). No es posible dividirlas
-programaticamente sin recorte manual.
+| Profesor  | Archivo local          | Individual | Fuente        |
+|-----------|------------------------|------------|---------------|
+| Doroty O. | doroty.png             | Si         | CDN individual|
+| Dani G.   | dani.jpeg              | Si         | CDN individual|
+| Juli Q.   | juli.jpeg              | Si         | CDN individual|
+| Jose M.   | jose.png               | Si         | CDN individual|
+| Cami F.   | cami.png               | Si         | CDN individual|
 
-### Opciones para subir fotos individuales
-
-**Opcion A (recomendada): cada profesor sube su foto**
-1. Profesor entra por primera vez con contrasena temporal.
-2. Perfil > Editar foto -> galeria.
-3. La app la sube al bucket `avatars` (RLS: solo el propio usuario).
-
-**Opcion B: Mary actualiza `avatar_url` desde OnSpace Cloud Dashboard**
-1. Recopilar 5 fotos individuales (recorte manual o originales sin componer).
-2. Cloud > Data > user_profiles -> editar `avatar_url` con URL publica.
+**Estado**: los 5 profesores tienen retrato individual en `avatar_url`. No
+quedan composites compartidas. Cada uno puede reemplazar la foto desde
+Perfil > Editar foto (sube al bucket `avatars` con RLS propia).
 
 ---
 
@@ -120,3 +118,4 @@ Admin > Ajustes > Diagnostico SMTP.
 ## Historial
 
 - 1.0 (2026-08-17): Creacion con los 5 profesores del batch beta.
+- 1.1 (2026-08-17): Retratos individuales completos para los 5 (Jose recibido).
