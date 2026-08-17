@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -42,14 +42,58 @@ import {
   dashPendingPayments,
   dashNewBookings,
   dashMessages,
-  dashSystemAlerts,
   type LiveClassRow,
   type UpcomingRow,
   type PendingPaymentRow,
   type NewBookingRow,
   type MessageRow,
   type SystemAlertRow,
+  type DashSeverity,
 } from '@/services/dashboardMockData';
+import {
+  getOpenSystemAlerts,
+  hydrateSystemAlerts,
+  subscribeSystemAlerts,
+  type SystemAlertItem,
+} from '@/services/systemAlertsService';
+import type { AlertSeverity } from '@/types/enums';
+
+// Convertidor de SystemAlertItem (Cloud) al shape SystemAlertRow que consume
+// el componente visual AlertRow. Mantiene la UI del dashboard intacta.
+function toSystemAlertRow(a: SystemAlertItem): SystemAlertRow {
+  const sev: DashSeverity =
+    a.severity === 'critical' || a.severity === 'danger'
+      ? 'danger'
+      : a.severity === 'warning'
+      ? 'warning'
+      : 'info';
+  const d = new Date(a.createdAt);
+  const ts = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return {
+    id: a.id,
+    title: a.type,
+    detail: a.detail ?? '',
+    severity: sev,
+    ts,
+  };
+}
+
+function useRealSystemAlerts(): SystemAlertRow[] {
+  const [rows, setRows] = useState<SystemAlertRow[]>(() =>
+    getOpenSystemAlerts().map(toSystemAlertRow),
+  );
+  useEffect(() => {
+    hydrateSystemAlerts().catch(() => undefined);
+    const unsub = subscribeSystemAlerts(() => {
+      setRows(getOpenSystemAlerts().map(toSystemAlertRow));
+    });
+    return unsub;
+  }, []);
+  // Silence unused param helper: AlertSeverity typed above only to keep
+  // enum reference explicit for future maintenance.
+  void ({} as AlertSeverity);
+  return rows;
+}
 
 // ============================================================================
 // Dashboard admin · Wordlish Design System v1.0
@@ -73,6 +117,7 @@ export default function AdminDashboard() {
 function AdminDashboardDesktop() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
+  const systemAlerts = useRealSystemAlerts();
 
   useEffect(() => {
     Animated.timing(fade, {
@@ -310,15 +355,21 @@ function AdminDashboardDesktop() {
                   <PanelHead
                     icon="warning-outline"
                     title="Alertas del sistema"
-                    subtitle="Últimos eventos críticos"
+                    subtitle={systemAlerts.length === 0 ? 'Todo en orden' : 'Últimos eventos críticos'}
                     tone="danger"
-                    countLabel={`${dashSystemAlerts.length}`}
+                    countLabel={`${systemAlerts.length}`}
                   />
-                  <View style={{ gap: spacing.md }}>
-                    {dashSystemAlerts.slice(0, 6).map((a) => (
-                      <AlertRow key={a.id} alert={a} />
-                    ))}
-                  </View>
+                  {systemAlerts.length === 0 ? (
+                    <Text style={[typography.caption, { paddingVertical: spacing.sm }]}> 
+                      Sin alertas activas.
+                    </Text>
+                  ) : (
+                    <View style={{ gap: spacing.md }}>
+                      {systemAlerts.slice(0, 6).map((a) => (
+                        <AlertRow key={a.id} alert={a} />
+                      ))}
+                    </View>
+                  )}
                 </Card>
 
                 <Card elevated>
