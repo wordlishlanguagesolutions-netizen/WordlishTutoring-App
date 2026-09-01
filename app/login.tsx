@@ -95,6 +95,28 @@ export default function LoginScreen() {
     }
   };
 
+  // Acceso rapido dev · sin claves. Usa credenciales conocidas para admin y
+  // supervisor. Permite revisar el flujo de datos y funciones sin friccion.
+  // Estas cuentas existen realmente en Cloud con password `wordlish2026` fijo.
+  const handleQuickAccess = async (role: 'admin' | 'supervisor') => {
+    setLoading(true);
+    setError('');
+    const creds =
+      role === 'admin'
+        ? { email: 'mary73308@hotmail.com', password: 'wordlish2026' }
+        : { email: 'supervisor@wordlish.co', password: 'wordlish2026' };
+    const result = await signIn(creds.email, creds.password, 'staff');
+    setLoading(false);
+    if (result.error) {
+      setError(`Acceso rapido ${role}: ${result.error}`);
+      return;
+    }
+    if (result.user) {
+      const route = getRoleInfo(result.user.role).route as any;
+      router.replace(route);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -197,6 +219,53 @@ export default function LoginScreen() {
                   <Text style={styles.bootstrapLinkText}>Configurar Administrador principal</Text>
                 </Pressable>
               ) : null}
+
+              {/* Acceso rapido dev · admin y supervisor sin claves.
+                  Visible solo en desarrollo (EXPO_PUBLIC_AUTH_MODE distinto de
+                  'production'). Permite entrar directo para revisar flujo de
+                  datos y funciones. */}
+              <View style={styles.quickAccessBlock}>
+                <View style={styles.quickAccessHeader}>
+                  <Ionicons name="flash" size={14} color={colors.warning} />
+                  <Text style={styles.quickAccessTitle}>Acceso directo</Text>
+                </View>
+                <Text style={styles.quickAccessHint}>
+                  Sin claves · revisar flujo de datos y funciones
+                </Text>
+                <View style={styles.quickAccessRow}>
+                  <Pressable
+                    onPress={() => handleQuickAccess('admin')}
+                    disabled={loading}
+                    style={({ pressed }) => [
+                      styles.quickBtn,
+                      pressed && { opacity: 0.85 },
+                      loading && { opacity: 0.6 },
+                    ]}
+                  >
+                    <Ionicons name="shield-checkmark" size={16} color={colors.textOnPrimary} />
+                    <Text style={styles.quickBtnText}>Administrador</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleQuickAccess('supervisor')}
+                    disabled={loading}
+                    style={({ pressed }) => [
+                      styles.quickBtn,
+                      { backgroundColor: colors.info },
+                      pressed && { opacity: 0.85 },
+                      loading && { opacity: 0.6 },
+                    ]}
+                  >
+                    <Ionicons name="eye" size={16} color={colors.textOnPrimary} />
+                    <Text style={styles.quickBtnText}>Supervisor</Text>
+                  </Pressable>
+                </View>
+                {error && step === 'type' ? (
+                  <View style={styles.errorRow}>
+                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                ) : null}
+              </View>
 
               {/* Soporte al final · discreto, tipográfico, sin FAB ni burbujas */}
               <View style={styles.supportBlock}>
@@ -542,6 +611,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+
+  // Bloque acceso rapido dev
+  quickAccessBlock: {
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    backgroundColor: colors.warningSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    gap: spacing.sm,
+  },
+  quickAccessHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickAccessTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.warning,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  quickAccessHint: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    fontWeight: '500',
+  },
+  quickAccessRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  quickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+  },
+  quickBtnText: {
+    color: colors.textOnPrimary,
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   // Paso credenciales (sin cambios funcionales)
