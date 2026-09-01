@@ -15,11 +15,9 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { authService } from '@/services/authService';
 import { contactLoginSupport } from '@/services/supportService';
-import { primaryAdminExists } from '@/services/bootstrapAdminService';
 import { getRoleInfo } from '@/constants/roles';
 import { colors, radius, spacing, typography, shadow } from '@/constants/theme';
 import { PageContainer } from '@/components/ui/PageContainer';
-import { WordlishLogo } from '@/components/ui/WordlishLogo';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { AccountType } from '@/types';
 
@@ -33,25 +31,10 @@ export default function LoginScreen() {
   const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [showPass, setShowPass] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  // `null` mientras se resuelve primaryAdminExists() para evitar el flash
-  // del enlace de bootstrap en la primera renderizacion. `true`/`false`
-  // solo despues de recibir respuesta.
-  const [showBootstrap, setShowBootstrap] = useState<boolean | null>(null);
-
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const exists = await primaryAdminExists();
-      if (alive) setShowBootstrap(!exists);
-    })();
-    return () => { alive = false; };
-  }, []);
 
   const accounts = accountType ? authService.getTestAccounts(accountType) : [];
-  const showTestAccounts = accounts.length > 0; // solo modo mock
   const { isDesktop } = useResponsive();
 
   const pickType = (t: AccountType) => {
@@ -95,28 +78,6 @@ export default function LoginScreen() {
     }
   };
 
-  // Acceso rapido dev · sin claves. Usa credenciales conocidas para admin y
-  // supervisor. Permite revisar el flujo de datos y funciones sin friccion.
-  // Estas cuentas existen realmente en Cloud con password `wordlish2026` fijo.
-  const handleQuickAccess = async (role: 'admin' | 'supervisor') => {
-    setLoading(true);
-    setError('');
-    const creds =
-      role === 'admin'
-        ? { email: 'mary73308@hotmail.com', password: 'wordlish2026' }
-        : { email: 'supervisor@wordlish.co', password: 'wordlish2026' };
-    const result = await signIn(creds.email, creds.password, 'staff');
-    setLoading(false);
-    if (result.error) {
-      setError(`Acceso rapido ${role}: ${result.error}`);
-      return;
-    }
-    if (result.user) {
-      const route = getRoleInfo(result.user.role).route as any;
-      router.replace(route);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -134,12 +95,11 @@ export default function LoginScreen() {
           <PageContainer maxWidth="auth" center={isDesktop}>
           {step === 'type' ? (
             <>
-              {/* Marca oficial · Wordlish Education
-                  Aprende. Conecta. Aplica. */}
-              <WordlishLogo
-                width={280}
-                style={{ marginTop: spacing.md, marginBottom: spacing.xl }}
-              />
+              {/* Placeholder discreto para el logotipo definitivo.
+                  Se reemplazará por el asset oficial cuando esté disponible. */}
+              <View style={styles.logoPlaceholder}>
+                <Text style={styles.logoPlaceholderText}>Logo Wordlish</Text>
+              </View>
 
               <View style={styles.header}>
                 <Text style={styles.title}>¿Cómo deseas ingresar?</Text>
@@ -196,77 +156,6 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
-              {/* Registro publico · disponible para estudiantes/acudientes */}
-              <View style={styles.signupBlock}>
-                <Text style={styles.signupLead}>¿No tienes cuenta?</Text>
-                <Pressable
-                  onPress={() => router.push('/signup' as any)}
-                  hitSlop={10}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.signupLink}>Crear cuenta</Text>
-                </Pressable>
-              </View>
-
-              {/* Bootstrap del admin principal (solo si aun no existe uno) */}
-              {showBootstrap === true ? (
-                <Pressable
-                  onPress={() => router.push('/bootstrap-admin' as any)}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.bootstrapLink, pressed && { opacity: 0.6 }]}
-                >
-                  <Ionicons name="shield-checkmark" size={14} color={colors.textMuted} />
-                  <Text style={styles.bootstrapLinkText}>Configurar Administrador principal</Text>
-                </Pressable>
-              ) : null}
-
-              {/* Acceso rapido dev · admin y supervisor sin claves.
-                  Visible solo en desarrollo (EXPO_PUBLIC_AUTH_MODE distinto de
-                  'production'). Permite entrar directo para revisar flujo de
-                  datos y funciones. */}
-              <View style={styles.quickAccessBlock}>
-                <View style={styles.quickAccessHeader}>
-                  <Ionicons name="flash" size={14} color={colors.warning} />
-                  <Text style={styles.quickAccessTitle}>Acceso directo</Text>
-                </View>
-                <Text style={styles.quickAccessHint}>
-                  Sin claves · revisar flujo de datos y funciones
-                </Text>
-                <View style={styles.quickAccessRow}>
-                  <Pressable
-                    onPress={() => handleQuickAccess('admin')}
-                    disabled={loading}
-                    style={({ pressed }) => [
-                      styles.quickBtn,
-                      pressed && { opacity: 0.85 },
-                      loading && { opacity: 0.6 },
-                    ]}
-                  >
-                    <Ionicons name="shield-checkmark" size={16} color={colors.textOnPrimary} />
-                    <Text style={styles.quickBtnText}>Administrador</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleQuickAccess('supervisor')}
-                    disabled={loading}
-                    style={({ pressed }) => [
-                      styles.quickBtn,
-                      { backgroundColor: colors.info },
-                      pressed && { opacity: 0.85 },
-                      loading && { opacity: 0.6 },
-                    ]}
-                  >
-                    <Ionicons name="eye" size={16} color={colors.textOnPrimary} />
-                    <Text style={styles.quickBtnText}>Supervisor</Text>
-                  </Pressable>
-                </View>
-                {error && step === 'type' ? (
-                  <View style={styles.errorRow}>
-                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                ) : null}
-              </View>
-
               {/* Soporte al final · discreto, tipográfico, sin FAB ni burbujas */}
               <View style={styles.supportBlock}>
                 <Text style={styles.supportLead}>¿Necesitas ayuda?</Text>
@@ -290,10 +179,9 @@ export default function LoginScreen() {
             </>
           ) : (
             <>
-              <WordlishLogo
-                width={150}
-                style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
-              />
+              <View style={styles.logoPlaceholderSmall}>
+                <Text style={styles.logoPlaceholderTextSmall}>Logo Wordlish</Text>
+              </View>
 
               <View style={styles.tierRow}>
                 <Pressable onPress={goBack} hitSlop={10} style={styles.backBtn}>
@@ -340,29 +228,11 @@ export default function LoginScreen() {
                     }}
                     placeholder="Contraseña"
                     placeholderTextColor={colors.textMuted}
-                    secureTextEntry={!showPass}
+                    secureTextEntry
                     autoCapitalize="none"
                     style={styles.input}
                   />
-                  <Pressable onPress={() => setShowPass(!showPass)} hitSlop={10}>
-                    <Ionicons
-                      name={showPass ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color={colors.textSubtle}
-                    />
-                  </Pressable>
                 </View>
-
-                <Pressable
-                  onPress={() => router.push('/forgot-password' as any)}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.forgotLinkWrap,
-                    pressed && { opacity: 0.6 },
-                  ]}
-                >
-                  <Text style={styles.forgotLink}>¿Olvidaste tu contraseña?</Text>
-                </Pressable>
 
                 {error ? (
                   <View style={styles.errorRow}>
@@ -385,27 +255,14 @@ export default function LoginScreen() {
                   </Text>
                   <Ionicons name="arrow-forward" size={18} color={colors.textOnPrimary} />
                 </Pressable>
-
-                {accountType === 'student_guardian' ? (
-                  <Pressable
-                    onPress={() => router.push('/signup' as any)}
-                    hitSlop={10}
-                    style={styles.signupInlineRow}
-                  >
-                    <Text style={styles.signupInlineMuted}>¿No tienes cuenta?</Text>
-                    <Text style={styles.signupInlineLink}> Crear cuenta</Text>
-                  </Pressable>
-                ) : null}
               </View>
 
-              {showTestAccounts ? (
-                <View style={styles.banner}>
-                  <Ionicons name="flask-outline" size={14} color={colors.primaryDark} />
-                  <Text style={styles.bannerText}>
-                    Cuentas de prueba · toca para autocompletar (clave 123456)
-                  </Text>
-                </View>
-              ) : null}
+              <View style={styles.banner}>
+                <Ionicons name="flask-outline" size={14} color={colors.primaryDark} />
+                <Text style={styles.bannerText}>
+                  Cuentas de prueba · toca para autocompletar (clave 123456)
+                </Text>
+              </View>
 
               <View style={{ gap: spacing.sm }}>
                 {accounts.map((acc) => {
@@ -555,27 +412,6 @@ const styles = StyleSheet.create({
   },
 
   // Soporte · texto discreto al final de la pantalla
-  signupBlock: {
-    marginTop: spacing.xl,
-    alignItems: 'center',
-    gap: 4,
-  },
-  signupLead: { fontSize: 15, color: colors.textMuted, fontWeight: '500' },
-  signupLink: {
-    color: colors.primaryDark,
-    fontSize: 15,
-    fontWeight: '700',
-    paddingVertical: 6,
-  },
-  forgotLinkWrap: { alignSelf: 'flex-end', paddingVertical: 4 },
-  forgotLink: { color: colors.primaryDark, fontSize: 13, fontWeight: '600' },
-  signupInlineRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: spacing.md,
-  },
-  signupInlineMuted: { color: colors.textMuted, fontSize: 14 },
-  signupInlineLink: { color: colors.primaryDark, fontSize: 14, fontWeight: '700' },
   supportBlock: {
     marginTop: spacing.xxl,
     alignItems: 'center',
@@ -596,68 +432,6 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontSize: 18,
     fontWeight: '600',
-  },
-  bootstrapLink: {
-    marginTop: spacing.lg,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-  },
-  bootstrapLinkText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-
-  // Bloque acceso rapido dev
-  quickAccessBlock: {
-    marginTop: spacing.xl,
-    padding: spacing.md,
-    backgroundColor: colors.warningSoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    gap: spacing.sm,
-  },
-  quickAccessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  quickAccessTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.warning,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  quickAccessHint: {
-    fontSize: 12,
-    color: colors.textSubtle,
-    fontWeight: '500',
-  },
-  quickAccessRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  quickBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-  },
-  quickBtnText: {
-    color: colors.textOnPrimary,
-    fontSize: 13,
-    fontWeight: '700',
   },
 
   // Paso credenciales (sin cambios funcionales)

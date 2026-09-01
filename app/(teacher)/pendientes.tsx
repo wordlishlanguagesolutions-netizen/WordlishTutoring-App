@@ -3,8 +3,6 @@ import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header } from '@/components/ui';
-import { TeacherHint } from '@/components/teacher/TeacherHint';
-import type { TeacherHintKey } from '@/constants/teacherCulture';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { useBookings } from '@/hooks/useBookings';
@@ -14,7 +12,6 @@ import {
   teacherPendingReports,
 } from '@/services/mockData';
 import { POLICIES } from '@/constants/policies';
-import { getScreenshotStatus } from '@/constants/teacherCulture';
 
 // Pantalla "Pendientes" del profesor · vista extendida.
 // Vista extendida de "Acciones de hoy" del Home con la misma jerarquía
@@ -44,17 +41,21 @@ const PRIORITY: Record<ActionType, number> = {
   booking: 3,
 };
 
+function screenshotLabel(minutesElapsed: number): {
+  label: string;
+  tone: 'primary' | 'warning' | 'danger';
+} {
+  const grace = POLICIES.screenshotGraceMin;
+  if (minutesElapsed > grace) return { label: 'Screenshot vencido', tone: 'danger' };
+  if (minutesElapsed >= grace - 2) return { label: 'Envíalo ahora', tone: 'warning' };
+  return { label: 'Screenshot pendiente', tone: 'primary' };
+}
+
 export default function PendientesScreen() {
   const router = useRouter();
   const { ctx } = usePermissions();
   const { bookings } = useBookings();
-  const {
-    pendingReports,
-    markReportSent,
-    screenshotOverdue,
-    screenshotEscalated,
-    reportEscalated,
-  } = useTeacherNotifications();
+  const { pendingReports, markReportSent } = useTeacherNotifications();
 
   const teacherId = ctx?.teacherId ?? 't1';
   const [filter, setFilter] = useState<Filter>('all');
@@ -62,18 +63,14 @@ export default function PendientesScreen() {
   const [screenshotSent, setScreenshotSent] = useState(false);
 
   const live = teacherActiveClass;
-  // Un screenshot solo se convierte en pendiente formal cuando han pasado
-  // 10 min sin evidencia (screenshotOverdue). Antes de ese umbral el flujo
-  // vive en el Home como accion en curso, no como pendiente.
-  const showScreenshot =
-    !!live && !live.hasScreenshot && !screenshotSent && screenshotOverdue;
+  const showScreenshot = !!live && !live.hasScreenshot && !screenshotSent;
 
   const all = useMemo<PendingItem[]>(() => {
     const list: PendingItem[] = [];
 
     // 1) Screenshot de clase en curso (máxima prioridad)
     if (showScreenshot && live) {
-      const ss = getScreenshotStatus(live.minutesElapsed, POLICIES.screenshotGraceMin);
+      const ss = screenshotLabel(live.minutesElapsed);
       list.push({
         id: 'screenshot-active',
         type: 'screenshot',
@@ -150,15 +147,6 @@ export default function PendientesScreen() {
     [all, filter],
   );
 
-  const hintKey: TeacherHintKey | null = useMemo(() => {
-    if (counts.all === 0) return 'all_done';
-    if (filter === 'report' || (filter === 'all' && counts.report > 0))
-      return 'complete_report';
-    if (filter === 'screenshot' || counts.screenshot > 0)
-      return 'during_screenshot';
-    return null;
-  }, [filter, counts]);
-
   const handleComplete = (item: PendingItem) => {
     if (item.type === 'screenshot') {
       const stamp = new Date().toLocaleTimeString('es-PA', {
@@ -192,16 +180,6 @@ export default function PendientesScreen() {
         }
       />
 
-      {screenshotEscalated || reportEscalated ? (
-        <View style={styles.escalationBox}>
-          <Ionicons name="alert-circle" size={16} color={colors.danger} />
-          <Text style={styles.escalationText}>
-            Alerta enviada al supervisor por{' '}
-            {screenshotEscalated ? 'screenshot vencido' : 'reporte vencido'}.
-          </Text>
-        </View>
-      ) : null}
-
       {/* Filtros por tipo · sin "Materiales" */}
       <View style={styles.filters}>
         <Chip
@@ -227,22 +205,6 @@ export default function PendientesScreen() {
           onPress={() => setFilter('booking')}
         />
       </View>
-
-      {hintKey ? (
-        <TeacherHint
-          hint={hintKey}
-          icon={
-            hintKey === 'all_done'
-              ? 'checkmark-circle-outline'
-              : hintKey === 'complete_report'
-              ? 'document-text-outline'
-              : hintKey === 'during_screenshot'
-              ? 'camera-outline'
-              : 'ellipse-outline'
-          }
-          tone={hintKey === 'all_done' ? 'success' : 'default'}
-        />
-      ) : null}
 
       {visible.length === 0 ? (
         <View style={styles.empty}>
@@ -452,22 +414,5 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     fontSize: 13,
     fontWeight: '600',
-  },
-  escalationBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    marginBottom: spacing.md,
-  },
-  escalationText: {
-    flex: 1,
-    color: colors.danger,
-    fontSize: 13,
-    fontWeight: '700',
   },
 });

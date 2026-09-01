@@ -9,10 +9,9 @@ import {
 } from '@/constants/teacherCulture';
 
 // ============================================================================
-// CoachBanner · mensaje cálido de una sola línea.
+// CoachBanner · mensaje cálido, no un aviso operativo.
 // Selecciona automáticamente el momento adecuado. Si no hay mensaje, no
 // renderiza nada (silencio = respeto por el tiempo del profesor).
-// Nunca operativo, nunca sancionador. Máximo 8 palabras.
 // ============================================================================
 
 export function CoachBanner({ ctx }: { ctx: CoachContext }) {
@@ -24,11 +23,14 @@ export function CoachBanner({ ctx }: { ctx: CoachContext }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.icon}>
-        <Ionicons name="sparkles" size={12} color={colors.primaryDark} />
+        <Ionicons name="sparkles" size={14} color={colors.primaryDark} />
       </View>
-      <Text style={styles.title} numberOfLines={1}>
-        {msg.title}
-      </Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.title}>{msg.title}</Text>
+        {msg.subtitle ? (
+          <Text style={styles.subtitle}>{msg.subtitle}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -38,26 +40,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: 8,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
     marginBottom: spacing.md,
-    alignSelf: 'flex-start',
   },
   icon: {
-    width: 20,
-    height: 20,
+    width: 28,
+    height: 28,
     borderRadius: 10,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.1,
-    flexShrink: 1,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: colors.textSubtle,
+    marginTop: 1,
+    fontWeight: '500',
   },
 });

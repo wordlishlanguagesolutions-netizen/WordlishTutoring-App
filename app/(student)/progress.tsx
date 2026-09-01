@@ -5,11 +5,9 @@ import { useRouter } from 'expo-router';
 import { Screen, Header, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { reportsHistory } from '@/services/mockData';
+import { reportsHistory, getAllReportMaterials } from '@/services/mockData';
 
-// Fase 1 simplificacion: la pestana "Materiales" se elimina porque el
-// material siempre viaja dentro de su reporte. El acceso a cada archivo
-// se mantiene abriendo el reporte correspondiente.
+type Tab = 'reports' | 'materials';
 
 const KIND_ICON: Record<string, string> = {
   PDF: 'document-text',
@@ -30,7 +28,10 @@ const KIND_ICON: Record<string, string> = {
 export default function StudentProgress() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
+  const [tab, setTab] = useState<Tab>('reports');
   const [query, setQuery] = useState('');
+
+  const materials = useMemo(() => getAllReportMaterials(), []);
 
   const q = query.trim().toLowerCase();
 
@@ -44,6 +45,16 @@ export default function StudentProgress() {
     );
   }, [q]);
 
+  const filteredMaterials = useMemo(() => {
+    if (!q) return materials;
+    return materials.filter((m) =>
+      [m.title, m.kind, m.reportTopic, m.reportTeacher]
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [q, materials]);
+
   const [selectedId, setSelectedId] = useState<string>(
     () => reportsHistory[0]?.id ?? '',
   );
@@ -52,67 +63,101 @@ export default function StudentProgress() {
     [selectedId],
   );
 
-  const SearchBar = (
-    <View style={[styles.searchBox, { marginBottom: spacing.lg }]}>
-      <Ionicons name="search" size={16} color={colors.textMuted} />
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Buscar por materia, tema o profesor"
-        placeholderTextColor={colors.textMuted}
-        style={styles.searchInput}
-        returnKeyType="search"
-      />
-      {query.length > 0 ? (
-        <Pressable onPress={() => setQuery('')} hitSlop={8}>
-          <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-        </Pressable>
-      ) : null}
-    </View>
+  const SearchAndTabs = (
+    <>
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={16} color={colors.textMuted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Buscar por materia, tema o profesor"
+          placeholderTextColor={colors.textMuted}
+          style={styles.searchInput}
+          returnKeyType="search"
+        />
+        {query.length > 0 ? (
+          <Pressable onPress={() => setQuery('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.tabsRow}>
+        <TabChip label="Reportes" active={tab === 'reports'} onPress={() => setTab('reports')} />
+        <TabChip label="Materiales" active={tab === 'materials'} onPress={() => setTab('materials')} />
+      </View>
+    </>
   );
 
   // ==================== Móvil: layout original ====================
   if (!isDesktop) {
     return (
       <Screen>
-        <Header title="Reportes" subtitle="Cada reporte incluye su material de repaso" />
-        {SearchBar}
+        <Header title="Reportes" subtitle="Reportes y materiales" />
+        {SearchAndTabs}
 
-        <View style={{ gap: spacing.md }}>
-          {filteredReports.length === 0 ? (
-            <EmptyRow text="No encontramos reportes con esa búsqueda." />
-          ) : (
-            filteredReports.map((r) => {
-              const materialCount =
-                (r.materials?.length ?? 0) + (r.attachments?.length ?? 0);
-              return (
-                <View key={r.id} style={styles.reportCard}>
-                  <View style={styles.reportHeader}>
-                    <Text style={styles.reportTopic} numberOfLines={1}>{r.topic}</Text>
-                    <Text style={styles.reportDate}>{r.date}</Text>
+        {tab === 'reports' ? (
+          <View style={{ gap: spacing.md }}>
+            {filteredReports.length === 0 ? (
+              <EmptyRow text="No encontramos reportes con esa búsqueda." />
+            ) : (
+              filteredReports.map((r) => {
+                const materialCount =
+                  (r.materials?.length ?? 0) + (r.attachments?.length ?? 0);
+                return (
+                  <View key={r.id} style={styles.reportCard}>
+                    <View style={styles.reportHeader}>
+                      <Text style={styles.reportTopic} numberOfLines={1}>{r.topic}</Text>
+                      <Text style={styles.reportDate}>{r.date}</Text>
+                    </View>
+                    <Text style={styles.reportTeacher} numberOfLines={1}>{r.teacher}</Text>
+                    <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
+                    <View style={styles.reportFooter}>
+                      {materialCount > 0 ? (
+                        <View style={styles.materialHint}>
+                          <Ionicons name="library-outline" size={12} color={colors.primaryDark} />
+                          <Text style={styles.materialHintText}>{materialCount} materiales</Text>
+                        </View>
+                      ) : <View />}
+                      <Pressable
+                        onPress={() => router.push(`/reports/${r.id}` as any)}
+                        style={({ pressed }) => [styles.readBtn, pressed && { opacity: 0.85 }]}
+                      >
+                        <Text style={styles.readBtnText}>Leer reporte</Text>
+                        <Ionicons name="chevron-forward" size={13} color={colors.primaryDark} />
+                      </Pressable>
+                    </View>
                   </View>
-                  <Text style={styles.reportTeacher} numberOfLines={1}>{r.teacher}</Text>
-                  <Text style={styles.reportProgress} numberOfLines={2}>{r.progress}</Text>
-                  <View style={styles.reportFooter}>
-                    {materialCount > 0 ? (
-                      <View style={styles.materialHint}>
-                        <Ionicons name="library-outline" size={12} color={colors.primaryDark} />
-                        <Text style={styles.materialHintText}>{materialCount} materiales</Text>
-                      </View>
-                    ) : <View />}
-                    <Pressable
-                      onPress={() => router.push(`/reports/${r.id}` as any)}
-                      style={({ pressed }) => [styles.readBtn, pressed && { opacity: 0.85 }]}
-                    >
-                      <Text style={styles.readBtnText}>Leer reporte</Text>
-                      <Ionicons name="chevron-forward" size={13} color={colors.primaryDark} />
-                    </Pressable>
+                );
+              })
+            )}
+          </View>
+        ) : (
+          <View style={{ gap: spacing.sm }}>
+            {filteredMaterials.length === 0 ? (
+              <EmptyRow text="No hay materiales que coincidan con la búsqueda." />
+            ) : (
+              filteredMaterials.map((m, i) => (
+                <Pressable
+                  key={`${m.reportId}-${i}`}
+                  onPress={() => router.push(`/reports/${m.reportId}` as any)}
+                  style={({ pressed }) => [styles.materialCard, pressed && { opacity: 0.9 }]}
+                >
+                  <View style={styles.iconWrap}>
+                    <Ionicons name={(KIND_ICON[m.kind] ?? 'document-text') as any} size={18} color={colors.primaryDark} />
                   </View>
-                </View>
-              );
-            })
-          )}
-        </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.materialTitle} numberOfLines={1}>{m.title}</Text>
+                    <Text style={styles.materialMeta} numberOfLines={1}>
+                      {m.reportTopic} · {m.reportDate} · {m.reportTeacher}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
       </Screen>
     );
   }
@@ -120,41 +165,70 @@ export default function StudentProgress() {
   // ==================== Desktop: master-detail ====================
   const ListBlock = (
     <View style={styles.listPanel}>
-      {filteredReports.length === 0 ? (
-        <EmptyRow text="No encontramos reportes con esa búsqueda." />
+      {tab === 'reports' ? (
+        filteredReports.length === 0 ? (
+          <EmptyRow text="No encontramos reportes con esa búsqueda." />
+        ) : (
+          <View>
+            {filteredReports.map((r) => {
+              const active = r.id === selectedId;
+              return (
+                <Pressable
+                  key={r.id}
+                  onPress={() => setSelectedId(r.id)}
+                  style={({ pressed }) => [
+                    styles.listItem,
+                    active && styles.listItemActive,
+                    pressed && !active && { backgroundColor: colors.surfaceAlt },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.listItemTitle, active && { color: colors.primaryDark }]}
+                      numberOfLines={1}
+                    >
+                      {r.topic}
+                    </Text>
+                    <Text style={styles.listItemMeta} numberOfLines={1}>
+                      {r.teacher} · {r.date}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={active ? colors.primaryDark : colors.textMuted}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        )
       ) : (
         <View>
-          {filteredReports.map((r) => {
-            const active = r.id === selectedId;
-            return (
+          {filteredMaterials.length === 0 ? (
+            <EmptyRow text="No hay materiales que coincidan con la búsqueda." />
+          ) : (
+            filteredMaterials.map((m, i) => (
               <Pressable
-                key={r.id}
-                onPress={() => setSelectedId(r.id)}
+                key={`${m.reportId}-${i}`}
+                onPress={() => setSelectedId(m.reportId)}
                 style={({ pressed }) => [
                   styles.listItem,
-                  active && styles.listItemActive,
-                  pressed && !active && { backgroundColor: colors.surfaceAlt },
+                  pressed && { backgroundColor: colors.surfaceAlt },
                 ]}
               >
+                <View style={styles.iconWrapSm}>
+                  <Ionicons name={(KIND_ICON[m.kind] ?? 'document-text') as any} size={14} color={colors.primaryDark} />
+                </View>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={[styles.listItemTitle, active && { color: colors.primaryDark }]}
-                    numberOfLines={1}
-                  >
-                    {r.topic}
-                  </Text>
+                  <Text style={styles.listItemTitle} numberOfLines={1}>{m.title}</Text>
                   <Text style={styles.listItemMeta} numberOfLines={1}>
-                    {r.teacher} · {r.date}
+                    {m.reportTopic} · {m.reportDate}
                   </Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={14}
-                  color={active ? colors.primaryDark : colors.textMuted}
-                />
               </Pressable>
-            );
-          })}
+            ))
+          )}
         </View>
       )}
     </View>
@@ -222,8 +296,8 @@ export default function StudentProgress() {
 
   return (
     <Screen>
-      <Header title="Reportes" subtitle="Cada reporte incluye su material de repaso" />
-      {SearchBar}
+      <Header title="Reportes" subtitle="Reportes y materiales" />
+      {SearchAndTabs}
       <WebTwoColumn
         leftFlex={4}
         rightFlex={8}
@@ -232,6 +306,14 @@ export default function StudentProgress() {
         right={DetailBlock}
       />
     </Screen>
+  );
+}
+
+function TabChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
   );
 }
 

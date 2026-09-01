@@ -6,13 +6,15 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Avatar, PageContainer, WebTwoColumn, ZoomButton } from '@/components/ui';
+import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
 import { CoachBanner } from '@/components/teacher/CoachBanner';
-import { TeacherHint } from '@/components/teacher/TeacherHint';
+import { GrowthCard } from '@/components/teacher/GrowthCard';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
@@ -20,7 +22,6 @@ import {
   GROWTH_INDICATORS,
   growthAverage,
   SPECIAL_THRESHOLD,
-  getScreenshotStatus,
 } from '@/constants/teacherCulture';
 import {
   currentTeacher,
@@ -28,14 +29,13 @@ import {
   teacherActiveClass,
   teacherPendingReports,
 } from '@/services/mockData';
-import { openWhatsapp } from '@/services/whatsappService';
 import { POLICIES } from '@/constants/policies';
 import { useAuth } from '@/hooks/useAuth';
 import { useBookings } from '@/hooks/useBookings';
 import { usePermissions } from '@/hooks/usePermissions';
 
 // ============================================================================
-// Home del profesor · Fase 3.1: dos columnas en desktop.
+// Home del profesor · Fase 3: dos columnas en desktop.
 // Izquierda (7): Clase en curso.
 // Derecha (5): Coach, disponibilidad, Growth, Acciones, Próximas clases.
 // Móvil y tablet intactos.
@@ -45,13 +45,11 @@ type Incident = 'no_camera' | 'late' | 'no_show' | 'technical';
 type FlowStep =
   | 'screenshot_pending'
   | 'in_progress'
+  | 'ended'
   | 'report_pending'
   | 'report_sent';
 
-// Toda apertura de WhatsApp pasa por `openWhatsapp()` del servicio único,
-// que resuelve el número oficial de Wordlish desde `app_settings` (única
-// fuente de verdad configurable por el administrador). No se declara ni
-// se importa ningún número en este archivo.
+const GUARDIAN_PHONE = '+50765551234';
 const WAIT_SNOOZE_MS = 5 * 60_000;
 
 function fmtHm(ts: number): string {
@@ -88,19 +86,20 @@ export default function TeacherHome() {
   const [classEnded, setClassEnded] = useState(false);
   const [reportSent, setReportSent] = useState(false);
   const [incidents, setIncidents] = useState<Set<Incident>>(new Set());
+  const [eventLog, setEventLog] = useState<Array<{ label: string; ts: number }>>([]);
   const [attendanceSnoozeUntil, setAttendanceSnoozeUntil] = useState<number>(0);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
 
-  // eventLog eliminado: la interfaz refleja el estado con los botones
-  // visibles; no aporta valor mostrar el log crudo al profesor.
-  const logEvent = (_label: string) => {};
+  const logEvent = (label: string) =>
+    setEventLog((prev) => [{ label, ts: Date.now() }, ...prev]);
 
   const step: FlowStep = useMemo(() => {
     if (reportSent) return 'report_sent';
     if (classEnded) return 'report_pending';
+    if (incidents.has('no_show')) return 'ended';
     if (screenshotAt !== null) return 'in_progress';
     return 'screenshot_pending';
-  }, [reportSent, classEnded, screenshotAt]);
+  }, [reportSent, classEnded, incidents, screenshotAt]);
 
   const showAttendanceAlert =
     step === 'in_progress' &&
@@ -144,10 +143,14 @@ export default function TeacherHome() {
   };
 
   const handleWhatsApp = () => {
-    const msg =
-      `Hola, soy profesor de Wordlish. Necesito soporte para contactar al acudiente de ${live?.student ?? 'un estudiante'}: la clase ya inició y aún no vemos al estudiante conectado.`;
-    logEvent(`WhatsApp a Wordlish · ${fmtHm(Date.now())}`);
-    openWhatsapp(msg);
+    const msg = encodeURIComponent(
+      `Hola, te contactamos desde Wordlish. La clase ya inició y aún no vemos al estudiante conectado.`,
+    );
+    const url = `https://wa.me/${GUARDIAN_PHONE.replace(/[^0-9]/g, '')}?text=${msg}`;
+    logEvent(`WhatsApp al acudiente · ${fmtHm(Date.now())}`);
+    Linking.openURL(url).catch(() =>
+      Alert.alert('WhatsApp', 'No se pudo abrir WhatsApp en este dispositivo.'),
+    );
   };
 
   const handleEndClass = () => {
@@ -165,15 +168,33 @@ export default function TeacherHome() {
     logEvent(`Reporte enviado · ${fmtHm(Date.now())}`);
   };
 
-  const { label: ssLabel, tone: ssTone } = useMemo(
-    () => getScreenshotStatus(elapsedMin, POLICIES.screenshotGraceMin),
-    [elapsedMin],
-  );
+  const ssLabel = useMemo(() => {
+    if (elapsedMin < 8) return 'Screenshot pendiente';
+    if (elapsedMin <= POLICIES.screenshotGraceMin) return 'Envíalo ahora';
+    return 'Screenshot vencido';
+  }, [elapsedMin]);
 
-  // Focus mode: durante clase en curso o previa, ocultamos todo lo secundario.
-  // Solo cuando el reporte esta enviado (o no hay clase activa) vuelven a
-  // aparecer acciones de hoy, Growth y proximas clases.
-  const focusMode = Boolean(live) && step !== 'report_sent';
+  const ssTone: 'primary' | 'warning' | 'danger' =
+    elapsedMin > POLICIES.screenshotGraceMin
+      ? 'danger'
+      : elapsedMin >= 8
+      ? 'warning'
+      : 'primary';
+
+  const stepLabel: string = useMemo(() => {
+    switch (step) {
+      case 'screenshot_pending':
+        return 'Paso 1 · Sube el screenshot';
+      case 'in_progress':
+        return 'Paso 2 · Clase en progreso';
+      case 'ended':
+        return 'Paso 3 · Clase finalizada';
+      case 'report_pending':
+        return 'Paso 4 · Reporte pendiente';
+      case 'report_sent':
+        return 'Paso 5 · Reporte enviado';
+    }
+  }, [step]);
 
   const pendingReports = teacherPendingReports.filter(
     (r) => !completed.has(`report-${r.id}`),
@@ -186,7 +207,7 @@ export default function TeacherHome() {
     live ? c.subject !== live.subject : true,
   );
 
-
+  const anyIncident = incidents.size > 0;
 
   // ==================== Bloques ====================
   const HeaderBlock = (
@@ -212,10 +233,6 @@ export default function TeacherHome() {
           monthOnTime: growthAverage(GROWTH_INDICATORS) >= SPECIAL_THRESHOLD,
         }}
       />
-
-      {!live && !reportSent ? (
-        <TeacherHint hint="before_class" icon="time-outline" />
-      ) : null}
     </>
   );
 
@@ -270,11 +287,7 @@ export default function TeacherHome() {
         </View>
       </View>
 
-      {step === 'screenshot_pending' ? (
-        <View style={{ marginTop: spacing.sm }}>
-          <ZoomButton variant="secondary" label="Entrar a Zoom" />
-        </View>
-      ) : null}
+      <Text style={styles.stepText}>{stepLabel}</Text>
 
       {step === 'screenshot_pending' ? (
         <>
@@ -316,14 +329,33 @@ export default function TeacherHome() {
         </Pressable>
       ) : null}
 
-      {step === 'report_pending' ? (
+      {step === 'ended' ? (
         <Pressable
-          onPress={handleGoToReport}
+          onPress={() => setClassEnded(true)}
           style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
         >
           <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
-          <Text style={styles.primaryBtnText}>Completar reporte</Text>
+          <Text style={styles.primaryBtnText}>Continuar</Text>
         </Pressable>
+      ) : null}
+
+      {step === 'report_pending' ? (
+        <>
+          <Pressable
+            onPress={handleGoToReport}
+            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
+          >
+            <Ionicons name="document-text" size={18} color={colors.textOnPrimary} />
+            <Text style={styles.primaryBtnText}>Completar reporte</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleReportSent}
+            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="paper-plane" size={14} color={colors.primaryDark} />
+            <Text style={styles.softBtnText}>Marcar como enviado</Text>
+          </Pressable>
+        </>
       ) : null}
 
       {step === 'report_sent' ? (
@@ -337,6 +369,16 @@ export default function TeacherHome() {
         <View style={styles.alertBox}>
           <Text style={styles.alertText}>Han pasado 15 minutos y el estudiante aún no ingresa.</Text>
           <View style={styles.alertRow}>
+            <Pressable
+              onPress={handleNoShow}
+              style={({ pressed }) => [
+                styles.alertBtn,
+                { backgroundColor: colors.danger },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <Text style={styles.alertBtnText}>No asistió</Text>
+            </Pressable>
             <Pressable
               onPress={handleWhatsApp}
               style={({ pressed }) => [
@@ -361,7 +403,27 @@ export default function TeacherHome() {
         </View>
       ) : null}
 
-      {step === 'in_progress' ? (
+      {step === 'in_progress' || step === 'screenshot_pending' ? (
+        <View style={styles.statusRow}>
+          {anyIncident ? (
+            <View style={styles.incidentChipsWrap}>
+              {Array.from(incidents).map((inc) => (
+                <View key={inc} style={styles.activeIncidentChip}>
+                  <Ionicons name="warning" size={11} color={colors.warning} />
+                  <Text style={styles.activeIncidentText}>{incidentLabel(inc)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.normalRow}>
+              <View style={styles.normalDot} />
+              <Text style={styles.normalText}>Todo normal</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      {step === 'in_progress' || step === 'screenshot_pending' ? (
         <View style={styles.exceptionsGrid}>
           <ExceptionBtn
             icon="videocam-off"
@@ -390,67 +452,74 @@ export default function TeacherHome() {
         </View>
       ) : null}
 
+      {step !== 'report_sent' ? (
+        <Pressable
+          onPress={handleWhatsApp}
+          style={({ pressed }) => [styles.waBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Ionicons name="chatbubble" size={14} color={colors.success} />
+          <Text style={styles.waBtnText}>WhatsApp</Text>
+        </Pressable>
+      ) : null}
+
+      {eventLog.length > 0 ? (
+        <View style={styles.historyBox}>
+          {eventLog.slice(0, 3).map((e, i) => (
+            <Text key={i} style={styles.historyLine} numberOfLines={1}>
+              · {e.label}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </View>
   ) : null;
 
-  // Único pendiente destacado (acción más urgente): reporte primero, luego
-  // reserva. El listado completo vive en la pestaña Pendientes.
-  const totalPending = pendingReports.length + pendingBookings.length;
-  const urgentReport = pendingReports[0];
-  const urgentBooking = urgentReport ? undefined : pendingBookings[0];
-
-  const UrgentActionBlock = totalPending > 0 ? (
+  const ActionsBlock = pendingReports.length > 0 || pendingBookings.length > 0 ? (
     <View>
-      <Text style={styles.section}>Pendiente</Text>
-      {urgentReport ? (
-        <View style={styles.actionCard}>
-          <View style={styles.actionIcon}>
-            <Ionicons name="document-text" size={16} color={colors.primaryDark} />
+      <Text style={styles.section}>Acciones de hoy</Text>
+      <View style={{ gap: spacing.sm }}>
+        {pendingReports.map((r) => (
+          <View key={`r-${r.id}`} style={styles.actionCard}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="document-text" size={16} color={colors.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionStudent} numberOfLines={1}>{r.student}</Text>
+              <Text style={styles.actionText} numberOfLines={1}>Completar reporte · {r.subject}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setCompleted((prev) => new Set(prev).add(`report-${r.id}`));
+                markReportSent();
+                router.push(`/class/${r.classRecordId}` as any);
+              }}
+              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.actionCtaText}>Completar</Text>
+            </Pressable>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.actionStudent} numberOfLines={1}>{urgentReport.student}</Text>
-            <Text style={styles.actionText} numberOfLines={1}>Completar reporte · {urgentReport.subject}</Text>
+        ))}
+        {pendingBookings.map((b) => (
+          <View key={`b-${b.id}`} style={styles.actionCard}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="calendar" size={16} color={colors.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionStudent} numberOfLines={1}>{b.studentName}</Text>
+              <Text style={styles.actionText} numberOfLines={1}>Confirmar reserva · {b.subject}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setCompleted((prev) => new Set(prev).add(`booking-${b.id}`));
+                if (b.classRecordId) router.push(`/class/${b.classRecordId}` as any);
+              }}
+              style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.actionCtaText}>Confirmar</Text>
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => {
-              setCompleted((prev) => new Set(prev).add(`report-${urgentReport.id}`));
-              markReportSent();
-              router.push(`/class/${urgentReport.classRecordId}` as any);
-            }}
-            style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
-          >
-            <Text style={styles.actionCtaText}>Completar</Text>
-          </Pressable>
-        </View>
-      ) : urgentBooking ? (
-        <View style={styles.actionCard}>
-          <View style={styles.actionIcon}>
-            <Ionicons name="calendar" size={16} color={colors.primaryDark} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.actionStudent} numberOfLines={1}>{urgentBooking.studentName}</Text>
-            <Text style={styles.actionText} numberOfLines={1}>Confirmar reserva · {urgentBooking.subject}</Text>
-          </View>
-          <Pressable
-            onPress={() => {
-              setCompleted((prev) => new Set(prev).add(`booking-${urgentBooking.id}`));
-              if (urgentBooking.classRecordId) router.push(`/class/${urgentBooking.classRecordId}` as any);
-            }}
-            style={({ pressed }) => [styles.actionCta, pressed && { opacity: 0.85 }]}
-          >
-            <Text style={styles.actionCtaText}>Confirmar</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {totalPending > 1 ? (
-        <Pressable
-          onPress={() => router.push('/(teacher)/pendientes' as any)}
-          style={({ pressed }) => [styles.seeAllBtn, pressed && { opacity: 0.85 }]}
-        >
-          <Text style={styles.seeAllText}>Ver todos los pendientes ({totalPending})</Text>
-          <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
-        </Pressable>
-      ) : null}
+        ))}
+      </View>
     </View>
   ) : null;
 
@@ -476,6 +545,12 @@ export default function TeacherHome() {
     </View>
   ) : null;
 
+  const GrowthBlock = (
+    <View style={{ marginTop: spacing.lg }}>
+      <GrowthCard currentLevel="essential" />
+    </View>
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -489,29 +564,38 @@ export default function TeacherHome() {
               rightFlex={5}
               left={
                 <View style={{ gap: spacing.md }}>
-                  {!focusMode ? AvailabilityStrip : null}
+                  {AvailabilityStrip}
                   {LiveClassCard}
                 </View>
               }
               right={
                 <View style={{ gap: spacing.md }}>
-                  {!focusMode ? UrgentActionBlock : null}
-                  {!focusMode ? UpcomingBlock : null}
+                  {ActionsBlock}
+                  {GrowthBlock}
+                  {UpcomingBlock}
                 </View>
               }
             />
           ) : (
             <>
-              {!focusMode ? AvailabilityStrip : null}
+              {AvailabilityStrip}
               {LiveClassCard}
-              {!focusMode ? UrgentActionBlock : null}
-              {!focusMode ? UpcomingBlock : null}
+              {ActionsBlock}
+              {GrowthBlock}
+              {UpcomingBlock}
             </>
           )}
         </PageContainer>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function incidentLabel(k: Incident): string {
+  if (k === 'no_camera') return 'Estudiante sin cámara';
+  if (k === 'late') return 'Llegó tarde';
+  if (k === 'no_show') return 'No asistió';
+  return 'Problema técnico';
 }
 
 function ExceptionBtn({
@@ -552,7 +636,7 @@ function ExceptionBtn({
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-  hello: { fontSize: 19, fontWeight: '600', color: colors.text, letterSpacing: -0.2 },
+  hello: { fontSize: 17, fontWeight: '600', color: colors.text, letterSpacing: -0.2 },
   iconBtn: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.primarySoft,
@@ -563,38 +647,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 8,
     borderRadius: radius.pill, borderWidth: 1,
   },
-  availabilityText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  availabilityText: { flex: 1, fontSize: 12, fontWeight: '700' },
   card: {
     backgroundColor: colors.surface, borderRadius: radius.lg,
     padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
     ...shadow.sm,
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  student: { fontSize: 18, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
-  subject: { fontSize: 15, color: colors.textSubtle, marginTop: 2, fontWeight: '500' },
-  timeMeta: { fontSize: 13, color: colors.textMuted, fontWeight: '600', marginTop: 3 },
+  student: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
+  subject: { fontSize: 13, color: colors.textSubtle, marginTop: 1, fontWeight: '500' },
+  timeMeta: { fontSize: 11, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
   livePill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: radius.pill, backgroundColor: colors.successSoft,
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
-  livePillText: { fontSize: 12, fontWeight: '700', color: colors.success },
+  livePillText: { fontSize: 10, fontWeight: '700', color: colors.success },
+  stepText: {
+    fontSize: 11, fontWeight: '700', color: colors.textMuted,
+    marginTop: spacing.md, textTransform: 'uppercase', letterSpacing: 0.4,
+  },
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.primary, paddingVertical: 14, borderRadius: radius.md, marginTop: spacing.sm,
   },
-  primaryBtnText: { color: colors.textOnPrimary, fontSize: 16, fontWeight: '700' },
-  ssStatus: { fontSize: 14, color: colors.primaryDark, fontWeight: '600', textAlign: 'center', marginTop: 6 },
-  ssDone: { fontSize: 14, color: colors.success, fontWeight: '600', marginTop: spacing.sm, textAlign: 'center' },
-  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
-  doneText: { fontSize: 14, color: colors.success, fontWeight: '600', flex: 1 },
-  moreToggle: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingVertical: 10, marginTop: spacing.sm,
+  primaryBtnText: { color: colors.textOnPrimary, fontSize: 15, fontWeight: '700' },
+  softBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primarySoft, paddingVertical: 10, borderRadius: radius.md, marginTop: 8,
   },
-  moreToggleText: { fontSize: 13, fontWeight: '700', color: colors.primaryDark },
-  exceptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  softBtnText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
+  ssStatus: { fontSize: 12, color: colors.primaryDark, fontWeight: '600', textAlign: 'center', marginTop: 6 },
+  ssDone: { fontSize: 12, color: colors.success, fontWeight: '600', marginTop: spacing.sm, textAlign: 'center' },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
+  doneText: { fontSize: 12, color: colors.success, fontWeight: '600', flex: 1 },
+  statusRow: { marginTop: spacing.md },
+  normalRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  normalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
+  normalText: { fontSize: 12, color: colors.textSubtle, fontWeight: '600' },
+  incidentChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  activeIncidentChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radius.pill, backgroundColor: colors.warningSoft,
+  },
+  activeIncidentText: { fontSize: 11, fontWeight: '700', color: colors.warning },
+  exceptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   exceptionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: spacing.md, paddingVertical: 8,
@@ -602,17 +701,28 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   exceptionBtnActive: { backgroundColor: colors.warning, borderColor: colors.warning },
-  exceptionText: { fontSize: 13, fontWeight: '700', color: colors.textSubtle },
+  exceptionText: { fontSize: 11, fontWeight: '700', color: colors.textSubtle },
+  waBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: radius.md,
+    marginTop: spacing.sm, backgroundColor: colors.successSoft,
+  },
+  waBtnText: { color: colors.success, fontSize: 13, fontWeight: '700' },
   alertBox: {
     marginTop: spacing.md, padding: spacing.md,
     borderRadius: radius.md, backgroundColor: colors.warningSoft,
     borderWidth: 1, borderColor: colors.warning, gap: spacing.sm,
   },
-  alertText: { fontSize: 15, color: colors.text, fontWeight: '600' },
+  alertText: { fontSize: 13, color: colors.text, fontWeight: '600' },
   alertRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   alertBtn: { flex: 1, minWidth: 90, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
-  alertBtnText: { color: colors.textOnPrimary, fontSize: 13, fontWeight: '700' },
-  section: { ...typography.h3, fontSize: 17, marginTop: spacing.lg, marginBottom: spacing.sm },
+  alertBtnText: { color: colors.textOnPrimary, fontSize: 12, fontWeight: '700' },
+  historyBox: {
+    marginTop: spacing.md, paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: 2,
+  },
+  historyLine: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
+  section: { ...typography.h3, fontSize: 15, marginTop: spacing.lg, marginBottom: spacing.sm },
   actionCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.surface, borderRadius: radius.md,
@@ -623,18 +733,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     alignItems: 'center', justifyContent: 'center',
   },
-  actionStudent: { fontSize: 15, fontWeight: '700', color: colors.text },
-  actionText: { fontSize: 13, color: colors.textSubtle, marginTop: 2 },
+  actionStudent: { fontSize: 13, fontWeight: '700', color: colors.text },
+  actionText: { fontSize: 11, color: colors.textSubtle, marginTop: 2 },
   actionCta: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill,
   },
-  actionCtaText: { color: colors.textOnPrimary, fontSize: 13, fontWeight: '700' },
-  seeAllBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingVertical: 8, marginTop: 4,
-  },
-  seeAllText: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
+  actionCtaText: { color: colors.textOnPrimary, fontSize: 12, fontWeight: '700' },
   upcomingWrap: {
     backgroundColor: colors.surface, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
@@ -644,7 +749,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
-  compactName: { fontSize: 15, fontWeight: '700', color: colors.text },
-  compactSubject: { fontSize: 13, color: colors.textSubtle, marginTop: 1 },
-  compactTime: { fontSize: 14, fontWeight: '700', color: colors.primaryDark },
+  compactName: { fontSize: 13, fontWeight: '700', color: colors.text },
+  compactSubject: { fontSize: 11, color: colors.textSubtle, marginTop: 1 },
+  compactTime: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
 });

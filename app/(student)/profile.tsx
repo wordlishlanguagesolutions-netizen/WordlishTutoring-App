@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Alert } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Card, Avatar, StatusBadge, SupportRow } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
@@ -12,7 +12,6 @@ import {
   ContactChannel,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
-import { openWhatsapp } from '@/services/whatsappService';
 
 export default function StudentProfile() {
   const { logout } = useAuth();
@@ -81,38 +80,6 @@ export default function StudentProfile() {
         <MultilineRow icon="accessibility-outline" label="Adaptaciones" value={studentPreferences.accommodations} last />
       </Card>
 
-      {/* Fase 1 simplificacion: "Mi plan" vive en Perfil. Todo lo
-          administrativo (horas, renovaciones, recargas, pagos, facturas)
-          se consulta desde aqui. La navegacion diaria queda centrada en
-          estudiar. */}
-      <Text style={styles.section}>Mi plan</Text>
-      <Pressable
-        onPress={() => router.push('/(student)/payments' as any)}
-        style={({ pressed }) => [
-          styles.policiesRow,
-          pressed && { opacity: 0.9 },
-        ]}
-      >
-        <View style={styles.infoIcon}>
-          <Ionicons
-            name="card-outline"
-            size={16}
-            color={colors.primaryDark}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={typography.bodyStrong}>Plan, horas y pagos</Text>
-          <Text style={typography.caption}>
-            Renueva, recarga o revisa tu historial de pagos y facturas.
-          </Text>
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color={colors.textMuted}
-        />
-      </Pressable>
-
       {/* Ubicación automática: el documento completo de políticas sólo
           vive aquí. Nunca se obliga al usuario a leerlo. */}
       <Text style={styles.section}>Políticas de Wordlish</Text>
@@ -134,34 +101,6 @@ export default function StudentProfile() {
           <Text style={typography.bodyStrong}>Consultar políticas</Text>
           <Text style={typography.caption}>
             Reglas de reserva, material, reportes y pagos.
-          </Text>
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color={colors.textMuted}
-        />
-      </Pressable>
-
-      <Text style={[styles.section, { marginTop: spacing.lg }]}>Configuracion</Text>
-      <Pressable
-        onPress={() => router.push('/settings/notifications' as any)}
-        style={({ pressed }) => [
-          styles.policiesRow,
-          pressed && { opacity: 0.9 },
-        ]}
-      >
-        <View style={styles.infoIcon}>
-          <Ionicons
-            name="notifications-outline"
-            size={16}
-            color={colors.primaryDark}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={typography.bodyStrong}>Preferencias de notificaciones</Text>
-          <Text style={typography.caption}>
-            Elige por que canales deseas recibirlas.
           </Text>
         </View>
         <Ionicons
@@ -295,26 +234,10 @@ function TeacherRow({ name, avatar }: { name: string; avatar: string }) {
 }
 
 function GuardianModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  // Push queda pendiente hasta integrar Expo Push / FCM / APNs.
+  // Arquitectura lista: en fase siguiente, cada botón invocará
+  // pushService.send(), sendWhatsapp() o sendEmail() del guardian.
   const notReady = (channel: string) =>
     Alert.alert(channel, 'Integración pendiente. Se enviará por este medio en la próxima fase.');
-
-  // WhatsApp pasa por el servicio único y siempre abre el número oficial
-  // de Wordlish configurado por el administrador en `app_settings`.
-  // No se usan teléfonos de prueba ni datos del acudiente para abrir WhatsApp.
-  const handleWhatsApp = () => {
-    openWhatsapp(
-      `Hola, soy estudiante de Wordlish y necesito ayuda para contactar a mi acudiente (${studentContact.guardian}).`,
-    );
-  };
-
-  // Correo abre el cliente nativo con el email real del acudiente.
-  const handleEmail = () => {
-    Linking.openURL(`mailto:${studentContact.guardianEmail}`).catch(() =>
-      Alert.alert('Correo', 'No se pudo abrir el cliente de correo.'),
-    );
-  };
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalBg}>
@@ -343,9 +266,12 @@ function GuardianModal({ visible, onClose }: { visible: boolean; onClose: () => 
           </View>
           <View style={styles.modalActions}>
             <ContactAction icon="notifications" label="Push" onPress={() => notReady('Push')} />
-            <ContactAction icon="logo-whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
-            <ContactAction icon="mail" label="Correo" onPress={handleEmail} />
+            <ContactAction icon="logo-whatsapp" label="WhatsApp" onPress={() => notReady('WhatsApp')} />
+            <ContactAction icon="mail" label="Correo" onPress={() => notReady('Correo')} />
           </View>
+          <Text style={[typography.caption, { textAlign: 'center', marginTop: spacing.md }]}>
+            Integraciones listas para la próxima fase.
+          </Text>
         </View>
       </View>
     </Modal>

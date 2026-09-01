@@ -4,7 +4,6 @@ import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { WizardHeader } from '@/components/booking';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
 import {
@@ -107,9 +106,19 @@ export default function BookingSchedule() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <WizardHeader step={1} title="Fecha y hora" onBack={() => router.back()} />
+      <View style={s.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.iconBtn}>
+          <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.caption}>Paso 3 de 4</Text>
+          <Text style={typography.h2}>Fecha y hora</Text>
+        </View>
+      </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
+        <StepDots current={2} />
+
         <View style={s.contextRow}>
           <View style={s.pill}>
             <Ionicons name="book-outline" size={13} color={colors.primaryDark} />
@@ -127,14 +136,8 @@ export default function BookingSchedule() {
           <View style={s.autoHint}>
             <Ionicons name="sparkles" size={14} color={colors.primaryDark} />
             <Text style={s.autoHintText}>
-              Wordlish asignará el mejor profesor disponible.
+              Verás el profesor asignado en el resumen.
             </Text>
-            <Pressable
-              onPress={() => router.push('/booking/teacher' as any)}
-              hitSlop={8}
-            >
-              <Text style={s.autoHintLink}>Cambiar</Text>
-            </Pressable>
           </View>
         ) : null}
 
@@ -193,14 +196,32 @@ export default function BookingSchedule() {
   );
 }
 
-function StepDotsUnused() {
-  return null;
+function StepDots({ current }: { current: number }) {
+  return (
+    <View style={s.dotsRow}>
+      {[0, 1, 2, 3].map((i) => (
+        <View
+          key={i}
+          style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
+        />
+      ))}
+    </View>
+  );
 }
 
 const s = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    padding: spacing.lg, paddingBottom: spacing.md,
+  },
+  iconBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
   section: { ...typography.h3, marginTop: spacing.lg, marginBottom: spacing.md },
 
-  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.lg, display: 'none' },
+  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.lg },
   dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.primary },
   dotDone: { backgroundColor: colors.primaryDark },
@@ -220,7 +241,6 @@ const s = StyleSheet.create({
     borderRadius: radius.md, marginTop: spacing.md,
   },
   autoHintText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600', flex: 1 },
-  autoHintLink: { color: colors.primaryDark, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
 
   dateChip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

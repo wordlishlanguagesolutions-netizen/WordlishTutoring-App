@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
-import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import { colors, spacing, typography, radius } from '@/constants/theme';
 
 export type BannerTone = 'danger' | 'warning' | 'info' | 'success';
 
@@ -31,9 +31,9 @@ export function NotificationBanner({
 }: Props) {
   const t = TONES[tone];
   return (
-    <View style={[styles.wrap, { backgroundColor: t.bg }]}>
+    <View style={[styles.wrap, { backgroundColor: t.bg, borderLeftColor: t.fg }]}>
       <View style={styles.iconBubble}>
-        <Ionicons name={icon as any} size={20} color={t.fg} />
+        <Ionicons name={icon as any} size={22} color={t.fg} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.title, { color: t.fg }]}>{title}</Text>
@@ -44,7 +44,7 @@ export function NotificationBanner({
             style={({ pressed }) => [
               styles.cta,
               { backgroundColor: t.fg },
-              pressed && { opacity: 0.9 },
+              pressed && { opacity: 0.85 },
             ]}
             hitSlop={6}
           >
@@ -61,28 +61,25 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.iconText,
-    padding: spacing.card,
-    borderRadius: radius.card,
-    ...shadow.xs,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderLeftWidth: 4,
   },
   iconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.75)',
+    backgroundColor: 'rgba(255,255,255,0.7)',
   },
-  title: {
-    ...typography.bodyStrong,
-    fontSize: 15,
-    marginBottom: 2,
-  },
+  title: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   message: {
     ...typography.caption,
     color: colors.textSubtle,
     marginBottom: spacing.sm,
+    lineHeight: 18,
   },
   cta: {
     flexDirection: 'row',
@@ -94,9 +91,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     marginTop: 2,
   },
-  ctaText: {
-    ...typography.button,
-    color: colors.textOnPrimary,
-    fontSize: 13,
-  },
+  ctaText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 13 },
 });

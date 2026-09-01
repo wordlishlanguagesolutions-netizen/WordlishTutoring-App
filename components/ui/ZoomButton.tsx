@@ -1,25 +1,9 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
-import {
-  colors,
-  spacing,
-  radius,
-  shadow,
-  typography,
-  controlHeight,
-} from '@/constants/theme';
-import { openZoom, getZoomLabel, isZoomEnabled } from '@/services/zoomService';
-
-// ============================================================================
-// Botón único para abrir Zoom. Todas las pantallas lo usan.
-// URL: viene de `services/zoomService` (única fuente de verdad, leída
-// desde `public.app_settings.zoom.official_link`). Cuando se pase la
-// prop `url` (p.ej. reserva OAuth en el futuro), se prioriza.
-// ============================================================================
+import { colors, spacing, radius, shadow } from '@/constants/theme';
 
 interface ZoomButtonProps {
-  url?: string | null;
   onPress?: () => void;
   label?: string;
   disabled?: boolean;
@@ -27,31 +11,32 @@ interface ZoomButtonProps {
 }
 
 export function ZoomButton({
-  url,
   onPress,
-  label,
+  label = 'Entrar a Zoom',
   disabled,
   variant = 'primary',
 }: ZoomButtonProps) {
-  const finalLabel = label ?? getZoomLabel();
-  const enabled = isZoomEnabled();
-
   const handlePress =
-    onPress ?? (() => openZoom(url ?? undefined));
+    onPress ??
+    (() =>
+      Alert.alert(
+        'Zoom',
+        'Simulación · el enlace se abrirá cuando conectemos la integración con Zoom.'
+      ));
 
   if (variant === 'secondary') {
     return (
       <Pressable
         onPress={handlePress}
-        disabled={disabled || !enabled}
+        disabled={disabled}
         style={({ pressed }) => [
           secondaryStyles.btn,
           pressed && { opacity: 0.9 },
-          (disabled || !enabled) && { opacity: 0.5 },
+          disabled && { opacity: 0.5 },
         ]}
       >
-        <Ionicons name="videocam" size={16} color={colors.primary} />
-        <Text style={secondaryStyles.text}>{finalLabel}</Text>
+        <Ionicons name="videocam" size={16} color={colors.primaryDark} />
+        <Text style={secondaryStyles.text}>{label}</Text>
       </Pressable>
     );
   }
@@ -59,36 +44,31 @@ export function ZoomButton({
   return (
     <Pressable
       onPress={handlePress}
-      disabled={disabled || !enabled}
+      disabled={disabled}
       style={({ pressed }) => [
         primaryStyles.btn,
-        pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] },
-        (disabled || !enabled) && { opacity: 0.5 },
+        pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+        disabled && { opacity: 0.5 },
       ]}
     >
-      <Ionicons name="videocam" size={20} color={colors.textOnPrimary} />
-      <Text style={primaryStyles.text}>{finalLabel}</Text>
+      <Ionicons name="videocam" size={22} color={colors.textOnPrimary} />
+      <Text style={primaryStyles.text}>{label}</Text>
     </Pressable>
   );
 }
 
 const primaryStyles = StyleSheet.create({
   btn: {
-    height: controlHeight.button,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.iconText,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.button,
-    ...shadow.sm,
+    gap: spacing.sm,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
+    borderRadius: radius.lg,
+    ...shadow.md,
   },
-  text: {
-    ...typography.button,
-    color: colors.textOnPrimary,
-    fontSize: 15,
-  },
+  text: { color: colors.primaryDark, fontWeight: '700', fontSize: 16 },
 });
 
 const secondaryStyles = StyleSheet.create({
@@ -97,14 +77,10 @@ const secondaryStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.surfaceTinted,
+    backgroundColor: colors.primarySoft,
     paddingVertical: 10,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
   },
-  text: {
-    ...typography.button,
-    color: colors.primary,
-    fontSize: 13,
-  },
+  text: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
 });

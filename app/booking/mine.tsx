@@ -60,7 +60,7 @@ export default function BookingMine() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.h2}>Historial de clases</Text>
+          <Text style={typography.h2}>Mis reservas</Text>
         </View>
         <Pressable onPress={() => router.push('/booking/type' as any)} hitSlop={10} style={s.addBtn}>
           <Ionicons name="add" size={22} color={colors.textOnPrimary} />

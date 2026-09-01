@@ -1,21 +1,14 @@
 // ============================================================================
-// Cultura Wordlish para profesores · v3.0.1
+// Cultura Wordlish para profesores · v1.0
 // ============================================================================
-// La app enseña los procesos únicamente mediante:
-//   1. Recordatorios contextuales del siguiente paso.
-//   2. Felicitaciones breves cuando un proceso se completa.
+// Este archivo NO es un reglamento. Es la cultura del equipo docente.
+// Todo texto está redactado con tono cercano, profesional y motivador.
+// Nunca se habla de castigos: se habla de crecimiento.
+// Nunca se habla de reglas: se habla de estándares.
 //
-// Reglas de redacción para TODO texto expuesto al profesor:
-//   · Cortos, naturales, útiles, amables.
-//   · Una sola línea, siempre relacionados al momento exacto.
-//   · Nunca frases motivacionales ni inspiracionales.
-//   · Nunca usar: advertencia, penalización, incumplimiento, castigo.
-//   · Prohibido: "cada clase es una oportunidad", "tu constancia hace la
-//     diferencia", "sigue creciendo", "vas muy bien".
-//   · Nunca mostrar varios mensajes al mismo tiempo.
-//
-// Las reglas completas viven solo dentro de "Guía del profesor". El resto
-// del producto solo recuerda el siguiente paso o reconoce lo bien hecho.
+// El módulo del profesor debe transmitir orgullo de pertenecer a Wordlish
+// y acompañar al docente durante todo su recorrido: recordar, motivar,
+// felicitar y reconocer. La app no supervisa; entrena.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -39,22 +32,22 @@ export const GROWTH_PROGRAM: Record<
     name: 'Essential',
     tagline: 'El punto de partida',
     description:
-      'Aquí conoces nuestra metodología y comienzas a construir tu trayectoria.',
+      'Aquí conoces nuestra metodología, fortaleces tus procesos y comienzas a construir tu trayectoria.',
     benefits: [
       'Acompañamiento continuo',
-      'Formación en metodología Wordlish',
+      'Formación en la metodología Wordlish',
       'Feedback sobre tus clases',
     ],
   },
   special: {
     key: 'special',
     name: 'Special',
-    tagline: 'Reconocimiento al compromiso',
+    tagline: 'Un reconocimiento al compromiso y la excelencia',
     description:
-      'Los profesores Special reciben mejor tarifa y prioridad en asignaciones.',
+      'Los profesores Special reciben mejor tarifa y prioridad en asignaciones, nuevos cursos y proyectos.',
     benefits: [
       'Mejor tarifa',
-      'Prioridad en asignaciones',
+      'Prioridad en asignación de clases',
       'Prioridad para nuevos cursos',
       'Prioridad en proyectos especiales',
     ],
@@ -62,22 +55,24 @@ export const GROWTH_PROGRAM: Record<
 };
 
 // ----------------------------------------------------------------------------
-// Nuestro estándar (visible únicamente dentro de "Guía del profesor").
+// Nuestro estándar (lo que esperamos de cada profesor).
+// No son "reglas": son la manera Wordlish de dar clase.
 // ----------------------------------------------------------------------------
 
 export const OUR_STANDARD: string[] = [
   'Llegar puntual',
   'Preparar cada clase',
   'Completar 60 minutos efectivos',
-  'Presentación profesional',
-  'Fondo limpio o neutro',
-  'Revisar internet, cámara y micrófono',
+  'Mantener presentación profesional',
+  'Fondo limpio, desenfocado o pared neutra',
+  'Revisar internet, cámara y micrófono antes de iniciar',
   'Mantener un ambiente positivo',
-  'Concentrar la clase en el aprendizaje',
+  'Concentrar la conversación en el aprendizaje',
 ];
 
 // ----------------------------------------------------------------------------
-// Bloques de cultura (visibles únicamente dentro de "Guía del profesor").
+// Bloques de cultura (calidad, comunicación, puntualidad, etc.).
+// Se usan en la pantalla de estándares y como recordatorios contextuales.
 // ----------------------------------------------------------------------------
 
 export interface CultureBlock {
@@ -104,9 +99,9 @@ export const CULTURE_BLOCKS: CultureBlock[] = [
     title: 'Comunicación',
     icon: 'chatbubbles',
     lines: [
-      'La comunicación se realiza únicamente desde Wordlish',
-      'No compartir teléfono ni redes personales',
-      'El material se comparte por Zoom o Wordlish',
+      'Toda la comunicación con estudiantes y acudientes se realiza únicamente desde Wordlish',
+      'No compartir teléfono, correo personal ni redes sociales',
+      'El material se comparte únicamente por Zoom o Wordlish',
     ],
   },
   {
@@ -115,8 +110,8 @@ export const CULTURE_BLOCKS: CultureBlock[] = [
     icon: 'time',
     lines: [
       'Cada clase dura 60 minutos efectivos',
-      'Si hay retraso, completa el tiempo restante',
-      'Ante un imprevisto, avisa a coordinación',
+      'Si presentas un retraso, completa el tiempo restante',
+      'Si surge un imprevisto, informa a coordinación de inmediato',
     ],
   },
   {
@@ -124,8 +119,8 @@ export const CULTURE_BLOCKS: CultureBlock[] = [
     title: 'No show',
     icon: 'person-remove',
     lines: [
-      'Si el estudiante no asiste, se registra según Wordlish',
-      'La remuneración sigue la política vigente',
+      'Si el estudiante no asiste, la clase se registra según el procedimiento de Wordlish',
+      'La remuneración corresponde a la política vigente de tu nivel',
     ],
   },
   {
@@ -133,7 +128,7 @@ export const CULTURE_BLOCKS: CultureBlock[] = [
     title: 'Grabaciones',
     icon: 'videocam',
     lines: [
-      'Las clases pueden grabarse con fines académicos y de calidad',
+      'Las clases podrán grabarse para fines académicos y de control de calidad',
     ],
   },
   {
@@ -147,24 +142,25 @@ export const CULTURE_BLOCKS: CultureBlock[] = [
     title: 'Crecimiento',
     icon: 'trending-up',
     lines: [
-      'Evaluamos puntualidad, preparación, reportes, satisfacción y procesos',
-      'Coordinación acompaña siempre tu camino',
-      'Siempre es una oportunidad de mejorar',
+      'Evaluamos puntualidad, preparación, screenshot oportuno, calidad del reporte, experiencia del estudiante y cumplimiento de procesos',
+      'Cuando surjan incumplimientos reiterados, coordinación revisará contigo tu nivel',
+      'El objetivo siempre será ayudarte a recuperarlo. Es una oportunidad, no un castigo.',
     ],
   },
 ];
 
 // ----------------------------------------------------------------------------
 // Indicadores positivos de crecimiento hacia Special.
-// Cinco dimensiones: Puntualidad, Reportes, Preparación, Satisfacción,
-// Cumplimiento de procesos. Cada valor 0-100.
+// El profesor ve su progreso sin sentir presión. Cada indicador es una
+// métrica positiva, expresada como porcentaje de logro (0-100).
+// Los valores mock se usan hasta migrar a mockDb/repositories.
 // ----------------------------------------------------------------------------
 
 export interface GrowthIndicator {
   id: string;
   label: string;
   icon: string;
-  value: number;
+  value: number; // 0-100
   hint: string;
 }
 
@@ -174,39 +170,34 @@ export const GROWTH_INDICATORS: GrowthIndicator[] = [
     label: 'Puntualidad',
     icon: 'time',
     value: 96,
-    hint: 'Un mes sin retrasos.',
+    hint: 'Un mes sin retrasos',
   },
   {
     id: 'reports',
-    label: 'Reportes',
+    label: 'Reportes al día',
     icon: 'document-text',
     value: 92,
-    hint: '22 de 24 a tiempo.',
+    hint: '22 de 24 enviados a tiempo',
   },
   {
     id: 'preparation',
     label: 'Preparación',
     icon: 'sparkles',
     value: 88,
-    hint: 'Materiales listos a tiempo.',
+    hint: 'Materiales cargados a tiempo',
   },
   {
     id: 'satisfaction',
     label: 'Satisfacción',
     icon: 'heart',
     value: 94,
-    hint: 'Tus estudiantes lo notan.',
-  },
-  {
-    id: 'process',
-    label: 'Cumplimiento de procesos',
-    icon: 'shield-checkmark',
-    value: 91,
-    hint: 'Screenshots y cierres al día.',
+    hint: 'Tus estudiantes lo están notando',
   },
 ];
 
-// Umbral general para Special.
+// Umbral general para Special. Cuando el promedio supere este valor durante
+// varios ciclos, coordinación evalúa el ascenso. Nunca se muestra como una
+// "nota": se muestra como progreso hacia una meta positiva.
 export const SPECIAL_THRESHOLD = 90;
 
 export function growthAverage(indicators: GrowthIndicator[]): number {
@@ -216,75 +207,9 @@ export function growthAverage(indicators: GrowthIndicator[]): number {
 }
 
 // ----------------------------------------------------------------------------
-// Frases de reconocimiento cuando el profesor mejora.
-// Todas de una sola línea, máximo 8 palabras.
-// ----------------------------------------------------------------------------
-
-export const GROWTH_ENCOURAGEMENT: string[] = [
-  '¡Excelente puntualidad este mes!',
-  '¡Todos tus reportes están al día!',
-  '¡Muy buen trabajo con tus procesos!',
-  '¡Estás cada vez más cerca de Special!',
-];
-
-// Reconocimiento breve según el promedio actual. Nunca inspiracional.
-// Retorna cadena vacía cuando no hay un logro concreto que reconocer.
-export function encouragementFor(avg: number): string {
-  if (avg >= SPECIAL_THRESHOLD) return '¡Estás cada vez más cerca de Special!';
-  if (avg >= 85) return '¡Muy buen trabajo con tus procesos!';
-  if (avg >= 75) return '¡Todos tus reportes están al día!';
-  return '';
-}
-
-// ----------------------------------------------------------------------------
-// Recordatorios contextuales (Teacher Hints).
-// Se muestran únicamente en la pantalla y momento adecuados. Nunca varios
-// a la vez. Cada uno ocupa una sola línea.
-// ----------------------------------------------------------------------------
-
-export type TeacherHintKey =
-  // Recordatorios del siguiente paso
-  | 'before_class'
-  | 'ready_to_start'
-  | 'during_screenshot'
-  | 'complete_report'
-  | 'finalize_after_report'
-  | 'review_material'
-  // Felicitaciones breves al completar un proceso
-  | 'punctual_thanks'
-  | 'report_sent'
-  | 'screenshot_ok'
-  | 'class_finished'
-  | 'material_ready'
-  // Reconocimientos por buenos indicadores
-  | 'great_punctuality'
-  | 'reports_on_track'
-  | 'great_processes'
-  | 'near_special'
-  | 'all_done';
-
-export const TEACHER_HINTS: Record<TeacherHintKey, string> = {
-  before_class: 'Recuerda iniciar tu clase a la hora programada.',
-  ready_to_start: 'Verifica que todo esté listo para comenzar.',
-  during_screenshot: 'Verifica que el screenshot haya sido registrado.',
-  complete_report: 'Completa el reporte para cerrar la sesión.',
-  finalize_after_report: 'Finaliza la clase cuando hayas terminado el reporte.',
-  review_material: 'Revisa el material antes de comenzar.',
-  punctual_thanks: '¡Gracias por tu puntualidad!',
-  report_sent: '¡Reporte enviado!',
-  screenshot_ok: '¡Screenshot registrado!',
-  class_finished: '¡Clase finalizada!',
-  material_ready: '¡Material listo!',
-  great_punctuality: '¡Excelente puntualidad este mes!',
-  reports_on_track: '¡Todos tus reportes están al día!',
-  great_processes: '¡Muy buen trabajo con tus procesos!',
-  near_special: '¡Estás cada vez más cerca de Special!',
-  all_done: '¡Todo al día!',
-};
-
-// ----------------------------------------------------------------------------
-// Momentos motivacionales para el CoachBanner.
-// Todos los mensajes de una sola línea, máximo 8 palabras cuando es posible.
+// Momentos motivacionales.
+// La app acompaña al profesor. Devuelve el mensaje adecuado para el momento
+// actual. Si no hay mensaje relevante, devuelve `null` (silencio = respeto).
 // ----------------------------------------------------------------------------
 
 export type CoachMoment =
@@ -300,34 +225,51 @@ export type CoachMoment =
 
 export interface CoachMessage {
   title: string;
+  subtitle?: string;
 }
 
 export function coachMessage(m: CoachMoment): CoachMessage | null {
   switch (m) {
     case 'login':
-      // Sin mensaje de bienvenida motivacional. Silencio = respeto.
-      return null;
+      return { title: 'Hoy tienes la oportunidad de marcar la diferencia.' };
     case 'before_class':
-      return { title: 'Recuerda iniciar tu clase a la hora programada.' };
+      return { title: 'Todo listo. Que tengas una excelente clase.' };
     case 'after_screenshot':
-      return { title: '¡Screenshot registrado!' };
+      return {
+        title: 'Asistencia registrada.',
+        subtitle: 'Excelente inicio.',
+      };
     case 'after_report':
-      return { title: '¡Reporte enviado!' };
+      return {
+        title: 'Un buen reporte también enseña.',
+        subtitle: 'Gracias.',
+      };
     case 'end_of_day':
-      return { title: '¡Clase finalizada!' };
+      return {
+        title: 'Buen trabajo.',
+        subtitle: 'Gracias por representar la experiencia Wordlish.',
+      };
     case 'perfect_week':
-      return { title: '¡Muy buen trabajo con tus procesos!' };
+      return {
+        title: 'Semana impecable.',
+        subtitle: 'Gracias por tu compromiso.',
+      };
     case 'high_indicators':
-      return { title: '¡Estás cada vez más cerca de Special!' };
+      return { title: 'Tu constancia te acerca al nivel Special.' };
     case 'great_ratings':
-      return { title: '¡Todos tus reportes están al día!' };
+      return { title: 'Tus estudiantes lo están notando. Sigue así.' };
     case 'month_on_time':
-      return { title: '¡Excelente puntualidad este mes!' };
+      return {
+        title: 'Un mes de puntualidad.',
+        subtitle: 'Los pequeños hábitos construyen grandes profesores.',
+      };
   }
 }
 
 // ----------------------------------------------------------------------------
 // Selección automática del momento a mostrar según el contexto de la sesión.
+// El home del profesor puede llamar a este helper con datos básicos y recibir
+// el mensaje más adecuado sin lógica repetida en cada pantalla.
 // ----------------------------------------------------------------------------
 
 export interface CoachContext {
@@ -356,20 +298,4 @@ export function pickCoachMoment(ctx: CoachContext): CoachMoment | null {
   }
   if (ctx.justLoggedIn) return 'login';
   return null;
-}
-
-// ----------------------------------------------------------------------------
-// Estado del screenshot durante la clase en curso.
-// Fuente única compartida entre Home y Pendientes.
-// ----------------------------------------------------------------------------
-
-export type ScreenshotTone = 'primary' | 'warning' | 'danger';
-
-export function getScreenshotStatus(
-  minutesElapsed: number,
-  graceMin: number,
-): { label: string; tone: ScreenshotTone } {
-  if (minutesElapsed > graceMin) return { label: 'Screenshot vencido', tone: 'danger' };
-  if (minutesElapsed >= graceMin - 2) return { label: 'Envíalo ahora', tone: 'warning' };
-  return { label: 'Screenshot pendiente', tone: 'primary' };
 }

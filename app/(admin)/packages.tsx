@@ -14,11 +14,6 @@ export default function PackagesScreen() {
   return (
     <Screen>
       <Header title="Paquetes" subtitle="Catálogo y precios" />
-      <View style={styles.notice}>
-        <Text style={styles.noticeText}>
-          Catálogo de referencia. Para editar precios y tarifas por hora, ve a Ajustes → Tarifas.
-        </Text>
-      </View>
       <View style={{ gap: spacing.md }}>
         {PACKAGES.map((p) => (
           <Card key={p.id}>
@@ -47,16 +42,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   priceText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 18 },
-  notice: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  noticeText: {
-    ...typography.caption,
-    color: colors.primaryDark,
-    fontWeight: '600',
-  },
 });

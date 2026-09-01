@@ -111,7 +111,7 @@ export const nextClass = {
   date: 'Hoy 11 Jul',
   time: '10:00 AM',
   duration: 60,
-  zoomUrl: 'https://us06web.zoom.us/j/2797072933',
+  zoomUrl: 'https://zoom.us/j/1234567890',
   screenshotStatus: 'pending' as 'pending' | 'received' | 'missing',
   teacherOnline: false,
   startsInMin: 45,
@@ -138,13 +138,13 @@ export const latestPayment = {
 export const paymentsHistory = [
   { id: 'p1', concept: 'Paquete 8 horas · Lucía', amount: 110, date: '01 Jul 2026', status: 'paid' as PaymentStatus, method: 'Tarjeta' },
   { id: 'p2', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun 2026', status: 'paid' as PaymentStatus, method: 'Yappy' },
-  { id: 'p3', concept: 'Recarga 2 horas', amount: 30, date: '10 Jun 2026', status: 'paid' as PaymentStatus, method: 'Cuanto' },
+  { id: 'p3', concept: 'Recarga 2 horas', amount: 30, date: '10 Jun 2026', status: 'pending' as PaymentStatus, method: 'Cuanto' },
 ];
 
 export const guardianPaymentsHistory = [
   { id: 'p1', concept: 'Paquete 8 horas · Lucía', amount: 110, date: '01 Jul', status: 'paid' as PaymentStatus, method: 'Tarjeta' },
   { id: 'p2', concept: 'Paquete 8 horas · Pablo', amount: 110, date: '01 Jul', status: 'paid' as PaymentStatus, method: 'Yappy' },
-  { id: 'p3', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun', status: 'paid' as PaymentStatus, method: 'Cuanto' },
+  { id: 'p3', concept: 'Paquete 4 horas · Lucía', amount: 60, date: '15 Jun', status: 'pending' as PaymentStatus, method: 'Cuanto' },
 ];
 
 // ============= REPORTES =============
@@ -173,8 +173,6 @@ export interface ReportItem {
   homework?: string;
   materials?: ReportFile[];
   attachments?: ReportFile[];
-  screenshotUrl?: string;
-  screenshotCapturedAt?: string;
 }
 
 export const reportsHistory: ReportItem[] = [
@@ -186,8 +184,6 @@ export const reportsHistory: ReportItem[] = [
       { title: 'Cambridge Grammar Reference', kind: 'Link' },
     ],
     attachments: [{ title: 'Ejercicios de práctica', kind: 'PDF', size: '600 KB' }],
-    screenshotUrl: 'https://images.unsplash.com/photo-1588072432836-e10032774350?w=800',
-    screenshotCapturedAt: '10 Jul · 10:05 AM',
   },
   {
     id: 'r2',
@@ -197,8 +193,6 @@ export const reportsHistory: ReportItem[] = [
     progress: 'Necesita repasar. Buen esfuerzo, pero es importante practicar el vocabulario nuevo diariamente.',
     homework: 'Lista de verbos irregulares.',
     attachments: [{ title: 'Lista vocabulary A1-A2', kind: 'PDF', size: '400 KB' }],
-    screenshotUrl: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800',
-    screenshotCapturedAt: '08 Jul · 15:04 PM',
   },
   {
     id: 'r3',
@@ -207,8 +201,6 @@ export const reportsHistory: ReportItem[] = [
     topic: 'Colors and shapes',
     progress: 'Excelente participación durante toda la clase. Muy activa en las dinámicas y en el uso del vocabulario nuevo.',
     homework: 'Dibujo con etiquetas de colores.',
-    screenshotUrl: 'https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=800',
-    screenshotCapturedAt: '05 Jul · 10:03 AM',
   },
 ];
 
@@ -352,7 +344,7 @@ export const linkedStudents = [
     nextSubject: 'Inglés básico',
     nextTeacher: 'Prof. María Luna',
     nextTeacherAvatar: 'https://i.pravatar.cc/150?img=48',
-    paymentStatus: 'paid' as PaymentStatus,
+    paymentStatus: 'pending' as PaymentStatus,
     activeServices: ['Tutoría individual', 'Curso grupal'] as string[],
     planTier: 'essentials' as TeacherTier,
     nextTeacherOnline: false,
@@ -418,12 +410,9 @@ export const recentAlerts = [
 // ============= CATÁLOGOS =============
 // Materias base. Los niveles/especialidades se listan en SUBJECT_LEVELS.
 // Estructura administrable desde el panel: agregar/editar/desactivar sin tocar código.
-// Catálogo alineado con `public.subjects` en Cloud (10 materias activas).
-// Fuente única de verdad: docs/BETA_SUBJECTS.md.
 export const SUBJECTS_CATALOG = [
   'Inglés', 'Francés', 'Portugués', 'Español',
-  'Matemáticas', 'Física', 'Química',
-  'Ciencias', 'Historia', 'Sociales',
+  'Matemáticas', 'Física', 'Química', 'Sociales',
 ];
 
 // Niveles/programas reales por materia. Cada materia debe tener al menos un
@@ -438,8 +427,6 @@ export const SUBJECT_LEVELS: Record<string, string[]> = {
   'Matemáticas': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
   'Física': ['Secundaria', 'Universidad'],
   'Química': ['Secundaria', 'Universidad'],
-  'Ciencias': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
-  'Historia': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
   'Sociales': ['Primaria', 'Premedia', 'Secundaria', 'Universidad'],
 };
 
@@ -451,9 +438,7 @@ export const SUBJECT_META: Record<string, { icon: string; desc: string }> = {
   'Matemáticas': { icon: 'calculator-outline', desc: 'Aritmética a cálculo' },
   'Física': { icon: 'flash-outline', desc: 'Mecánica y termodinámica' },
   'Química': { icon: 'flask-outline', desc: 'General y orgánica' },
-  'Ciencias': { icon: 'leaf-outline', desc: 'Biología y ciencias naturales' },
-  'Historia': { icon: 'library-outline', desc: 'Historia universal y local' },
-  'Sociales': { icon: 'earth-outline', desc: 'Geografía y ciudadanía' },
+  'Sociales': { icon: 'earth-outline', desc: 'Historia y geografía' },
 };
 
 export const TEACHERS_CATALOG = [
@@ -554,14 +539,8 @@ export const dateUtils = {
 };
 
 // ============= RESERVAS INICIALES =============
-// Cierre final MVP: purga de seed de reservas mock. En produccion
-// (__DEV__ === false) INITIAL_BOOKINGS es un arreglo vacio para que
-// solo aparezcan reservas reales creadas via Cloud. En desarrollo
-// (__DEV__ === true) se conserva la demo bk1..bk4 para poder navegar
-// la app sin datos reales. Sigue el mismo patron aplicado a
-// seedFromMock en paymentsService.
 const _now = new Date().toISOString();
-const _DEV_BOOKINGS: Booking[] = [
+export const INITIAL_BOOKINGS: Booking[] = [
   {
     id: 'bk1',
     studentId: 's1',
@@ -577,7 +556,7 @@ const _DEV_BOOKINGS: Booking[] = [
     time: '10:00',
     durationMin: 60,
     status: 'confirmed',
-    zoomUrl: 'https://us06web.zoom.us/j/2797072933',
+    zoomUrl: 'https://zoom.us/j/1234567890',
     createdAt: _now,
     updatedAt: _now,
     hourConsumed: true,
@@ -597,7 +576,7 @@ const _DEV_BOOKINGS: Booking[] = [
     time: '15:00',
     durationMin: 60,
     status: 'confirmed',
-    zoomUrl: 'https://us06web.zoom.us/j/2797072933',
+    zoomUrl: 'https://zoom.us/j/2345678901',
     createdAt: _now,
     updatedAt: _now,
     hourConsumed: true,
@@ -617,7 +596,7 @@ const _DEV_BOOKINGS: Booking[] = [
     time: '16:00',
     durationMin: 60,
     status: 'pending_payment',
-    zoomUrl: 'https://us06web.zoom.us/j/2797072933',
+    zoomUrl: 'https://zoom.us/j/3456789012',
     createdAt: _now,
     updatedAt: _now,
     hourConsumed: false,
@@ -637,15 +616,12 @@ const _DEV_BOOKINGS: Booking[] = [
     time: '10:00',
     durationMin: 60,
     status: 'completed',
-    zoomUrl: 'https://us06web.zoom.us/j/2797072933',
+    zoomUrl: 'https://zoom.us/j/4567890123',
     createdAt: _now,
     updatedAt: _now,
     hourConsumed: true,
   },
 ];
-
-export const INITIAL_BOOKINGS: Booking[] =
-  typeof __DEV__ !== 'undefined' && __DEV__ ? _DEV_BOOKINGS : [];
 
 // ============= PRÓXIMO PAGO =============
 export const nextPayment = {
@@ -671,7 +647,7 @@ export const topUpsHistory: Array<{
   id: string; hours: number; price: number; date: string;
   method: string; status: PaymentStatus;
 }> = [
-  { id: 'tu1', hours: 2, price: 30, date: '10 Jun 2026', method: 'Cuanto', status: 'paid' },
+  { id: 'tu1', hours: 2, price: 30, date: '10 Jun 2026', method: 'Cuanto', status: 'pending' },
   { id: 'tu2', hours: 4, price: 55, date: '20 May 2026', method: 'Yappy', status: 'paid' },
 ];
 
@@ -793,9 +769,10 @@ export const studentGroupPayment: GroupCoursePayment = {
   cycleAmount: 55,
   paymentDueDate: '15 Ago 2026',
   daysLate: 0,
-  paid: true,
+  paid: false,
 };
 
-// Wordlish es 100% prepago: no hay ciclos con vencimiento por curso.
-// Este arreglo se conserva vacío por compatibilidad con vistas antiguas.
-export const guardianGroupPayments: GroupCoursePayment[] = [];
+export const guardianGroupPayments: GroupCoursePayment[] = [
+  { courseId: 'gc1', courseName: 'Inglés · Básico grupal', studentId: 's1', studentName: 'Lucía', cycleAmount: 55, paymentDueDate: '15 Ago 2026', daysLate: 0, paid: false },
+  { courseId: 'gc2', courseName: 'Inglés · Conversación grupal', studentId: 's2', studentName: 'Pablo', cycleAmount: 45, paymentDueDate: '10 Jul 2026', daysLate: 2, paid: false },
+];

@@ -5,11 +5,13 @@ import { Ionicons } from '@/components/ui/Icon';
 import { Screen, Header, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
+import { getGroupPaymentStatus } from '@/constants/policies';
 import {
   paymentsHistory,
   packagesHistory,
   topUpsHistory,
   PAYMENT_STATUS,
+  studentGroupPayment,
   studentAcademic,
   PaymentStatus,
 } from '@/services/mockData';
@@ -126,11 +128,16 @@ export default function StudentMyPlan() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
 
-  const [catalogOpen, setCatalogOpen] = React.useState<boolean>(false);
-  // Cierre final MVP: filtro 'Soportes de Pago' en el historial.
-  // Muestra solo movimientos con status === 'paid' (los que ya
-  // generaron soporte via soporteService.buildClientSoporte).
-  const [historyFilter, setHistoryFilter] = React.useState<'all' | 'soportes'>('all');
+  const [receiptSent, setReceiptSent] = useState<boolean>(false);
+  const [catalogOpen, setCatalogOpen] = useState<boolean>(false);
+
+  const hasPending = !studentGroupPayment.paid;
+  const gpStatus = getGroupPaymentStatus(
+    studentGroupPayment.daysLate,
+    studentGroupPayment.paid,
+  );
+  const gpTone = TONE_MAP[gpStatus.tone] ?? TONE_MAP.info;
+  const totalDue = studentGroupPayment.cycleAmount + gpStatus.fee;
 
   const remainingHours = studentAcademic.hoursAvailable;
   const showLowHoursNudge = remainingHours <= 1;
@@ -258,14 +265,56 @@ export default function StudentMyPlan() {
     </View>
   ) : null;
 
-  const PlanStatusCard = (
+  const PendingCard = hasPending ? (
+    <View style={styles.nextCard}>
+      <Text style={styles.nextLabel}>Próximo pago</Text>
+      <Text style={styles.nextConcept} numberOfLines={1}>
+        {studentGroupPayment.courseName}
+      </Text>
+
+      <View style={styles.nextMetaRow}>
+        <View style={styles.nextMetaItem}>
+          <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+          <Text style={styles.nextMetaText}>Vence {studentGroupPayment.paymentDueDate}</Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: gpTone.bg }]}>
+          <Text style={[styles.badgeText, { color: gpTone.fg }]}>{gpStatus.label}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.nextAmount}>${totalDue}</Text>
+
+      {receiptSent ? (
+        <View style={styles.receiptSent}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.receiptTitle}>Comprobante enviado</Text>
+            <Text style={styles.receiptSubtitle}>Estamos verificando tu pago.</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.nextActions}>
+          <Pressable
+            onPress={() => Alert.alert('Pagar ahora', 'Se abrirá la pasarela de pago.')}
+            style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.9 }]}
+          >
+            <Text style={styles.payBtnText}>Pagar ahora</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setReceiptSent(true)}
+            style={({ pressed }) => [styles.softBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.softBtnText}>Enviar comprobante</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  ) : (
     <View style={styles.emptyPayCard}>
-      <Ionicons name="hourglass" size={22} color={colors.primaryDark} />
+      <Ionicons name="checkmark-circle" size={22} color={colors.success} />
       <View style={{ flex: 1 }}>
-        <Text style={styles.emptyPayTitle}>
-          {remainingHours} {remainingHours === 1 ? 'hora' : 'horas'} disponibles
-        </Text>
-        <Text style={styles.emptyPaySubtitle}>Wordlish es prepago: paga y usa cuando quieras.</Text>
+        <Text style={styles.emptyPayTitle}>Sin pagos pendientes</Text>
+        <Text style={styles.emptyPaySubtitle}>Tu plan está al día.</Text>
       </View>
     </View>
   );
@@ -290,70 +339,15 @@ export default function StudentMyPlan() {
     </View>
   ) : null;
 
-  const filteredMovements = useMemo(
-    () =>
-      historyFilter === 'soportes'
-        ? movements.filter((m) => m.status === 'paid')
-        : movements,
-    [movements, historyFilter],
-  );
-
   const HistoryBlock = (
     <View>
       <View style={styles.sectionHead}>
         <Text style={typography.h3}>Historial</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-          <Pressable
-            onPress={() => setHistoryFilter('all')}
-            style={[
-              styles.filterChip,
-              historyFilter === 'all' && styles.filterChipOn,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                historyFilter === 'all' && { color: colors.textOnPrimary },
-              ]}
-            >
-              Todos
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setHistoryFilter('soportes')}
-            style={[
-              styles.filterChip,
-              historyFilter === 'soportes' && styles.filterChipOn,
-            ]}
-          >
-            <Ionicons
-              name="ribbon-outline"
-              size={12}
-              color={
-                historyFilter === 'soportes'
-                  ? colors.textOnPrimary
-                  : colors.primaryDark
-              }
-            />
-            <Text
-              style={[
-                styles.filterChipText,
-                historyFilter === 'soportes' && { color: colors.textOnPrimary },
-              ]}
-            >
-              Soportes de Pago
-            </Text>
-          </Pressable>
-        </View>
       </View>
-      {filteredMovements.length === 0 ? (
+      {movements.length === 0 ? (
         <View style={styles.emptyCard}>
           <Ionicons name="time-outline" size={24} color={colors.textMuted} />
-          <Text style={typography.caption}>
-            {historyFilter === 'soportes'
-              ? 'Aun no hay Soportes de Pago. Se generan al aprobarse un pago.'
-              : 'Aqui veras todos tus movimientos.'}
-          </Text>
+          <Text style={typography.caption}>Aquí verás todos tus movimientos.</Text>
         </View>
       ) : isDesktop ? (
         // Tabla compacta desktop
@@ -365,7 +359,7 @@ export default function StudentMyPlan() {
             <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}>Monto</Text>
             <Text style={[styles.thCell, { flex: 1, textAlign: 'right' }]}> </Text>
           </View>
-          {filteredMovements.map((m) => {
+          {movements.map((m) => {
             const info = PAYMENT_STATUS[m.status];
             const t = TONE_MAP[info.tone as keyof typeof TONE_MAP] ?? TONE_MAP.info;
             return (
@@ -398,7 +392,7 @@ export default function StudentMyPlan() {
         </View>
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {filteredMovements.map((m) => (
+          {movements.map((m) => (
             <MovementRow key={m.kind + m.id} m={m} onPress={() => openDetail(m)} />
           ))}
         </View>
@@ -422,7 +416,7 @@ export default function StudentMyPlan() {
           rightFlex={7}
           left={
             <View style={{ gap: spacing.md }}>
-              {PlanStatusCard}
+              {PendingCard}
               {NudgeCard}
             </View>
           }
@@ -430,7 +424,7 @@ export default function StudentMyPlan() {
         />
       ) : (
         <>
-          {PlanStatusCard}
+          {PendingCard}
           {NudgeCard}
           {HistoryBlock}
         </>
@@ -711,27 +705,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.text,
     paddingHorizontal: 4,
-  },
-
-  // Filtro Soportes de Pago
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  filterChipOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primaryDark,
   },
 });

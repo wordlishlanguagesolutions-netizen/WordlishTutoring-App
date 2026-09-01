@@ -6,21 +6,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
-import { RoleGuard } from '@/components/ui/RoleGuard';
 
 // ============================================================================
-// Layout del estudiante.
-//
-// UNIFICACIÓN (una necesidad = un solo flujo):
-//   "Reservar" y "Pagar" dejan de ser módulos separados. Todo vive dentro
-//   de "Reservas". El archivo payments.tsx sigue existiendo como pantalla
-//   accesible por deep-link (historial > detalle), pero se oculta del
-//   sidebar y del tab bar con href:null.
+// Layout del estudiante · adaptación visual multi-plataforma.
+//   · Móvil y tablet (< 1024 px): barra inferior original, sin cambios.
+//   · Desktop (≥ 1024 px): sidebar lateral izquierda fija con scroll
+//     independiente en el contenido. La barra inferior se oculta.
+// La lógica de rutas y screens permanece intacta.
 // ============================================================================
 
 const STUDENT_NAV: SidebarItem[] = [
   { label: 'Inicio', icon: 'home', route: '/(student)' },
-  { label: 'Mis clases', icon: 'add-circle', route: '/(student)/book' },
+  { label: 'Reservas', icon: 'add-circle', route: '/(student)/book' },
+  { label: 'Mi plan', icon: 'card', route: '/(student)/payments' },
   { label: 'Reportes', icon: 'document-text', route: '/(student)/progress' },
   { label: 'Perfil', icon: 'person', route: '/(student)/profile' },
 ];
@@ -30,7 +28,6 @@ export default function StudentLayout() {
   const { isDesktop } = useResponsive();
 
   return (
-    <RoleGuard allow="student">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={STUDENT_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -52,12 +49,17 @@ export default function StudentLayout() {
           <Tabs.Screen
             name="book"
             options={{
-              title: 'Mis clases',
+              title: 'Reservar',
               tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" size={size} color={color} />,
             }}
           />
-          {/* Mi plan · oculto del tab bar; sigue accesible por ruta directa */}
-          <Tabs.Screen name="payments" options={{ href: null }} />
+          <Tabs.Screen
+            name="payments"
+            options={{
+              title: 'Mi plan',
+              tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
+            }}
+          />
           <Tabs.Screen
             name="progress"
             options={{
@@ -75,6 +77,5 @@ export default function StudentLayout() {
         </Tabs>
       </View>
     </View>
-    </RoleGuard>
   );
 }

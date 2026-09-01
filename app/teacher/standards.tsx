@@ -29,7 +29,7 @@ export default function TeacherStandardsScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.h2}>Guía del profesor</Text>
+          <Text style={typography.h2}>Programa Wordlish</Text>
         </View>
       </View>
 
@@ -38,9 +38,9 @@ export default function TeacherStandardsScreen() {
         <View style={styles.intro}>
           <Ionicons name="ribbon" size={20} color={colors.primaryDark} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.introTitle}>La manera Wordlish de dar clase.</Text>
+            <Text style={styles.introTitle}>Formamos un equipo, no una lista.</Text>
             <Text style={styles.introSubtitle}>
-              Cultura, estándares y crecimiento en un solo lugar.
+              Este es nuestro estándar. La manera Wordlish de dar clase.
             </Text>
           </View>
         </View>
@@ -81,7 +81,7 @@ export default function TeacherStandardsScreen() {
         </View>
 
         <Text style={styles.hint}>
-          El crecimiento se acompaña, nunca se penaliza.
+          El crecimiento dentro de Wordlish se evalúa de manera continua.
         </Text>
 
         {/* Nuestro estándar */}
@@ -119,10 +119,10 @@ export default function TeacherStandardsScreen() {
         {/* Cierre cálido */}
         <View style={styles.close}>
           <Text style={styles.closeTitle}>
-            Gracias por enseñar con nosotros.
+            Cada interacción transmite orgullo de pertenecer a Wordlish.
           </Text>
           <Text style={styles.closeSubtitle}>
-            Formamos un equipo, no una lista.
+            Gracias por elegir enseñar con nosotros.
           </Text>
         </View>
       </ScrollView>

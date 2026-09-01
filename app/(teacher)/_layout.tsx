@@ -9,7 +9,6 @@ import { TeacherNotificationsProvider } from '@/contexts/TeacherNotificationsCon
 import { useTeacherNotifications } from '@/hooks/useTeacherNotifications';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
-import { RoleGuard } from '@/components/ui/RoleGuard';
 
 // Barra inferior simplificada · 4 tabs.
 // Inicio / Agenda (fusiona horario + clases) / Pendientes (todas las acciones)
@@ -28,7 +27,7 @@ const TEACHER_NAV: SidebarItem[] = [
 
 function TeacherTabs() {
   const insets = useSafeAreaInsets();
-  const { weekPublished, pendingTotal } = useTeacherNotifications();
+  const { weekPublished, pendingReports } = useTeacherNotifications();
   const { isDesktop } = useResponsive();
 
   const badgeStyle = {
@@ -40,8 +39,7 @@ function TeacherTabs() {
     lineHeight: 16,
   } as const;
 
-  // pendingTotal incluye reportes pendientes + screenshot vencido (>=10 min sin evidencia).
-  // El detalle se calcula en TeacherNotificationsContext.
+  const pendingTotal = pendingReports; // Suma real se hace en la pantalla; aquí solo señal visual mínima.
 
   return (
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
@@ -95,10 +93,8 @@ function TeacherTabs() {
 
 export default function TeacherLayout() {
   return (
-    <RoleGuard allow="teacher">
-      <TeacherNotificationsProvider>
-        <TeacherTabs />
-      </TeacherNotificationsProvider>
-    </RoleGuard>
+    <TeacherNotificationsProvider>
+      <TeacherTabs />
+    </TeacherNotificationsProvider>
   );
 }

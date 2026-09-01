@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, Platform } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import {
   Screen,
@@ -9,29 +9,12 @@ import {
   Avatar,
   ZoomButton,
   SupportRow,
-  StatusBadge,
 } from '@/components/ui';
 import { colors, spacing, typography, radius } from '@/constants/theme';
 import { liveClasses, supervisorStats } from '@/services/mockData';
-import { getScreenshotStatus } from '@/constants/policies';
-import {
-  getOpenSystemAlerts,
-  hydrateSystemAlerts,
-  subscribeSystemAlerts,
-  resolveSystemAlert,
-  type SystemAlertItem,
-} from '@/services/systemAlertsService';
+import { POLICIES, getScreenshotStatus } from '@/constants/policies';
 
 type Filter = 'all' | 'live' | 'alerts';
-
-type UploadedScreenshot = { by: 'teacher' | 'supervisor'; at: number };
-
-function fmtHm(ts: number): string {
-  return new Date(ts).toLocaleTimeString('es-PA', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 type DisplayKey =
   | 'ok'
@@ -126,104 +109,32 @@ const TONE_MAP: Record<
 
 export default function SupervisorMonitor() {
   const [filter, setFilter] = useState<Filter>('all');
-  // Screenshots subidos localmente (supervisor o profesor) durante la sesion.
-  // Al subirse, la clase pasa a considerarse con evidencia y la alerta
-  // 'Screenshot faltante' desaparece automaticamente.
-  const [uploaded, setUploaded] = useState<Record<string, UploadedScreenshot>>({});
-
-  // Alertas del sistema · public.system_alerts (Cloud real).
-  // Se cargan y se suscriben para repintar cuando cambian.
-  const [systemAlerts, setSystemAlerts] = useState<SystemAlertItem[]>(() =>
-    getOpenSystemAlerts(),
-  );
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    hydrateSystemAlerts().catch(() => undefined);
-    const unsub = subscribeSystemAlerts(() => {
-      if (alive) setSystemAlerts(getOpenSystemAlerts());
-    });
-    return () => {
-      alive = false;
-      unsub();
-    };
-  }, []);
-
-  const handleResolveAlert = (alert: SystemAlertItem) => {
-    Alert.alert(
-      'Resolver alerta',
-      `${alert.type}. ¿Confirmas que ya fue atendida?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Resolver',
-          style: 'default',
-          onPress: async () => {
-            setResolvingId(alert.id);
-            const res = await resolveSystemAlert(alert.id);
-            setResolvingId(null);
-            if (!res.ok) {
-              Alert.alert('No se pudo resolver', res.error ?? 'Intenta nuevamente.');
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const uploadScreenshot = (
-    classId: string,
-    by: 'teacher' | 'supervisor',
-  ) => {
-    setUploaded((prev) => ({ ...prev, [classId]: { by, at: Date.now() } }));
-  };
-
-  const handleUploadPress = (
-    classId: string,
-    teacherName: string,
-  ) => {
-    const existing = uploaded[classId];
-    const doUpload = () => uploadScreenshot(classId, 'supervisor');
-    if (existing) {
-      Alert.alert(
-        'Reemplazar screenshot',
-        `Ya existe una evidencia subida por ${existing.by === 'supervisor' ? 'el supervisor' : 'el profesor'} a las ${fmtHm(existing.at)}. Deseas reemplazarla?`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Reemplazar', style: 'destructive', onPress: doUpload },
-        ],
-      );
-      return;
-    }
-    if (Platform.OS === 'web') {
-      doUpload();
-      return;
-    }
-    Alert.alert(
-      'Subir screenshot',
-      `Sube la evidencia de la clase de ${teacherName}.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Subir', onPress: doUpload },
-      ],
-    );
-  };
 
   const enriched = useMemo(
     () =>
-      liveClasses.map((c) => {
-        const local = uploaded[c.id];
-        const effective = { ...c, hasScreenshot: c.hasScreenshot || Boolean(local) };
-        return {
-          ...effective,
-          uploaded: local ?? (c.hasScreenshot ? { by: 'teacher' as const, at: Date.now() } : null),
-          display: computeDisplayStatus(effective),
-        };
-      }),
-    [uploaded],
+      liveClasses.map((c) => ({
+        ...c,
+        display: computeDisplayStatus(c),
+      })),
+    [],
   );
 
   const alertsCount = enriched.filter((c) => c.display.critical).length;
+  const missingScreenshotCount = enriched.filter(
+    (c) => c.display.key === 'no_screenshot',
+  ).length;
+  const waitingScreenshotCount = enriched.filter(
+    (c) => c.display.key === 'waiting_screenshot',
+  ).length;
+  const noCameraCount = enriched.filter(
+    (c) => c.display.key === 'no_camera',
+  ).length;
+  const teacherLateCount = enriched.filter(
+    (c) => c.display.key === 'teacher_late',
+  ).length;
+  const technicalCount = enriched.filter(
+    (c) => c.display.key === 'technical',
+  ).length;
 
   const filtered = useMemo(() => {
     if (filter === 'live') return enriched.filter((c) => !c.display.critical);
@@ -264,6 +175,48 @@ export default function SupervisorMonitor() {
           tone="danger"
         />
       </View>
+
+      {/* Mini alertas */}
+      <Text style={styles.section}>Estado ahora</Text>
+      <View style={styles.miniStats}>
+        <MiniStat
+          icon="camera-outline"
+          value={missingScreenshotCount}
+          label="Screenshot"
+          tone="danger"
+        />
+        <MiniStat
+          icon="videocam-off"
+          value={noCameraCount}
+          label="Sin cámara"
+          tone="warning"
+        />
+        <MiniStat
+          icon="time-outline"
+          value={teacherLateCount}
+          label="Prof. tarde"
+          tone="danger"
+        />
+        <MiniStat
+          icon="alert-circle"
+          value={technicalCount}
+          label="Técnico"
+          tone="danger"
+        />
+      </View>
+
+      {waitingScreenshotCount > 0 ? (
+        <View style={styles.waitingBox}>
+          <Ionicons name="hourglass-outline" size={16} color={colors.info} />
+          <Text style={styles.waitingText}>
+            {waitingScreenshotCount}{' '}
+            {waitingScreenshotCount === 1
+              ? 'clase esperando evidencia'
+              : 'clases esperando evidencia'}{' '}
+            (dentro del plazo de {POLICIES.screenshotGraceMin} min).
+          </Text>
+        </View>
+      ) : null}
 
       {/* Filtros */}
       <Text style={styles.section}>Filtros</Text>
@@ -338,135 +291,84 @@ export default function SupervisorMonitor() {
 
               {isCritical ? (
                 <View style={styles.incidentBox}>
-                  <Ionicons name="alert-circle" size={14} color={colors.danger} />
-                  <Text style={styles.incidentText}>
-                    {c.display.label} · {c.minutesElapsed} min transcurridos
-                  </Text>
-                </View>
-              ) : null}
-
-              {c.display.key === 'no_screenshot' ? (
-                <Pressable
-                  onPress={() => handleUploadPress(c.id, c.teacher)}
-                  style={({ pressed }) => [
-                    styles.uploadBtn,
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <Ionicons name="camera" size={16} color={colors.textOnPrimary} />
-                  <Text style={styles.uploadBtnText}>Subir screenshot</Text>
-                </Pressable>
-              ) : null}
-
-              {c.uploaded && c.display.key !== 'no_screenshot' ? (
-                <View style={styles.uploadedRow}>
-                  <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-                  <Text style={styles.uploadedText}>
-                    Evidencia subida por {c.uploaded.by === 'supervisor' ? 'supervisor' : 'profesor'} · {fmtHm(c.uploaded.at)}
-                  </Text>
-                  <Pressable
-                    onPress={() => handleUploadPress(c.id, c.teacher)}
-                    hitSlop={8}
-                    style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.uploadedReplace}>Reemplazar</Text>
-                  </Pressable>
+                  <IncidentRow label="Profesor" value={c.teacher} />
+                  <IncidentRow label="Estudiante" value={c.student} />
+                  <IncidentRow label="Materia" value={c.subject} />
+                  <IncidentRow label="Hora de inicio" value={c.time} />
+                  <IncidentRow
+                    label="Minutos transcurridos"
+                    value={`${c.minutesElapsed} min`}
+                  />
                 </View>
               ) : null}
 
               <View style={{ marginTop: spacing.md }}>
-                <ZoomButton
-                  variant={isCritical ? 'primary' : 'secondary'}
-                  label="Entrar a Zoom"
-                  onPress={() =>
-                    Alert.alert(
-                      'Entrar a Zoom',
-                      `Abriendo la clase de ${c.teacher}.`,
-                    )
-                  }
-                />
+                {isCritical ? (
+                  <ZoomButton
+                    label="Entrar a la clase"
+                    onPress={() =>
+                      Alert.alert(
+                        'Entrar a la clase',
+                        `Entrando a la clase de ${c.teacher}.`,
+                      )
+                    }
+                  />
+                ) : (
+                  <ZoomButton
+                    variant="secondary"
+                    label="Supervisar en Zoom"
+                    onPress={() =>
+                      Alert.alert(
+                        'Supervisar',
+                        `Entrando a supervisar la clase de ${c.teacher}.`,
+                      )
+                    }
+                  />
+                )}
               </View>
             </Card>
           );
         })}
       </View>
 
-      <Text style={styles.section}>Alertas del sistema ({systemAlerts.length})</Text>
-      {systemAlerts.length === 0 ? (
-        <Card>
-          <View style={styles.emptyAlerts}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-            <Text style={styles.emptyAlertsText}>Sin alertas activas.</Text>
-          </View>
-        </Card>
-      ) : (
-        <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
-          {systemAlerts.map((a) => {
-            const sevTone =
-              a.severity === 'critical' || a.severity === 'danger'
-                ? { bg: colors.dangerSoft, fg: colors.danger, label: 'Critica' as const }
-                : a.severity === 'warning'
-                ? { bg: colors.warningSoft, fg: colors.warning, label: 'Aviso' as const }
-                : { bg: colors.infoSoft, fg: colors.info, label: 'Info' as const };
-            const busy = resolvingId === a.id;
-            return (
-              <Card key={a.id}>
-                <View style={styles.sysAlertHead}>
-                  <View style={[styles.sysAlertIcon, { backgroundColor: sevTone.bg }]}>
-                    <Ionicons
-                      name={(a.icon as any) ?? 'warning'}
-                      size={16}
-                      color={sevTone.fg}
-                    />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={typography.bodyStrong} numberOfLines={1}>
-                      {a.type}
-                    </Text>
-                    {a.detail ? (
-                      <Text style={[typography.caption, { marginTop: 2 }]} numberOfLines={2}>
-                        {a.detail}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <StatusBadge
-                    label={sevTone.label}
-                    tone={
-                      a.severity === 'critical' || a.severity === 'danger'
-                        ? 'danger'
-                        : a.severity === 'warning'
-                        ? 'warning'
-                        : 'info'
-                    }
-                  />
-                </View>
-                <View style={styles.sysAlertMetaRow}>
-                  <Text style={styles.sysAlertMeta}>
-                    {new Date(a.createdAt).toLocaleString('es-PA')}
-                  </Text>
-                  <Pressable
-                    onPress={() => handleResolveAlert(a)}
-                    disabled={busy}
-                    style={({ pressed }) => [
-                      styles.sysAlertBtn,
-                      (pressed || busy) && { opacity: 0.85 },
-                    ]}
-                  >
-                    <Ionicons name="checkmark-done" size={12} color={colors.textOnPrimary} />
-                    <Text style={styles.sysAlertBtnText}>
-                      {busy ? 'Resolviendo...' : 'Marcar resuelto'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </Card>
-            );
-          })}
-        </View>
-      )}
-
       <Text style={styles.section}>Soporte</Text>
       <SupportRow role="supervisor" screen="Monitor" />
     </Screen>
+  );
+}
+
+function IncidentRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.incidentRow}>
+      <Text style={styles.incidentLabel}>{label}</Text>
+      <Text style={styles.incidentValue}>{value}</Text>
+    </View>
+  );
+}
+
+function MiniStat({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: string;
+  value: number;
+  label: string;
+  tone: 'warning' | 'danger';
+}) {
+  const t =
+    tone === 'warning'
+      ? { bg: colors.warningSoft, fg: colors.warning }
+      : { bg: colors.dangerSoft, fg: colors.danger };
+  return (
+    <View style={styles.mini}>
+      <View style={[styles.miniIcon, { backgroundColor: t.bg }]}>
+        <Ionicons name={icon as any} size={16} color={t.fg} />
+      </View>
+      <Text style={styles.miniValue}>{value}</Text>
+      <Text style={styles.miniLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -516,6 +418,41 @@ const styles = StyleSheet.create({
     ...typography.h3,
     marginTop: spacing.lg,
     marginBottom: spacing.md,
+  },
+  miniStats: { flexDirection: 'row', gap: spacing.sm },
+  mini: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'flex-start',
+  },
+  miniIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  miniValue: { fontSize: 20, fontWeight: '700', color: colors.text },
+  miniLabel: { fontSize: 11, color: colors.textSubtle, fontWeight: '600' },
+  waitingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.infoSoft,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.md,
+  },
+  waitingText: {
+    color: colors.info,
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
   },
   filterRow: { gap: spacing.sm, paddingRight: spacing.lg },
   filterChip: {
@@ -574,97 +511,26 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.dangerSoft,
+    gap: 2,
+  },
+  incidentRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  incidentText: {
-    color: colors.danger,
-    fontSize: 13,
-    fontWeight: '700',
-    flex: 1,
-  },
-  uploadBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    marginTop: spacing.md,
-  },
-  uploadBtnText: {
-    color: colors.textOnPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  uploadedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.sm,
-  },
-  uploadedText: {
-    flex: 1,
-    color: colors.textSubtle,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  uploadedReplace: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  emptyAlerts: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-  },
-  emptyAlertsText: {
-    color: colors.textSubtle,
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  sysAlertHead: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  sysAlertIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sysAlertMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  sysAlertMeta: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  sysAlertBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
+    paddingVertical: 3,
   },
-  sysAlertBtnText: {
-    color: colors.textOnPrimary,
+  incidentLabel: {
+    color: colors.textSubtle,
     fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  incidentValue: {
+    color: colors.text,
+    fontSize: 12,
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'right',
   },
 });

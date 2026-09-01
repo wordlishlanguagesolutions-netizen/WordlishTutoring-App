@@ -2,61 +2,29 @@ import React, { ReactNode } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { colors, radius, spacing, shadow } from '@/constants/theme';
 
-// ============================================================================
-// Card · superficie base del Design System.
-//
-// Reglas:
-//   · Border radius 20 px (spec oficial).
-//   · Padding interno 20 px.
-//   · Sombra `sm` extremadamente suave.
-//   · Border 1 px muy tenue para separar sin ruido visual.
-// ============================================================================
-
 interface CardProps {
   children: ReactNode;
   style?: ViewStyle;
-  tone?: 'default' | 'soft' | 'primary' | 'tinted';
-  padded?: boolean;
-  elevated?: boolean;
+  tone?: 'default' | 'soft' | 'primary';
 }
 
-export function Card({
-  children,
-  style,
-  tone = 'default',
-  padded = true,
-  elevated = true,
-}: CardProps) {
+export function Card({ children, style, tone = 'default' }: CardProps) {
   const toneStyle =
     tone === 'primary'
-      ? { backgroundColor: colors.primary, borderColor: 'transparent' }
+      ? { backgroundColor: colors.primary }
       : tone === 'soft'
-      ? { backgroundColor: colors.surfaceAlt, borderColor: colors.borderSoft }
-      : tone === 'tinted'
-      ? { backgroundColor: colors.surfaceTinted, borderColor: colors.accent }
-      : { backgroundColor: colors.surface, borderColor: colors.border };
+      ? { backgroundColor: colors.surfaceAlt }
+      : { backgroundColor: colors.surface };
 
-  return (
-    <View
-      style={[
-        styles.card,
-        toneStyle,
-        padded && styles.padded,
-        elevated && shadow.sm,
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
+  return <View style={[styles.card, toneStyle, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
     borderWidth: 1,
-  },
-  padded: {
-    padding: spacing.card,
+    borderColor: colors.border,
+    ...shadow.sm,
   },
 });

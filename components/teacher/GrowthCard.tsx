@@ -7,16 +7,15 @@ import {
   GROWTH_INDICATORS,
   GROWTH_PROGRAM,
   SPECIAL_THRESHOLD,
-  encouragementFor,
   growthAverage,
   TeacherLevel,
 } from '@/constants/teacherCulture';
 
 // ============================================================================
-// GrowthCard · "Tu camino a Special".
-// Tarjeta compacta con nivel actual, progreso positivo y cinco indicadores.
-// Los textos son de una sola línea, máximo 8 palabras. Nunca amenaza, nunca
-// advierte. Sólo motiva y reconoce.
+// GrowthCard · progreso positivo hacia Special.
+// No es una calificación. Es un objetivo motivador. Muestra un porcentaje
+// promedio, cuatro indicadores discretos y un mensaje cálido cuando el
+// profesor mantiene indicadores altos. Nunca amenaza, nunca advierte.
 // ============================================================================
 
 interface Props {
@@ -27,19 +26,22 @@ export function GrowthCard({ currentLevel }: Props) {
   const router = useRouter();
   const avg = growthAverage(GROWTH_INDICATORS);
   const isSpecial = currentLevel === 'special';
+  const target = GROWTH_PROGRAM.special;
 
   const heroTitle = isSpecial
     ? 'Estás en el nivel Special'
     : 'Tu camino a Special';
   const heroSubtitle = isSpecial
     ? 'Gracias por sostener este nivel.'
-    : encouragementFor(avg);
+    : avg >= SPECIAL_THRESHOLD
+      ? 'Tu constancia te acerca cada semana.'
+      : 'Cada clase suma a tu crecimiento.';
 
   return (
     <View style={styles.card}>
       <View style={styles.headRow}>
         <View style={styles.badge}>
-          <Ionicons name="star" size={9} color={colors.primaryDark} />
+          <Ionicons name="star" size={12} color={colors.primaryDark} />
           <Text style={styles.badgeText}>
             {GROWTH_PROGRAM[currentLevel].name}
           </Text>
@@ -49,17 +51,14 @@ export function GrowthCard({ currentLevel }: Props) {
           hitSlop={8}
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.link}>Guía</Text>
+          <Text style={styles.link}>Ver más</Text>
         </Pressable>
       </View>
 
       <Text style={styles.title}>{heroTitle}</Text>
-      {heroSubtitle ? (
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {heroSubtitle}
-        </Text>
-      ) : null}
+      <Text style={styles.subtitle}>{heroSubtitle}</Text>
 
+      {/* Barra de progreso hacia Special */}
       {!isSpecial ? (
         <View style={styles.progressWrap}>
           <View style={styles.progressTrack}>
@@ -70,22 +69,32 @@ export function GrowthCard({ currentLevel }: Props) {
               ]}
             />
           </View>
-          <Text style={styles.progressLabel}>{avg}%</Text>
+          <View style={styles.progressMeta}>
+            <Text style={styles.progressLabel}>{avg}% de progreso</Text>
+            <Text style={styles.progressTarget}>
+              Meta {SPECIAL_THRESHOLD}% · {target.name}
+            </Text>
+          </View>
         </View>
       ) : null}
 
+      {/* Indicadores positivos */}
       <View style={styles.indicators}>
         {GROWTH_INDICATORS.map((ind) => (
           <View key={ind.id} style={styles.indicator}>
-            <Ionicons
-              name={ind.icon as any}
-              size={11}
-              color={colors.primaryDark}
-            />
-            <Text style={styles.indicatorLabel} numberOfLines={1}>
-              {ind.label}
-            </Text>
-            <View style={styles.indicatorDots} />
+            <View style={styles.indicatorIcon}>
+              <Ionicons
+                name={ind.icon as any}
+                size={14}
+                color={colors.primaryDark}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.indicatorLabel}>{ind.label}</Text>
+              <Text style={styles.indicatorHint} numberOfLines={1}>
+                {ind.hint}
+              </Text>
+            </View>
             <Text style={styles.indicatorValue}>{ind.value}%</Text>
           </View>
         ))}
@@ -97,8 +106,8 @@ export function GrowthCard({ currentLevel }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.primaryLight,
     ...shadow.sm,
@@ -107,93 +116,103 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: spacing.sm,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
     borderRadius: radius.pill,
     backgroundColor: colors.primarySoft,
   },
   badgeText: {
     color: colors.primaryDark,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  link: {
-    color: colors.primaryDark,
     fontSize: 11,
     fontWeight: '700',
   },
+  link: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   title: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    letterSpacing: -0.15,
+    letterSpacing: -0.2,
   },
   subtitle: {
-    fontSize: 10,
+    fontSize: 13,
     color: colors.textSubtle,
-    marginTop: 1,
-    fontWeight: '600',
+    marginTop: 2,
+    fontWeight: '500',
   },
   progressWrap: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   progressTrack: {
-    flex: 1,
-    height: 3,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.surfaceAlt,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
     backgroundColor: colors.primary,
   },
+  progressMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
   progressLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primaryDark,
-    minWidth: 28,
-    textAlign: 'right',
+  },
+  progressTarget: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
   },
   indicators: {
-    marginTop: spacing.sm,
-    gap: 2,
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
   indicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 3,
+    gap: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+  },
+  indicatorIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   indicatorLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.text,
   },
-  indicatorDots: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    borderStyle: 'dotted',
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    marginHorizontal: 4,
+  indicatorHint: {
+    fontSize: 11,
+    color: colors.textSubtle,
+    marginTop: 1,
+    fontWeight: '500',
   },
   indicatorValue: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.primaryDark,
-    minWidth: 30,
-    textAlign: 'right',
   },
 });

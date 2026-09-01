@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
-import { colors, spacing, radius, typography } from '@/constants/theme';
+import { colors, spacing, radius } from '@/constants/theme';
 
 export type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary';
 
@@ -16,8 +16,8 @@ const TONES: Record<BadgeTone, { bg: string; fg: string }> = {
   warning: { bg: colors.warningSoft, fg: colors.warning },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
   info: { bg: colors.infoSoft, fg: colors.info },
-  muted: { bg: colors.surfaceAlt, fg: colors.textSubtle },
-  primary: { bg: colors.surfaceTinted, fg: colors.primary },
+  muted: { bg: colors.surfaceMuted, fg: colors.textSubtle },
+  primary: { bg: colors.primarySoft, fg: colors.primaryDark },
 };
 
 export function StatusBadge({ label, tone = 'info', icon }: StatusBadgeProps) {
@@ -40,10 +40,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignSelf: 'flex-start',
   },
-  text: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
+  text: { fontSize: 12, fontWeight: '600' },
 });

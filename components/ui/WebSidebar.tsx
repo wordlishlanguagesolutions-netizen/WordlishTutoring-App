@@ -8,7 +8,6 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@/components/ui/Icon';
-import { WordlishLogo } from './WordlishLogo';
 import { colors, spacing, radius, typography } from '@/constants/theme';
 import { SIDEBAR_WIDTH } from '@/constants/breakpoints';
 
@@ -55,7 +54,8 @@ export function WebSidebar({ items }: WebSidebarProps) {
   return (
     <View style={styles.sidebar}>
       <View style={styles.brand}>
-        <WordlishLogo width={168} />
+        <View style={styles.brandDot} />
+        <Text style={styles.brandText}>Wordlish</Text>
       </View>
 
       <ScrollView
@@ -91,8 +91,7 @@ export function WebSidebar({ items }: WebSidebarProps) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Wordlish Education</Text>
-        <Text style={styles.footerTagline}>Aprende · Conecta · Aplica</Text>
+        <Text style={styles.footerText}>Wordlish Tutoring</Text>
       </View>
     </View>
   );
@@ -109,9 +108,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   brand: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
     marginBottom: spacing.xl,
+  },
+  brandDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  brandText: {
+    ...typography.h3,
+    fontSize: 17,
+    letterSpacing: -0.2,
   },
   nav: {
     flex: 1,
@@ -153,14 +165,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 11,
     color: colors.textMuted,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  footerTagline: {
-    fontSize: 10,
-    color: colors.primaryDark,
     fontWeight: '600',
-    letterSpacing: 0.5,
-    marginTop: 2,
+    letterSpacing: 0.3,
   },
 });

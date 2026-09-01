@@ -1,21 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, StatusBar } from 'react-native';
-import { Avatar, NotificationBanner, PageContainer, WebTwoColumn } from '@/components/ui';
-import {
-  consumeBookingCreated,
-  type BookingFlashMode,
-} from '@/services/bookingFlash';
+import { ScrollView, StatusBar, Alert } from 'react-native';
+import { Avatar, PageContainer, WebTwoColumn } from '@/components/ui';
 import { useResponsive } from '@/hooks/useResponsive';
-import { openZoom, getZoomUrl } from '@/services/zoomService';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
 import {
   currentStudent,
   nextClass,
   packageInfo,
+  latestPayment,
+  PAYMENT_STATUS,
 } from '@/services/mockData';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -35,6 +32,7 @@ export default function StudentHome() {
   const router = useRouter();
   const { logout } = useAuth();
   const { isDesktop } = useResponsive();
+  const payStatus = PAYMENT_STATUS[latestPayment.status];
 
   const hasNextClass = Boolean(nextClass);
 
@@ -44,54 +42,6 @@ export default function StudentHome() {
     return () => clearInterval(t);
   }, []);
   void nowTick;
-
-  // Banner temporal 'Reserva creada' tras confirmar en summary. Se
-  // consume una sola vez al montar y se auto-descarta a los 4 s con
-  // fade suave.
-  const [flash, setFlash] = useState<BookingFlashMode | null>(null);
-  const flashOpacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const mode = consumeBookingCreated();
-    if (!mode) return;
-    setFlash(mode);
-    Animated.timing(flashOpacity, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-    const hide = setTimeout(() => {
-      Animated.timing(flashOpacity, {
-        toValue: 0,
-        duration: 260,
-        useNativeDriver: true,
-      }).start(() => setFlash(null));
-    }, 4000);
-    return () => clearTimeout(hide);
-  }, [flashOpacity]);
-
-  const flashProps =
-    flash === 'hours'
-      ? {
-          tone: 'success' as const,
-          icon: 'checkmark-circle',
-          title: 'Reserva creada',
-          message: 'Tu clase quedo confirmada y se descontaron las horas de tu plan.',
-        }
-      : flash === 'proof'
-      ? {
-          tone: 'success' as const,
-          icon: 'checkmark-circle',
-          title: 'Reserva creada',
-          message: 'Comprobante recibido. Te avisaremos cuando el pago sea aprobado.',
-        }
-      : flash === 'pending'
-      ? {
-          tone: 'warning' as const,
-          icon: 'time-outline',
-          title: 'Reserva creada',
-          message: 'Tu reserva quedo apartada. Completa el pago antes de la clase.',
-        }
-      : null;
 
   const minsLeft = hasNextClass ? nextClass.startsInMin : 0;
 
@@ -108,9 +58,11 @@ export default function StudentHome() {
   const attendanceRegistered =
     hasNextClass && nextClass.screenshotStatus === 'received';
 
-  // Abre el enlace oficial de Zoom desde services/zoomService (única
-  // fuente de verdad, leída de public.app_settings.zoom.official_link).
-  const handleEnterClass = () => openZoom(getZoomUrl());
+  const handleEnterClass = () =>
+    Alert.alert(
+      phase === 'far' ? 'Entrar a Zoom' : 'Entrar a mi clase',
+      'Simulación · el enlace se abrirá cuando conectemos la integración con Zoom.',
+    );
 
   const showLiveButton = phase === 'imminent' || phase === 'live';
 
@@ -145,9 +97,6 @@ export default function StudentHome() {
     </View>
   );
 
-  // Auditoria MVP Ready: el Home responde solo a 3 preguntas
-  // (proxima clase, horas, entrar). "Estado del pago" vive en
-  // Perfil > Mi plan como unico lugar administrativo.
   const StatusBlockCompact = (
     <View style={styles.statusRow}>
       <View style={styles.statusItem}>
@@ -156,10 +105,26 @@ export default function StudentHome() {
           {packageInfo.remaining} de {packageInfo.total} h
         </Text>
       </View>
+      <View style={styles.statusDivider} />
+      <View style={styles.statusItem}>
+        <Text style={styles.statusLabel}>Estado del pago</Text>
+        <View style={styles.statusValueRow}>
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor:
+                  payStatus.tone === 'success' ? colors.success : colors.warning,
+              },
+            ]}
+          />
+          <Text style={styles.statusValue}>{payStatus.label}</Text>
+        </View>
+      </View>
     </View>
   );
 
-  // Version desktop: solo el saldo. El estado del pago vive en Mi plan.
+  // Versión desktop del status: apilado vertical con más aire, tarjetas discretas.
   const StatusBlockStacked = (
     <View style={styles.statusStack}>
       <Text style={styles.sideTitle}>Tu plan</Text>
@@ -169,14 +134,29 @@ export default function StudentHome() {
           {packageInfo.remaining} de {packageInfo.total} h
         </Text>
       </View>
+      <View style={styles.statusItemBox}>
+        <Text style={styles.statusLabel}>Estado del pago</Text>
+        <View style={styles.statusValueRow}>
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor:
+                  payStatus.tone === 'success' ? colors.success : colors.warning,
+              },
+            ]}
+          />
+          <Text style={styles.statusValueLg}>{payStatus.label}</Text>
+        </View>
+      </View>
       <Pressable
-        onPress={() => router.push('/(student)/profile' as any)}
+        onPress={() => router.push('/(student)/payments' as any)}
         style={({ pressed }) => [
           styles.sideLink,
           pressed && { opacity: 0.7 },
         ]}
       >
-        <Text style={styles.sideLinkText}>Gestionar en Perfil</Text>
+        <Text style={styles.sideLinkText}>Ver Mi plan</Text>
         <Ionicons name="chevron-forward" size={12} color={colors.primaryDark} />
       </Pressable>
     </View>
@@ -274,15 +254,6 @@ export default function StudentHome() {
         <PageContainer maxWidth="home">
           {IdentityBlock}
 
-          {flashProps ? (
-            <Animated.View
-              style={{ opacity: flashOpacity, marginBottom: spacing.md }}
-              pointerEvents="none"
-            >
-              <NotificationBanner {...flashProps} />
-            </Animated.View>
-          ) : null}
-
           {isDesktop ? (
             <WebTwoColumn
               leftFlex={7}
@@ -315,9 +286,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.md,
   },
-  hello: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
+  hello: { fontSize: 12, color: colors.textMuted, fontWeight: '500' },
   name: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.3,
@@ -350,15 +321,15 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
   },
   statusLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  statusValue: { fontSize: 15, fontWeight: '700', color: colors.text },
-  statusValueLg: { fontSize: 18, fontWeight: '700', color: colors.text },
+  statusValue: { fontSize: 13, fontWeight: '700', color: colors.text },
+  statusValueLg: { fontSize: 16, fontWeight: '700', color: colors.text },
   statusValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
 
@@ -372,7 +343,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sideTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -389,14 +360,14 @@ const styles = StyleSheet.create({
   },
   sideLinkText: {
     color: colors.primaryDark,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
 
   // Sección
   section: {
     ...typography.h3,
-    fontSize: 17,
+    fontSize: 15,
     marginTop: spacing.xxl,
     marginBottom: spacing.md,
   },
@@ -411,7 +382,7 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   classLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -433,13 +404,13 @@ const styles = StyleSheet.create({
   },
   classSubject: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
   classTeacher: {
     color: colors.textMuted,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '500',
     marginTop: 2,
   },
@@ -456,7 +427,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     color: colors.textSubtle,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
   },
   enterBtn: {
@@ -477,7 +448,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.textOnPrimary,
   },
-  enterText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 16 },
+  enterText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: 15 },
   hintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -487,7 +458,7 @@ const styles = StyleSheet.create({
   },
   hintText: {
     color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
   emptyCard: {
@@ -502,7 +473,7 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
     textAlign: 'center',

@@ -31,7 +31,7 @@ export default function BookingType() {
           <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={typography.caption}>Reservar</Text>
+          <Text style={typography.caption}>Paso 1 de 4</Text>
           <Text style={typography.h2}>¿Qué deseas reservar?</Text>
         </View>
       </View>
@@ -39,6 +39,12 @@ export default function BookingType() {
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
+        <View style={s.dotsRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={[s.dot, i === 0 && s.dotActive]} />
+          ))}
+        </View>
+
         <Text style={s.intro}>
           Elige el tipo de servicio. Cada uno tiene reglas distintas.
         </Text>

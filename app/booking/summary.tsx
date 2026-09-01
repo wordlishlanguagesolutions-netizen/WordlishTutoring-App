@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,127 +9,26 @@ import {
 } from 'react-native';
 import { Ionicons } from '@/components/ui/Icon';
 import { useRouter } from 'expo-router';
-import {
-  useFocusEffect,
-  useNavigation,
-  CommonActions,
-} from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radius, shadow } from '@/constants/theme';
-import { Avatar, KnowCard, Modal } from '@/components/ui';
-import { WizardHeader } from '@/components/booking';
-import { PaymentMethods } from '@/components/booking/PaymentMethods';
+import { Avatar, KnowCard } from '@/components/ui';
 import { useDraftBooking } from '@/hooks/useDraftBooking';
 import { useBookings } from '@/hooks/useBookings';
-import { useAuth } from '@/hooks/useAuth';
 import { dateUtils } from '@/services/mockData';
 import { policiesAck } from '@/services/policiesAck';
 import { POLICY_COPY } from '@/constants/policies';
-import { getSetting } from '@/services/appSettingsService';
-import { emitBookingCreated } from '@/services/bookingFlash';
 
-
-// ============================================================================
-// Reserva · Paso 3 de 3: resumen + método de pago inline.
-//
-// Fase venta inteligente (integrada en la MISMA pantalla, sin crear
-// nuevas rutas):
-//   - Si el estudiante TIENE horas: va directo al resumen limpio
-//     (Clase / Profesor / Fecha / Estado). Sin promos.
-//   - Si NO tiene horas: antes del resumen se muestra un selector
-//     sencillo con 3 opciones (clase individual, plan mensual, banco de
-//     horas) y etiquetas de valor solo aqui. Al continuar, aparece el
-//     resumen limpio con el total elegido y metodo de pago.
-//
-// La confirmacion final nunca vende: solo confirma.
-// ============================================================================
-
-// Catalogo de opciones de compra · valores reflejan el catalogo mock ya
-// definido en app/(student)/payments.tsx (ACTIVE_PLANS + ACTIVE_TOPUPS).
-// No se modifican precios ni reglas comerciales.
-type CheckoutOption = 'individual' | 'plan' | 'hours-bank';
-interface CheckoutChoice {
-  id: CheckoutOption;
-  name: string;
-  subtitle: string;
-  hours: number;
-  price: number;
-  tag?: string;
-}
-const buildCheckoutOptions = (unitPrice: number): CheckoutChoice[] => [
-  {
-    id: 'individual',
-    name: 'Clase individual',
-    subtitle: 'Paga solo la clase que vas a reservar.',
-    hours: 1,
-    price: unitPrice,
-  },
-  {
-    id: 'plan',
-    name: 'Plan mensual',
-    subtitle: '8 horas para el mes · ahorra $20',
-    hours: 8,
-    price: 100,
-    tag: 'Mejor precio por hora',
-  },
-  {
-    id: 'hours-bank',
-    name: 'Banco de horas',
-    subtitle: '3 horas para usar cuando quieras',
-    hours: 3,
-    price: 40,
-    tag: 'Mas popular',
-  },
-];
+// Las reglas rápidas viven ahora en POLICY_COPY.bookingSummary
+// (constants/policies.ts). Se muestran a través de <KnowCard />.
 
 export default function BookingSummary() {
   const router = useRouter();
-  const navigation = useNavigation();
-  const { user } = useAuth();
   const { draft, setHoldId, reset } = useDraftBooking();
-  const {
-    holds,
-    createBooking,
-    releaseHold,
-    remainingHours,
-    submitPaymentProof,
-  } = useBookings();
+  const { holds, createBooking, releaseHold, remainingHours } = useBookings();
 
   const hold = holds.find((h) => h.id === draft.holdId);
   const hoursLeft = remainingHours[draft.studentId] ?? 0;
-  const requiresPayment = hoursLeft === 0;
-  const PRICE_PER_HOUR = getSetting<number>('payment.price_per_hour_usd', 18);
-
-  // Fase venta inteligente: solo se activa si no hay horas.
-  const CHECKOUT_OPTIONS = useMemo(
-    () => buildCheckoutOptions(PRICE_PER_HOUR),
-    [PRICE_PER_HOUR],
-  );
-  const [selectedOption, setSelectedOption] =
-    useState<CheckoutOption | null>(null);
-  const [optionConfirmed, setOptionConfirmed] = useState<boolean>(false);
-  const chosenOption = useMemo(
-    () => CHECKOUT_OPTIONS.find((o) => o.id === selectedOption) ?? null,
-    [CHECKOUT_OPTIONS, selectedOption],
-  );
-  const purchaseAmount = chosenOption?.price ?? PRICE_PER_HOUR;
-  const isSalesPhase = requiresPayment && !optionConfirmed;
-
-  const role = (user as any)?.role ?? 'student';
-  // Grupo de rutas segun rol. Se usa tanto para navegacion via router
-  // (con slash) como para CommonActions.reset (sin slash, es el nombre
-  // del segment que registra Expo Router en el navigator raiz).
-  const homeGroup: string =
-    role === 'guardian'
-      ? '(guardian)'
-      : role === 'teacher'
-      ? '(teacher)'
-      : role === 'supervisor'
-      ? '(supervisor)'
-      : role === 'admin'
-      ? '(admin)'
-      : '(student)';
-  const homeRoute = (): string => `/${homeGroup}`;
 
   const [remaining, setRemaining] = useState<number>(() =>
     hold ? Math.max(0, Math.floor((hold.expiresAt - Date.now()) / 1000)) : 0,
@@ -139,18 +38,6 @@ export default function BookingSummary() {
   const [policiesViewed, setPoliciesViewed] = useState<boolean>(
     policiesAck.hasViewed(draft.studentId),
   );
-  const [policiesAccepted, setPoliciesAccepted] = useState<boolean>(false);
-  const [uploadedProof, setUploadedProof] = useState<{
-    name: string;
-    at: number;
-    method?: import('@/types').PaymentMethod;
-    receiptPath?: string | null;
-  } | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{
-    visible: boolean;
-    bookingId: string;
-    mode: 'hours' | 'proof' | 'pending';
-  }>({ visible: false, bookingId: '', mode: 'hours' });
 
   useEffect(() => {
     if (
@@ -164,6 +51,8 @@ export default function BookingSummary() {
     }
   }, [draft.date, draft.time, draft.teacherId, draft.subject, draft.studentId]);
 
+  // Cada vez que la pantalla vuelve al foco, refresca si las políticas se
+  // visualizaron (por ejemplo tras volver del modal de Tips).
   useFocusEffect(
     useCallback(() => {
       setPoliciesViewed(policiesAck.hasViewed(draft.studentId));
@@ -193,18 +82,10 @@ export default function BookingSummary() {
     router.push(`/class/policies?studentId=${draft.studentId}` as any);
   };
 
-  const canConfirm = useMemo(() => {
-    if (busy) return false;
-    if (hold && remaining === 0) return false;
-    if (!policiesViewed) return false;
-    if (!policiesAccepted) return false;
-    return true;
-  }, [busy, hold, remaining, policiesViewed, policiesAccepted]);
-
   const onConfirm = () => {
-    if (!canConfirm) {
-      if (!policiesViewed) setError('Revisa las políticas antes de confirmar.');
-      else if (!policiesAccepted) setError('Debes aceptar las políticas para continuar.');
+    if (busy) return;
+    if (!policiesViewed) {
+      setError('Revisa las políticas antes de confirmar.');
       return;
     }
     setBusy(true);
@@ -230,109 +111,32 @@ export default function BookingSummary() {
     }
     setHoldId(null);
     const id = result.booking.id;
-    // En vez de saltar de golpe al home, mostramos un modal de
-    // confirmacion premium (estilo hotel/aerolinea) que le hace sentir al
-    // estudiante que la reserva quedo hecha, no que solo subio un archivo.
-    let mode: 'hours' | 'proof' | 'pending' = 'hours';
-    if (requiresPayment) {
-      if (uploadedProof) {
-        submitPaymentProof(id, {
-          name: uploadedProof.name,
-          method: uploadedProof.method,
-          receiptPath: uploadedProof.receiptPath ?? null,
-        });
-        mode = 'proof';
-      } else {
-        mode = 'pending';
-      }
-    }
-    setBusy(false);
-    setConfirmModal({ visible: true, bookingId: id, mode });
-  };
-
-  const modalTitle =
-    confirmModal.mode === 'hours' ? 'Reserva confirmada' : 'Reserva creada';
-
-  const closeAndGoHome = () => {
-    // Emitimos la senal antes de resetear el stack: el home la
-    // consume en su primer render y muestra un banner temporal como
-    // cierre visual.
-    emitBookingCreated(confirmModal.mode);
-    setConfirmModal((c) => ({ ...c, visible: false }));
-    reset();
-    // CommonActions.reset reescribe TODO el stack de navegacion,
-    // eliminando las entradas del wizard (type, new, schedule,
-    // summary). Home queda como unica pantalla. router.replace no
-    // basta porque solo cambia la entrada actual y las anteriores
-    // siguen en el historial.
-    try {
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: homeGroup }],
-        }),
-      );
-    } catch {
-      router.replace(homeRoute() as any);
-    }
-  };
-
-  const closeAndGoDetail = () => {
-    const id = confirmModal.bookingId;
-    setConfirmModal((c) => ({ ...c, visible: false }));
-    reset();
-    // Reescribimos el stack para que quede: [home, detalle]. Asi el
-    // usuario ve la reserva creada, y al presionar atras desde el
-    // detalle regresa al home (nunca al asistente).
-    try {
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 1,
-          routes: [
-            { name: homeGroup },
-            { name: 'booking/[id]', params: { id } },
-          ],
-        }),
-      );
-    } catch {
-      // Fallback conservador si el nombre de ruta no matchea el
-      // navigator: al menos aterrizamos en el detalle. Back puede
-      // caer en wizard pero es preferible a fallar en silencio.
-      router.replace(`/booking/${id}` as any);
-    }
+    router.replace(`/booking/success?id=${id}` as any);
+    setTimeout(() => reset(), 200);
   };
 
   const holdExpired = hold ? remaining === 0 : false;
-
-  const primaryLabel = requiresPayment
-    ? uploadedProof
-      ? 'Confirmar y enviar comprobante'
-      : 'Confirmar reserva'
-    : 'Confirmar reserva';
+  const confirmDisabled = busy || holdExpired || !policiesViewed;
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      edges={['top']}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
-      <WizardHeader
-        step={2}
-        title={isSalesPhase ? 'Elige tu opcion' : 'Resumen'}
-        onBack={() => {
-          if (requiresPayment && optionConfirmed) {
-            // Permitir volver del resumen al selector sin salir del wizard.
-            setOptionConfirmed(false);
-            return;
-          }
-          router.back();
-        }}
-      />
+      <View style={s.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.iconBtn}>
+          <Ionicons name="chevron-back" size={22} color={colors.primaryDark} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={typography.caption}>Paso 4 de 4</Text>
+          <Text style={typography.h2}>Resumen</Text>
+        </View>
+      </View>
 
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
       >
+        <StepDots current={3} />
+
         {hold && !holdExpired && (
           <View style={s.holdBanner}>
             <Ionicons name="lock-closed" size={16} color={colors.primaryDark} />
@@ -350,71 +154,6 @@ export default function BookingSummary() {
           </View>
         )}
 
-        {isSalesPhase ? (
-          <>
-            <View style={s.salesIntro}>
-              <View style={s.salesIcon}>
-                <Ionicons name="hourglass" size={22} color={colors.primaryDark} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.salesTitle}>No tienes horas disponibles</Text>
-                <Text style={s.salesSubtitle}>
-                  Escoge como deseas continuar para reservar tu clase.
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-              {CHECKOUT_OPTIONS.map((opt) => {
-                const on = selectedOption === opt.id;
-                return (
-                  <Pressable
-                    key={opt.id}
-                    onPress={() => setSelectedOption(opt.id)}
-                    style={({ pressed }) => [
-                      s.optionCard,
-                      on && s.optionCardOn,
-                      pressed && { opacity: 0.9 },
-                    ]}
-                  >
-                    <View style={[s.optionRadio, on && s.optionRadioOn]}>
-                      {on ? <View style={s.optionRadioDot} /> : null}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={s.optionHead}>
-                        <Text style={s.optionName}>{opt.name}</Text>
-                        {opt.tag ? (
-                          <View style={s.optionTag}>
-                            <Text style={s.optionTagText}>{opt.tag}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={s.optionSubtitle}>{opt.subtitle}</Text>
-                      <Text style={s.optionPrice}>${opt.price.toFixed(2)}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Pressable
-              onPress={() => selectedOption && setOptionConfirmed(true)}
-              disabled={!selectedOption}
-              style={({ pressed }) => [
-                s.primaryBtn,
-                !selectedOption && { opacity: 0.5 },
-                pressed && selectedOption && { opacity: 0.9 },
-              ]}
-            >
-              <Text style={s.primaryText}>Continuar</Text>
-            </Pressable>
-
-            <Pressable onPress={onChangeSchedule} style={s.secondaryBtn}>
-              <Text style={s.secondaryText}>Cambiar horario</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
         <View style={s.hero}>
           <View style={s.serviceTag}>
             <Ionicons name="person" size={11} color={colors.primaryDark} />
@@ -427,13 +166,7 @@ export default function BookingSummary() {
         </View>
 
         <View style={s.card}>
-          <Row
-            avatar={draft.teacherAvatar}
-            name={
-              draft.teacherId === 'any' ? 'Auto-asignación' : draft.teacherName
-            }
-            role="Profesor"
-          />
+          <Row avatar={draft.teacherAvatar} name={draft.teacherName} role="Profesor" />
           <Divider />
           <Row avatar={draft.studentAvatar} name={draft.studentName} role="Estudiante" />
         </View>
@@ -445,59 +178,31 @@ export default function BookingSummary() {
             label="Horas disponibles"
             value={`${hoursLeft} h`}
           />
-          {requiresPayment ? (
-            <InfoLine
-              icon="pricetag-outline"
-              label="Precio"
-              value={`$${purchaseAmount.toFixed(2)}`}
-            />
-          ) : null}
+          <InfoLine icon="person-add-outline" label="Suplente" value="Sin asignar" />
           <InfoLine
-            icon={requiresPayment ? 'card-outline' : 'checkmark-circle'}
+            icon={hoursLeft > 0 ? 'checkmark-circle' : 'card-outline'}
             label="Estado inicial"
-            value={requiresPayment ? 'Pendiente de pago' : 'Confirmada'}
-            tone={requiresPayment ? 'warning' : 'success'}
+            value={hoursLeft > 0 ? 'Confirmada' : 'Pendiente de pago'}
+            tone={hoursLeft > 0 ? 'success' : 'warning'}
             last
           />
         </View>
 
-        {requiresPayment ? (
-          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-            <Text style={typography.h3}>Metodo de pago</Text>
-            <Text style={typography.caption}>
-              {chosenOption
-                ? `${chosenOption.name} · Total $${purchaseAmount.toFixed(2)}. Elige un metodo y sube tu comprobante.`
-                : `Valor $${purchaseAmount.toFixed(2)}. Elige un metodo y sube tu comprobante.`}
-            </Text>
-            <PaymentMethods
-              amount={purchaseAmount}
-              receiptPathPrefix={`bookings/pending-${draft.studentId}-${Date.now()}`}
-              onUploadProof={(payload) =>
-                setUploadedProof({
-                  name: payload.name,
-                  at: Date.now(),
-                  method: payload.method,
-                  receiptPath: payload.receiptPath,
-                })
-              }
-              uploadedProof={uploadedProof}
-              onReplaceProof={() => setUploadedProof(null)}
-            />
-          </View>
-        ) : (
-          <View style={s.planBox}>
-            <Ionicons name="hourglass" size={18} color={colors.success} />
-            <Text style={s.planBoxText}>
-              Se descontara 1 hora de tu plan · Te quedan {hoursLeft} h disponibles.
-            </Text>
-          </View>
-        )}
-
-        {/* Reglas */}
+        {/* 💡 Lo que debes saber (reglas visibles antes de confirmar) */}
         <KnowCard
           rules={POLICY_COPY.bookingSummary}
           style={{ marginTop: spacing.lg }}
         />
+
+        {hoursLeft === 0 && (
+          <View style={s.noticeBox}>
+            <Ionicons name="information-circle" size={18} color={colors.warning} />
+            <Text style={s.noticeText}>
+              No tienes horas en paquete activo. Se creará una orden pendiente
+              de pago.
+            </Text>
+          </View>
+        )}
 
         {error !== '' && (
           <View style={s.errorBox}>
@@ -506,192 +211,58 @@ export default function BookingSummary() {
           </View>
         )}
 
+        {/* Ver políticas */}
         <Pressable
           onPress={openPolicies}
           style={({ pressed }) => [s.policyBtn, pressed && { opacity: 0.9 }]}
         >
           <Ionicons
-            name={policiesViewed ? 'checkmark-circle' : 'document-text-outline'}
+            name="document-text-outline"
             size={18}
-            color={policiesViewed ? colors.success : colors.primaryDark}
+            color={colors.primaryDark}
           />
-          <Text style={s.policyBtnText}>
-            {policiesViewed ? 'Políticas revisadas · Ver de nuevo' : 'Ver políticas'}
-          </Text>
+          <Text style={s.policyBtnText}>Ver políticas</Text>
           <Ionicons name="chevron-forward" size={16} color={colors.primaryDark} />
         </Pressable>
 
-        <Pressable
-          onPress={() => {
-            if (!policiesViewed) {
-              setError('Primero revisa las políticas.');
-              return;
-            }
-            setPoliciesAccepted((v) => !v);
-            setError('');
-          }}
-          style={({ pressed }) => [
-            s.acceptRow,
-            !policiesViewed && { opacity: 0.6 },
-            pressed && { opacity: 0.85 },
-          ]}
-        >
-          <View style={[s.checkbox, policiesAccepted && s.checkboxOn]}>
-            {policiesAccepted ? (
-              <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
-            ) : null}
+        {policiesViewed ? (
+          <View style={s.policyStatus}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={[s.policyStatusText, { color: colors.success }]}>
+              Políticas revisadas
+            </Text>
           </View>
-          <Text style={s.acceptText}>
-            He leído y acepto las políticas de Wordlish.
-          </Text>
-        </Pressable>
+        ) : (
+          <View style={s.policyStatus}>
+            <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+            <Text style={[s.policyStatusText, { color: colors.warning }]}>
+              Revisa las políticas antes de confirmar
+            </Text>
+          </View>
+        )}
 
         <Pressable
           onPress={onConfirm}
-          disabled={!canConfirm}
+          disabled={confirmDisabled}
           style={({ pressed }) => [
             s.primaryBtn,
-            !canConfirm && { opacity: 0.5 },
-            pressed && canConfirm && { opacity: 0.9 },
+            confirmDisabled && { opacity: 0.5 },
+            pressed && !confirmDisabled && { opacity: 0.9 },
           ]}
         >
-          <Ionicons
-            name="checkmark-circle"
-            size={20}
-            color={colors.textOnPrimary}
-          />
-          <Text style={s.primaryText}>{primaryLabel}</Text>
+          <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+          <Text style={s.primaryText}>
+            {hoursLeft > 0 ? 'Confirmar reserva' : 'Crear orden y reservar'}
+          </Text>
         </Pressable>
 
         <Pressable onPress={onChangeSchedule} style={s.secondaryBtn}>
           <Text style={s.secondaryText}>Cambiar horario</Text>
         </Pressable>
-          </>
-        )}
       </ScrollView>
-
-      <Modal
-        visible={confirmModal.visible}
-        onClose={closeAndGoHome}
-        title={modalTitle}
-        primaryAction={{ label: 'Ver mi reserva', onPress: closeAndGoDetail }}
-        secondaryAction={{ label: 'Volver al inicio', onPress: closeAndGoHome }}
-      >
-        <View style={s.modalIconWrap}>
-          <View
-            style={[
-              s.modalIcon,
-              confirmModal.mode === 'hours'
-                ? { backgroundColor: colors.successSoft }
-                : { backgroundColor: colors.warningSoft },
-            ]}
-          >
-            <Ionicons
-              name={confirmModal.mode === 'hours' ? 'checkmark-circle' : 'time'}
-              size={44}
-              color={confirmModal.mode === 'hours' ? colors.success : colors.warning}
-            />
-          </View>
-        </View>
-
-        <Text style={s.modalLead}>
-          {confirmModal.mode === 'hours'
-            ? 'Tu clase ha sido reservada exitosamente.'
-            : 'Tu clase ha sido reservada correctamente.'}
-        </Text>
-
-        <View style={s.modalCard}>
-          <View style={s.modalRow}>
-            <Ionicons name="book-outline" size={16} color={colors.primaryDark} />
-            <Text style={s.modalRowLabel}>Materia</Text>
-            <Text style={s.modalRowValue}>{draft.subject}</Text>
-          </View>
-          <View style={s.modalRow}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primaryDark} />
-            <Text style={s.modalRowLabel}>Fecha</Text>
-            <Text style={s.modalRowValue}>
-              {dateUtils.formatDisplay(draft.date)} · {draft.time}
-            </Text>
-          </View>
-        </View>
-
-        {confirmModal.mode === 'hours' ? (
-          <View style={s.modalNote}>
-            <Ionicons name="hourglass" size={16} color={colors.success} />
-            <Text style={s.modalNoteText}>
-              Se descontaron las horas correspondientes de tu plan.
-            </Text>
-          </View>
-        ) : confirmModal.mode === 'proof' ? (
-          <>
-            <View style={s.modalNote}>
-              <Ionicons name="receipt-outline" size={16} color={colors.warning} />
-              <Text style={s.modalNoteText}>
-                Tu comprobante fue recibido y sera revisado por nuestro equipo.
-              </Text>
-            </View>
-            <View style={s.modalStatusRow}>
-              <Text style={s.modalStatusLabel}>Estado actual</Text>
-              <StatusChip tone="warning" icon="time-outline" label="Pendiente de validacion" />
-            </View>
-            <Text style={s.modalFoot}>
-              Una vez aprobado, la reserva cambiara automaticamente a Confirmada.
-            </Text>
-          </>
-        ) : (
-          <>
-            <View style={s.modalNote}>
-              <Ionicons name="card-outline" size={16} color={colors.warning} />
-              <Text style={s.modalNoteText}>
-                Tu reserva quedo apartada. Completa el pago para confirmarla.
-              </Text>
-            </View>
-            <View style={s.modalStatusRow}>
-              <Text style={s.modalStatusLabel}>Estado actual</Text>
-              <StatusChip tone="warning" icon="alert-circle-outline" label="Pendiente de pago" />
-            </View>
-            <Text style={s.modalFoot}>
-              Puedes pagar ahora desde el detalle o mas tarde antes de la clase.
-            </Text>
-          </>
-        )}
-      </Modal>
     </SafeAreaView>
   );
 }
-
-function StatusChip({
-  tone,
-  icon,
-  label,
-}: {
-  tone: 'warning' | 'success' | 'info';
-  icon: string;
-  label: string;
-}) {
-  const bg =
-    tone === 'success'
-      ? colors.successSoft
-      : tone === 'info'
-      ? colors.infoSoft
-      : colors.warningSoft;
-  const fg =
-    tone === 'success'
-      ? colors.success
-      : tone === 'info'
-      ? colors.info
-      : colors.warning;
-  return (
-    <View style={[s.chip, { backgroundColor: bg }]}>
-      <Ionicons name={icon as any} size={13} color={fg} />
-      <Text style={[s.chipText, { color: fg }]}>{label}</Text>
-    </View>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// Componentes internos
-// ══════════════════════════════════════════════════════════════════════════
 
 function Row({ avatar, name, role }: { avatar: string; name: string; role: string }) {
   return (
@@ -751,8 +322,17 @@ function InfoLine({
   );
 }
 
-function StepDotsUnused() {
-  return null;
+function StepDots({ current }: { current: number }) {
+  return (
+    <View style={s.dotsRow}>
+      {[0, 1, 2, 3].map((i) => (
+        <View
+          key={i}
+          style={[s.dot, i === current && s.dotActive, i < current && s.dotDone]}
+        />
+      ))}
+    </View>
+  );
 }
 
 const s = StyleSheet.create({
@@ -762,19 +342,6 @@ const s = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
     paddingBottom: spacing.md,
-  },
-  stepLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  stepTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: 2,
   },
   iconBtn: {
     width: 42,
@@ -851,264 +418,31 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Método de pago ───────────────────────────────────────────────
-  paySection: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    ...shadow.sm,
-  },
-  payTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+  rulesTitle: { ...typography.h3, fontSize: 16 },
+  ruleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  ruleText: {
+    flex: 1,
+    ...typography.body,
     color: colors.text,
-    letterSpacing: -0.2,
-  },
-  paySubtitle: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  payOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  payOptionOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  payIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  payIconOn: {
-    backgroundColor: colors.primary,
-  },
-  payOptionLabel: {
+    lineHeight: 20,
     fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
   },
-  payOptionDesc: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOn: {
-    borderColor: colors.primary,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-  },
-  emptyPay: {
+
+  noticeBox: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-  },
-  emptyPayText: { flex: 1, fontSize: 12, color: colors.textSubtle },
-
-  uploadBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  uploadBoxDone: {
-    borderStyle: 'solid',
-    borderColor: colors.success,
-    backgroundColor: colors.successSoft,
-  },
-  uploadLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  uploadHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  uploadReplace: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primaryDark,
-    textDecorationLine: 'underline',
-  },
-
-  payHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.md,
-  },
-  payHintText: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-
-  planBox: {
-    marginTop: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.successSoft,
-    borderWidth: 1,
-    borderColor: colors.success,
-  },
-  planBoxText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.success,
-  },
-  pendingBox: {
-    marginTop: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
     backgroundColor: colors.warningSoft,
-    borderWidth: 1,
-    borderColor: colors.warning,
-  },
-  pendingText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.warning,
-    lineHeight: 18,
-  },
-  payTitleInline: {
-    ...typography.h3,
+    padding: spacing.md,
+    borderRadius: radius.md,
     marginTop: spacing.lg,
   },
-  payHintInline: {
-    ...typography.caption,
-    marginTop: 4,
-    marginBottom: spacing.sm,
-  },
-  method: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: spacing.sm,
-  },
-  methodIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  methodLabel: {
+  noticeText: {
+    color: colors.warning,
+    fontWeight: '600',
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.textSubtle,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  methodValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  methodHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  copyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
-  },
-  copyText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primaryDark,
-  },
-  cardMethod: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    marginTop: spacing.sm,
-  },
-  cardMethodIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardMethodLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textOnPrimary,
-  },
-  cardMethodHint: {
-    fontSize: 12,
-    color: colors.primarySoft,
-    marginTop: 2,
-  },
-  payFooterHint: {
-    ...typography.caption,
-    marginTop: spacing.sm,
-    fontStyle: 'italic',
+    flex: 1,
+    lineHeight: 18,
   },
 
   errorBox: {
@@ -1140,38 +474,6 @@ const s = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  acceptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  checkboxOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  acceptText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
   policyStatus: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1199,190 +501,4 @@ const s = StyleSheet.create({
     marginTop: spacing.sm,
   },
   secondaryText: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
-
-  modalIconWrap: { alignItems: 'center' },
-  modalIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalLead: {
-    ...typography.body,
-    textAlign: 'center',
-    color: colors.text,
-  },
-  modalCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  modalRowLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    minWidth: 60,
-  },
-  modalRowValue: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'right',
-  },
-  modalNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
-  },
-  modalNoteText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.textSubtle,
-    lineHeight: 18,
-  },
-  modalStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  modalStatusLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  modalFoot: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-    lineHeight: 17,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-  },
-  chipText: { fontSize: 12, fontWeight: '700' },
-
-  // Fase venta inteligente
-  salesIntro: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-  },
-  salesIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  salesTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  salesSubtitle: {
-    fontSize: 13,
-    color: colors.textSubtle,
-    marginTop: 2,
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  optionCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  optionCardOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  optionRadio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  optionRadioOn: {
-    borderColor: colors.primary,
-  },
-  optionRadioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
-  },
-  optionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  optionName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  optionTag: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
-  optionTagText: {
-    color: colors.textOnPrimary,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  optionSubtitle: {
-    fontSize: 12,
-    color: colors.textSubtle,
-    marginTop: 4,
-    fontWeight: '500',
-    lineHeight: 17,
-  },
-  optionPrice: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: spacing.sm,
-  },
 });

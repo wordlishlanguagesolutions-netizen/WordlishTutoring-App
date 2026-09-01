@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTabBarStyle, tabScreenOptions } from '@/constants/tabs';
 import { WebSidebar, type SidebarItem } from '@/components/ui/WebSidebar';
 import { useResponsive } from '@/hooks/useResponsive';
-import { RoleGuard } from '@/components/ui/RoleGuard';
 
 const SUPERVISOR_NAV: SidebarItem[] = [
   { label: 'Monitor', icon: 'pulse', route: '/(supervisor)' },
+  { label: 'Alertas', icon: 'warning', route: '/(supervisor)/alerts' },
   { label: 'Historial', icon: 'time', route: '/(supervisor)/history' },
 ];
 
@@ -18,7 +18,6 @@ export default function SupervisorLayout() {
   const { isDesktop } = useResponsive();
 
   return (
-    <RoleGuard allow="supervisor">
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <WebSidebar items={SUPERVISOR_NAV} /> : null}
       <View style={{ flex: 1 }}>
@@ -38,6 +37,13 @@ export default function SupervisorLayout() {
             }}
           />
           <Tabs.Screen
+            name="alerts"
+            options={{
+              title: 'Alertas',
+              tabBarIcon: ({ color, size }) => <Ionicons name="warning" size={size} color={color} />,
+            }}
+          />
+          <Tabs.Screen
             name="history"
             options={{
               title: 'Historial',
@@ -47,6 +53,5 @@ export default function SupervisorLayout() {
         </Tabs>
       </View>
     </View>
-    </RoleGuard>
   );
 }

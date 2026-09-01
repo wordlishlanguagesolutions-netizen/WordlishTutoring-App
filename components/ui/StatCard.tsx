@@ -8,18 +8,17 @@ interface StatCardProps {
   value: string | number;
   icon: keyof typeof Ionicons.glyphMap;
   tone?: 'primary' | 'success' | 'warning' | 'info' | 'danger';
-  hint?: string;
 }
 
 const TONES = {
-  primary: { bg: colors.surfaceTinted, fg: colors.primary },
+  primary: { bg: colors.primarySoft, fg: colors.primaryDark },
   success: { bg: colors.successSoft, fg: colors.success },
   warning: { bg: colors.warningSoft, fg: colors.warning },
   info: { bg: colors.infoSoft, fg: colors.info },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
 };
 
-export function StatCard({ label, value, icon, tone = 'primary', hint }: StatCardProps) {
+export function StatCard({ label, value, icon, tone = 'primary' }: StatCardProps) {
   const t = TONES[tone];
   return (
     <View style={styles.card}>
@@ -28,7 +27,6 @@ export function StatCard({ label, value, icon, tone = 'primary', hint }: StatCar
       </View>
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -37,30 +35,20 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: radius.card,
-    padding: spacing.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
+    borderColor: colors.border,
     ...shadow.sm,
-    gap: 6,
   },
   iconWrap: {
     width: 40,
     height: 40,
-    borderRadius: radius.md,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  value: {
-    ...typography.numericSmall,
-  },
-  label: {
-    ...typography.caption,
-  },
-  hint: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontSize: 12,
-  },
+  value: { ...typography.h2, marginBottom: 2 },
+  label: { ...typography.caption },
 });
