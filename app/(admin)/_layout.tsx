@@ -58,6 +58,14 @@ export default function AdminLayout() {
               tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
             }}
           />
+          {/* Herramienta temporal: se accede desde el Dashboard, se oculta del tab bar. */}
+          <Tabs.Screen
+            name="diagnostic-import"
+            options={{
+              href: null,
+              title: 'Dry Run',
+            }}
+          />
         </Tabs>
       </View>
     </View>

@@ -13,12 +13,15 @@
 //   }
 //
 // Response (dry_run):
-//   { ok, dry_run: true, stats: { total, uniqueItemIds, errors[], duplicates[],
-//     emptyFields[], validCount, firstItem, lastItem, sample } }
+//   { ok, dry_run: true, stats: { totalCount, uniqueItemIds, duplicateCount,
+//     rejectedCount, emptyRequiredFields, conversionErrorsCount,
+//     firstItem, lastItem, firstRow, lastRow, errors[], duplicates[],
+//     emptyFields[], conversionErrors[], validCount, sample } }
 //
 // Response (real import): { ok, inserted, updated, stats }
 //
-// Auth: Requires Bearer JWT of an authenticated admin user.
+// Auth: Requires Bearer JWT of an authenticated admin OR supervisor user.
+//       service_role is never exposed to the frontend.
 // =============================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
@@ -56,8 +59,8 @@ Deno.serve(async (req: Request) => {
       .eq('id', userRes.user.id)
       .single();
 
-    if (!profile || profile.role !== 'admin') {
-      return err('Forbidden: admin only', 403);
+    if (!profile || !['admin', 'supervisor'].includes(String(profile.role))) {
+      return err('Forbidden: admin or supervisor only', 403);
     }
 
     // Body
@@ -101,23 +104,29 @@ Deno.serve(async (req: Request) => {
         dry_run: true,
         headers: parsed.headers,
         stats: {
-          total: stats.total,
+          // Canonical names (current contract)
+          totalCount: stats.total,
           uniqueItemIds: stats.uniqueItemIds,
-          validCount: stats.validRows.length,
+          duplicateCount: stats.duplicates.length,
           rejectedCount: stats.errors.length,
-          errorsCount: stats.errors.length,
-          duplicatesCount: stats.duplicates.length,
-          emptyFieldsCount: stats.emptyFields.length,
+          emptyRequiredFields: stats.emptyFields.length,
           conversionErrorsCount: stats.conversionErrors.length,
           firstItem,
           lastItem,
+          firstRow: stats.validRows[0] ?? null,
+          lastRow: stats.validRows[stats.validRows.length - 1] ?? null,
+          // Legacy aliases (backwards compatible)
+          total: stats.total,
+          validCount: stats.validRows.length,
+          errorsCount: stats.errors.length,
+          duplicatesCount: stats.duplicates.length,
+          emptyFieldsCount: stats.emptyFields.length,
+          // Details (capped at 50 rows each)
           errors: stats.errors.slice(0, 50),
           duplicates: stats.duplicates.slice(0, 50),
           emptyFields: stats.emptyFields.slice(0, 50),
           conversionErrors: stats.conversionErrors.slice(0, 50),
           sample: stats.validRows.slice(0, 3),
-          firstRow: stats.validRows[0] ?? null,
-          lastRow: stats.validRows[stats.validRows.length - 1] ?? null,
         },
       });
     }

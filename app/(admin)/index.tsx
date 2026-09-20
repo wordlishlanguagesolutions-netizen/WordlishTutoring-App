@@ -13,6 +13,24 @@ export default function AdminDashboard() {
     <Screen>
       <Header title="Dashboard" subtitle="Panel de Administración" />
 
+      {/* Herramienta temporal · Dry Run del banco de preguntas.
+          Se retirará una vez validada la importación definitiva. */}
+      <Pressable
+        onPress={() => router.push('/(admin)/diagnostic-import' as any)}
+        style={({ pressed }) => [styles.tempTool, pressed && { opacity: 0.9 }]}
+      >
+        <View style={styles.tempToolIcon}>
+          <Ionicons name="flask" size={20} color={colors.primaryDark} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.tempToolTitle}>Dry Run · Banco de preguntas</Text>
+          <Text style={styles.tempToolSubtitle}>
+            Herramienta temporal · sólo lectura
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.primaryDark} />
+      </Pressable>
+
       <Text style={styles.section}>Operativos hoy</Text>
       <View style={styles.grid}>
         <MiniStat icon="calendar" value={adminStats.todayClasses} label="Clases del día" tone="primary" />
@@ -172,6 +190,32 @@ const styles = StyleSheet.create({
   hoursSoldLabel: {
     fontSize: 11,
     color: colors.textSubtle,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  tempTool: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  tempToolIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tempToolTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  tempToolSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
     fontWeight: '600',
     marginTop: 2,
   },
