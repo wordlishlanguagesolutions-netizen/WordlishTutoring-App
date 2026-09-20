@@ -4,16 +4,17 @@
 // Purpose: Import (or dry-run) the 500-question CSV bank into
 //          public.diagnostic_questions. Admin only.
 //
-// Body (JSON):
+// Body (JSON) - accepts EITHER csv_content OR csv_url:
 //   {
-//     "csv_content": "<CSV as string>",  // required
-//     "dry_run": true,                   // default true
-//     "delimiter": ","                   // default ","
+//     "csv_content": "<CSV as string>",   // optional if csv_url provided
+//     "csv_url": "https://...pub?output=csv", // optional; server-side fetch
+//     "dry_run": true,                    // default true
+//     "delimiter": ","                    // default ","
 //   }
 //
 // Response (dry_run):
 //   { ok, dry_run: true, stats: { total, uniqueItemIds, errors[], duplicates[],
-//     emptyFields[], validCount, sample } }
+//     emptyFields[], validCount, firstItem, lastItem, sample } }
 //
 // Response (real import): { ok, inserted, updated, stats }
 //
@@ -62,10 +63,29 @@ Deno.serve(async (req: Request) => {
     // Body
     let body: any = null;
     try { body = await req.json(); } catch { return err('Invalid JSON body', 400); }
-    const csv = String(body?.csv_content ?? '');
+    let csv = String(body?.csv_content ?? '');
+    const csvUrl = body?.csv_url ? String(body.csv_url) : '';
     const dryRun = body?.dry_run !== false; // default true
     const delimiter = String(body?.delimiter ?? ',');
-    if (!csv.trim()) return err('csv_content is required', 400);
+
+    // Fetch server-side if csv_url provided (handles redirects, no CORS)
+    if (!csv.trim() && csvUrl) {
+      try {
+        const resp = await fetch(csvUrl, {
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Wordlish-Import/1.0',
+            'Accept': 'text/csv,text/plain,*/*',
+          },
+        });
+        if (!resp.ok) return err(`Failed to fetch csv_url: HTTP ${resp.status}`, 502);
+        csv = await resp.text();
+      } catch (e) {
+        return err(`Failed to fetch csv_url: ${(e as Error).message}`, 502);
+      }
+    }
+
+    if (!csv.trim()) return err('csv_content or csv_url is required', 400);
 
     // Parse + validate
     const parsed = parseCsv(csv, delimiter);
@@ -74,6 +94,8 @@ Deno.serve(async (req: Request) => {
     const stats = validate(parsed);
 
     if (dryRun) {
+      const firstItem = stats.validRows[0]?.item_id ?? null;
+      const lastItem = stats.validRows[stats.validRows.length - 1]?.item_id ?? null;
       return json({
         ok: true,
         dry_run: true,
@@ -82,13 +104,20 @@ Deno.serve(async (req: Request) => {
           total: stats.total,
           uniqueItemIds: stats.uniqueItemIds,
           validCount: stats.validRows.length,
+          rejectedCount: stats.errors.length,
           errorsCount: stats.errors.length,
           duplicatesCount: stats.duplicates.length,
           emptyFieldsCount: stats.emptyFields.length,
+          conversionErrorsCount: stats.conversionErrors.length,
+          firstItem,
+          lastItem,
           errors: stats.errors.slice(0, 50),
           duplicates: stats.duplicates.slice(0, 50),
           emptyFields: stats.emptyFields.slice(0, 50),
+          conversionErrors: stats.conversionErrors.slice(0, 50),
           sample: stats.validRows.slice(0, 3),
+          firstRow: stats.validRows[0] ?? null,
+          lastRow: stats.validRows[stats.validRows.length - 1] ?? null,
         },
       });
     }
@@ -240,6 +269,7 @@ function validate(parsed: ParsedCsv) {
   const errors: Array<{ line: number; item_id?: string; message: string }> = [];
   const duplicates: Array<{ line: number; item_id: string; firstSeenLine: number }> = [];
   const emptyFields: Array<{ line: number; item_id?: string; missing: string[] }> = [];
+  const conversionErrors: Array<{ line: number; item_id?: string; field: string; message: string }> = [];
   const validRows: ValidRow[] = [];
   const seen = new Map<string, number>();
 
@@ -287,9 +317,16 @@ function validate(parsed: ParsedCsv) {
       ? tagsRaw.split(/[|,;]/).map((s) => s.trim()).filter(Boolean)
       : [];
 
-    const pointsN = Number(pick(raw, 'points', 'weight') || '1');
+    const pointsRaw = pick(raw, 'points', 'weight');
+    const pointsN = pointsRaw ? Number(pointsRaw) : 1;
+    if (pointsRaw && !Number.isFinite(pointsN)) {
+      conversionErrors.push({ line: row.lineNumber, item_id, field: 'points', message: `Invalid number: "${pointsRaw}"` });
+    }
     const difficultyRaw = pick(raw, 'difficulty', 'level_num');
     const difficulty = difficultyRaw ? Number(difficultyRaw) : null;
+    if (difficultyRaw && (difficulty === null || !Number.isFinite(difficulty))) {
+      conversionErrors.push({ line: row.lineNumber, item_id, field: 'difficulty', message: `Invalid number: "${difficultyRaw}"` });
+    }
     const activeRaw = (pick(raw, 'active', 'enabled') || 'true').toLowerCase();
     const active = ['true', '1', 'yes', 'si', 'sí', 'y'].includes(activeRaw);
 
@@ -312,5 +349,5 @@ function validate(parsed: ParsedCsv) {
     });
   }
 
-  return { total, uniqueItemIds: seen.size, errors, duplicates, emptyFields, validRows };
+  return { total, uniqueItemIds: seen.size, errors, duplicates, emptyFields, conversionErrors, validRows };
 }
