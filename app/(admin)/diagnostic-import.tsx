@@ -46,15 +46,34 @@ export default function DiagnosticImport() {
     setStats(null);
     setRunAt(new Date().toLocaleTimeString('es-PA'));
     try {
-      // El cliente Supabase adjunta el access token de la sesión actual como
-      // Authorization: Bearer <jwt>. Nunca lo leemos ni lo mostramos.
       const supabase = getSupabaseClient();
+
+      // 1) Obtener la sesión actual del proyecto sgrughlymzihochvsgru.
+      //    Jamás leemos, mostramos, copiamos ni guardamos el access_token.
+      const { data: sessionData, error: sessionErr } =
+        await supabase.auth.getSession();
+      if (sessionErr) {
+        setError('Sesión no disponible');
+        return;
+      }
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        setError('Sesión no disponible');
+        return;
+      }
+
+      // 2) Invocar con Authorization: Bearer session.access_token explícito.
+      //    Con esto la Edge Function siempre recibe el token del usuario,
+      //    nunca la anon key. El token viaja sólo como header.
       const { data, error: fnErr } = await supabase.functions.invoke(
         'import-diagnostic-questions',
         {
           body: {
             dry_run: true,
             csv_url: CSV_URL,
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
           },
         },
       );

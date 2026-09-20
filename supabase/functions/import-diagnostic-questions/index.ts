@@ -37,31 +37,110 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return err('Method not allowed', 405);
 
+  const url = Deno.env.get('SUPABASE_URL') ?? '';
+  const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const project_ref = extractProjectRef(url);
+
   try {
-    // Auth: extract JWT
-    const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-    if (!token) return err('Unauthorized', 401);
+    // === Auth ===
+    // Verificar presencia del header Authorization SIN registrar el token.
+    const authHeader = req.headers.get('authorization') ?? '';
+    const authorization_header_present =
+      authHeader.length > 0 && /^Bearer\s+/i.test(authHeader);
 
-    const url = Deno.env.get('SUPABASE_URL') ?? '';
-    const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!authorization_header_present) {
+      console.log('[import-diagnostic-questions] auth denied', {
+        authorization_header_present: false,
+        user_id: null,
+        auth_error: 'missing_authorization_header',
+        profile_found: false,
+        detected_role: null,
+        project_ref,
+      });
+      return err('Unauthorized: missing Authorization header', 401);
+    }
 
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+
+    // Validar el token con supabase.auth.getUser(token). NUNCA decodificar manualmente.
     const supabaseAuth = createClient(url, anon, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
-    const { data: userRes, error: userErr } = await supabaseAuth.auth.getUser(token);
-    if (userErr || !userRes?.user) return err('Unauthorized', 401);
+    const { data: userRes, error: userErr } =
+      await supabaseAuth.auth.getUser(token);
+    const user_id = userRes?.user?.id ?? null;
+    const auth_error = userErr?.message ?? null;
 
+    if (userErr || !userRes?.user) {
+      console.log('[import-diagnostic-questions] auth denied', {
+        authorization_header_present,
+        user_id,
+        auth_error,
+        profile_found: false,
+        detected_role: null,
+        project_ref,
+      });
+      return err(`Unauthorized: ${auth_error ?? 'invalid session'}`, 401);
+    }
+
+    // Consultar la tabla y columna reales donde vive el rol:
+    //   public.user_profiles.role  (enum specific_role)
     const supabaseAdmin = createClient(url, service);
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileErr } = await supabaseAdmin
       .from('user_profiles')
       .select('role')
       .eq('id', userRes.user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile || !['admin', 'supervisor'].includes(String(profile.role))) {
-      return err('Forbidden: admin or supervisor only', 403);
+    const profile_found = !!profile;
+    const detected_role = profile?.role ? String(profile.role) : null;
+
+    if (profileErr) {
+      console.log('[import-diagnostic-questions] profile query error', {
+        authorization_header_present,
+        user_id,
+        auth_error: null,
+        profile_found,
+        detected_role,
+        project_ref,
+      });
+      return err('Forbidden: profile lookup failed', 403);
     }
+
+    if (!profile_found) {
+      console.log('[import-diagnostic-questions] profile not found', {
+        authorization_header_present,
+        user_id,
+        auth_error: null,
+        profile_found,
+        detected_role,
+        project_ref,
+      });
+      return err('Forbidden: user_profile not found', 403);
+    }
+
+    // Aceptar únicamente admin o supervisor.
+    if (!['admin', 'supervisor'].includes(detected_role ?? '')) {
+      console.log('[import-diagnostic-questions] role not allowed', {
+        authorization_header_present,
+        user_id,
+        auth_error: null,
+        profile_found,
+        detected_role,
+        project_ref,
+      });
+      return err(`Forbidden: role "${detected_role}" not allowed`, 403);
+    }
+
+    console.log('[import-diagnostic-questions] auth ok', {
+      authorization_header_present,
+      user_id,
+      auth_error: null,
+      profile_found,
+      detected_role,
+      project_ref,
+    });
 
     // Body
     let body: any = null;
@@ -202,6 +281,17 @@ function json(obj: unknown, status = 200): Response {
   });
 }
 function err(m: string, s: number): Response { return json({ ok: false, error: m }, s); }
+
+// Extrae el project ref (subdominio) de SUPABASE_URL sin exponer secretos.
+// Ej: https://sgrughlymzihochvsgru.backend.onspace.ai  ->  sgrughlymzihochvsgru
+function extractProjectRef(supabaseUrl: string): string {
+  try {
+    const u = new URL(supabaseUrl);
+    return u.hostname.split('.')[0] || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 interface ParsedRow { raw: Record<string, string>; lineNumber: number; }
 interface ParsedCsv { headers: string[]; rows: ParsedRow[]; }
