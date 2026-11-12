@@ -164,8 +164,9 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
+const redact = (v: string) => v.replace(/postgres(?:ql)?:\/\/\S+/g, "[conexión oculta]");
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  new Response(redact(JSON.stringify(body)), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 async function requireAdmin(req: Request): Promise<string | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -201,7 +202,10 @@ async function handle(req: Request): Promise<Response> {
   const part = new URL(req.url).searchParams.get("part") ?? "schema";
   const dbUrl = Deno.env.get("SUPABASE_DB_URL");
   if (!dbUrl) return json({ error: "SUPABASE_DB_URL not available" }, 500);
-  const sql = postgres(dbUrl, { prepare: false, max: 1 });
+  const m = dbUrl.match(/^postgres(?:ql)?:\/\/([^:]+):(.*)@([^@:\/]+)(?::(\d+))?\/([^?]+)/);
+  const sql = m
+    ? postgres({ username: decodeURIComponent(m[1]), password: m[2], host: m[3], port: Number(m[4] ?? 5432), database: m[5], prepare: false, max: 1 })
+    : postgres(dbUrl, { prepare: false, max: 1 });
   const out: Record<string, unknown> = { part, exported_at: new Date().toISOString(), errors: {} };
   const errors = out.errors as Record<string, string>;
   try {
