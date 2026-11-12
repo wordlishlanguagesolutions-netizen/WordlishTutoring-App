@@ -123,6 +123,24 @@ export const SCHEMA_QUERIES: Record<string, string> = {
                       where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
     order by 1, 2`,
 
+  table_acls: `
+    select c.relname as name, c.relkind as kind, coalesce(array_to_string(c.relacl, ','), '(default)') as acl
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'S')
+    order by 1`,
+
+  column_acls: `
+    select c.relname as table_name, a.attname as column_name, array_to_string(a.attacl, ',') as acl
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and a.attacl is not null and a.attnum > 0 and not a.attisdropped
+    order by 1, 2`,
+
+  default_acls: `
+    select pg_get_userbyid(d.defaclrole) as owner, n.nspname as schema, d.defaclobjtype as objtype,
+           array_to_string(d.defaclacl, ',') as acl
+    from pg_default_acl d left join pg_namespace n on n.oid = d.defaclnamespace
+    order by 1, 2, 3`,
+
   sequences: `
     select schemaname as schema, sequencename as name, data_type::text, start_value, increment_by, last_value
     from pg_sequences where schemaname = 'public' order by 2`,
