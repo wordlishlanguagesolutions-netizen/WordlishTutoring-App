@@ -170,8 +170,10 @@ const json = (body: unknown, status = 200) =>
 async function requireAdmin(req: Request): Promise<string | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return "missing token";
-  const url = Deno.env.get("AUTH_SOURCE_URL") || Deno.env.get("SUPABASE_URL") || "";
-  const anon = Deno.env.get("AUTH_SOURCE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const host = new URL(req.url).host;
+  const url = Deno.env.get("AUTH_SOURCE_URL") || Deno.env.get("SUPABASE_URL") || `https://${host}`;
+  const anon = Deno.env.get("AUTH_SOURCE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || req.headers.get("apikey") || "";
+  if (!anon) return "no anon key available";
   const client = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
   const { data: { user }, error } = await client.auth.getUser(token);
   if (error || !user) return "invalid token";
@@ -182,6 +184,17 @@ async function requireAdmin(req: Request): Promise<string | null> {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  try {
+    return await handle(req);
+  } catch (e) {
+    return json({ error: "unhandled", detail: String(e), env: {
+      SUPABASE_URL: !!Deno.env.get("SUPABASE_URL"), SUPABASE_ANON_KEY: !!Deno.env.get("SUPABASE_ANON_KEY"),
+      SUPABASE_SERVICE_ROLE_KEY: !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"), SUPABASE_DB_URL: !!Deno.env.get("SUPABASE_DB_URL"),
+      AUTH_SOURCE_URL: !!Deno.env.get("AUTH_SOURCE_URL") } }, 500);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   const denied = await requireAdmin(req);
   if (denied) return json({ error: denied }, 403);
 
@@ -215,7 +228,7 @@ Deno.serve(async (req) => {
     await sql.end({ timeout: 5 });
   }
   if (part === "data") {
-    const admin = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", { auth: { persistSession: false } });
+    const admin = createClient(Deno.env.get("SUPABASE_URL") || `https://${new URL(req.url).host}`, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", { auth: { persistSession: false } });
     const data: Record<string, unknown> = {};
     for (const name of (out.tables as string[]) ?? []) {
       const rows: unknown[] = [];
@@ -244,4 +257,4 @@ Deno.serve(async (req) => {
     } catch (e) { errors.storage = String(e); }
   }
   return json(out);
-});
+}
