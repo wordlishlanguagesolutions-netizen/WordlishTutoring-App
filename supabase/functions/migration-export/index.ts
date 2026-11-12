@@ -204,17 +204,7 @@ Deno.serve(async (req) => {
         }
       } else if (part === "data") {
         const tables = await tx.unsafe(LIST_DATA_TABLES);
-        const data: Record<string, unknown> = {};
-        for (const { name } of tables) {
-          const ident = '"' + String(name).replaceAll('"', '""') + '"';
-          try {
-            await tx.unsafe("savepoint d");
-            const [row] = await tx.unsafe(`select count(*)::int as n, coalesce(json_agg(x), '[]'::json) as rows from public.${ident} x`);
-            data[name] = { count: row.n, rows: row.rows };
-            await tx.unsafe("release savepoint d");
-          } catch (e) { errors[name] = String(e); await tx.unsafe("rollback to savepoint d"); }
-        }
-        out.data = data;
+        out.tables = tables.map((t: { name: string }) => t.name);
       } else {
         throw new Error("part must be schema or data");
       }
@@ -223,6 +213,35 @@ Deno.serve(async (req) => {
     errors._fatal = String(e);
   } finally {
     await sql.end({ timeout: 5 });
+  }
+  if (part === "data") {
+    const admin = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", { auth: { persistSession: false } });
+    const data: Record<string, unknown> = {};
+    for (const name of (out.tables as string[]) ?? []) {
+      const rows: unknown[] = [];
+      let expected: number | null = null;
+      try {
+        for (let from = 0; ; from += 1000) {
+          const { data: page, error, count } = await admin.from(name).select("*", { count: "exact" }).range(from, from + 999);
+          if (error) throw new Error(error.message);
+          if (expected === null) expected = count ?? null;
+          rows.push(...(page ?? []));
+          if (!page || page.length < 1000) break;
+        }
+        data[name] = { count: expected, exported: rows.length, rows };
+      } catch (e) { errors[name] = String(e); }
+    }
+    out.data = data;
+    try {
+      const { data: buckets, error } = await admin.storage.listBuckets();
+      if (error) throw new Error(error.message);
+      const files: Record<string, unknown> = {};
+      for (const b of buckets ?? []) {
+        const { data: list } = await admin.storage.from(b.id).list("", { limit: 1000 });
+        files[b.id] = list ?? [];
+      }
+      out.storage = { buckets, files };
+    } catch (e) { errors.storage = String(e); }
   }
   return json(out);
 });
